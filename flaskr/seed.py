@@ -3,10 +3,10 @@ from datetime import date
 
 import click
 
-from flaskr.game import create_game, create_game_copy
-from flaskr.session import create_session
-from flaskr.stores import create_store, create_table
-from flaskr.user import create_user
+from flaskr.db.game import create_game, create_game_copy
+from flaskr.db.session import create_session
+from flaskr.db.stores import create_store, create_table
+from flaskr.db.user import create_user
 
 
 def seed_stores():
@@ -24,7 +24,7 @@ def seed_stores():
 
     store_ids = []
     for username, name, password in stores:
-        store_id = create_store(username, name, password, ignore=True)
+        store_id = create_store(username, name, password)
         store_ids.append(store_id)
 
     for store_id in store_ids:

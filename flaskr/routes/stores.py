@@ -11,18 +11,18 @@ from flask import (
     session,
     url_for,
 )
-from werkzeug.security import generate_password_hash
 
-from flaskr import game
 from flaskr.db import get_db
-from flaskr.game import (
+from flaskr.db.game import (
     create_game_copy,
+    get_games,
+    delete_game_copy,
     get_available_games_during,
     get_available_games_with_counts,
     get_game_copies,
     get_unavailable_games_during,
 )
-from flaskr.session import (
+from flaskr.db.session import (
     create_session,
     delete_session,
     get_available_tables,
@@ -30,6 +30,14 @@ from flaskr.session import (
     get_session_games,
     get_unavailable_tables,
     get_upcoming_sessions_with_user_by_store,
+)
+from flaskr.db.stores import (
+    create_table,
+    get_tables,
+    get_table,
+    delete_table,
+    update_table,
+    get_store_by_id,
 )
 
 bp = Blueprint("stores", __name__)
@@ -77,7 +85,7 @@ def my_store():
     store_id = g.store["id"]
     tables = get_tables(store_id)
     games = get_available_games_with_counts(store_id)
-    all_games = game.get_games()
+    all_games = get_games()
     today = str(date.today())
     upcoming_sessions_raw = get_upcoming_sessions_with_user_by_store(store_id, today)
 
@@ -178,7 +186,7 @@ def remove_game_copy(game_id):
             flash("No copies of this game found.")
             return redirect(url_for("stores.my_store"))
 
-        game.delete_game_copy(game_id, g.store["id"], copy["copy_num"])
+        delete_game_copy(game_id, g.store["id"], copy["copy_num"])
         flash("Game copy removed successfully.")
     except Exception as e:
         flash(f"Error removing game copy: {str(e)}")
@@ -319,79 +327,3 @@ def confirm_booking(store_id, table_num):
                 end_time=end_time,
             )
         )
-
-
-def create_store(username, name, password, ignore=False):
-    db = get_db()
-    cursor = db.execute(
-        f"insert {'' if not ignore else 'or ignore'} into Store (username, name, password) values (?, ?, ?)",
-        (username, name, generate_password_hash(password)),
-    )
-    db.commit()
-    return cursor.lastrowid  # returns the new id
-
-
-def get_store(username):
-    return (
-        get_db()
-        .execute("SELECT * FROM store WHERE username = ?", (username,))
-        .fetchone()
-    )
-
-
-def get_store_by_id(store_id):
-    return get_db().execute("SELECT * FROM store WHERE id = ?", (store_id,)).fetchone()
-
-
-# Table Functions
-def create_table(store_id, capacity):
-    db = get_db()
-    next_num = db.execute(
-        'select coalesce(max(table_num), 0) + 1 from "Table" where store_id = ?',
-        (store_id,),
-    ).fetchone()[0]
-    db.execute(
-        'insert into "Table" (store_id, table_num, capacity) values (?, ?, ?)',
-        (store_id, next_num, capacity),
-    )
-    db.commit()
-    return next_num
-
-
-def get_tables(store_id):
-    return (
-        get_db()
-        .execute('select * from "Table" where store_id = ?', (store_id,))
-        .fetchall()
-    )
-
-
-def get_table(store_id, table_num):
-    return (
-        get_db()
-        .execute(
-            'select * from "Table" where store_id = ? and table_num = ?',
-            (store_id, table_num),
-        )
-        .fetchone()
-    )
-
-
-def delete_table(store_id, table_num):
-    db = get_db()
-    db.execute(
-        'delete from "Table" where store_id = ? and table_num = ?',
-        (store_id, table_num),
-    )
-    db.commit()
-
-
-def update_table(store_id, table_num, capacity):
-    db = get_db()
-    db.execute(
-        'update "Table" set capacity = ? where store_id = ? and table_num = ?',
-        (capacity, store_id, table_num),
-    )
-    db.commit()
-
-

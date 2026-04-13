@@ -12,17 +12,17 @@ from flask import (
     session,
     url_for,
 )
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash
 
 from flaskr.db import get_db
-from flaskr.session import (
+from flaskr.db.session import (
     delete_session,
     get_session,
     get_session_games,
     get_sessions_with_store_by_user,
 )
-from flaskr.stores import create_store, get_store, get_store_by_id
-from flaskr.user import create_user, get_user, get_user_by_id
+from flaskr.db.stores import create_store, get_store, get_store_by_id
+from flaskr.db.user import create_user, get_user, get_user_by_id
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -80,19 +80,6 @@ def login():
         flash(error)
 
     return render_template("auth/login.html")
-
-
-# @bp.before_app_request
-# def load_logged_in_user():
-#     user_id = session.get("user_id")
-#     store_id = session.get("store_id")
-#
-#     if user_id is None and store_id is None:
-#         g.user = None
-#     elif user_id is not None:
-#         g.user = get_user_by_id(user_id)
-#     else:
-#         g.user = get_store_by_id(store_id)
 
 
 @bp.before_app_request

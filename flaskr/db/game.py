@@ -2,10 +2,10 @@ from flaskr.db import get_db
 
 
 # Game Functions
-def create_game(name, ignore=False):
+def create_game(name):
     db = get_db()
     cursor = db.execute(
-        f"insert {'or ignore' if ignore else ''} into Game (name) values (?)",
+        f"insert into Game (name) values (?)",
         (name,),
     )
     db.commit()
@@ -31,14 +31,14 @@ def delete_game(game_id):
 
 
 # GameCopy Functions
-def create_game_copy(game_id, store_id, ignore=False):
+def create_game_copy(game_id, store_id):
     db = get_db()
     next_num = db.execute(
         "select coalesce(max(copy_num), 0) + 1 from GameCopy where game_id = ? and store_id = ?",
         (game_id, store_id),
     ).fetchone()[0]
     db.execute(
-        f"insert {'or ignore' if ignore else ''} into GameCopy (game_id, store_id, copy_num) values (?, ?, ?)",
+        f"insert into GameCopy (game_id, store_id, copy_num) values (?, ?, ?)",
         (game_id, store_id, next_num),
     )
     db.commit()
