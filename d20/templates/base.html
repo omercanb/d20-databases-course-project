@@ -17,10 +17,10 @@
                  height="50">
         </h1>
         <ul class="navbar-nav d-flex flex-row gap-3">
-            <li class="nav-item">
-                <a class="nav-link" href="{{ url_for("market.account") }}">Market</a>
-            </li>
             {% if g.user %}
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for("market.account") }}">Market</a>
+                </li>
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for("stores.stores") }}">Stores</a>
                 </li>
@@ -35,10 +35,13 @@
                 </li>
             {% elif g.store %}
                 <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for("market.account") }}">Market</a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link" href="{{ url_for("stores.my_store") }}">My Store</a>
                 </li>
                 <li class="nav-item">
-                    <span class="nav-link">{{ g.user['name'] }}</span>
+                    <span class="nav-link">{{ g.store['name'] }}</span>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for("auth.logout") }}">Log Out</a>

@@ -1,14 +1,15 @@
 import pytest
+
+from d20.db.market.market_history import get_trades_by_participant
 from d20.db.market.market_participant import (
     create_market_participant,
     get_market_participant,
 )
+from d20.db.market.orders import create_order, get_order, try_match_order
 from d20.db.market.participant_inventory import (
     create_participant_inventory,
     get_participant_inventory_for_game,
 )
-from d20.db.market.orders import create_order, try_match_order, get_order
-from d20.db.market.market_history import get_trades_by_participant
 
 
 def make_participants(game_id=1):
