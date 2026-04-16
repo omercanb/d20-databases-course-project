@@ -1,6 +1,7 @@
 from werkzeug.security import generate_password_hash
 
 from d20.db import get_db
+from d20.db.market.market_participant import create_market_participant
 
 
 def create_store(username, name, password):
@@ -10,7 +11,10 @@ def create_store(username, name, password):
         (username, name, generate_password_hash(password)),
     )
     db.commit()
-    return cursor.lastrowid  # returns the new id
+    # We also need to create a market participant entity for the dynamic pricing part
+    store_id = cursor.lastrowid  # returns the new id
+    create_market_participant(store_id=store_id)
+    return store_id
 
 
 def get_store(username):

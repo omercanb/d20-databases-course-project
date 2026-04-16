@@ -1,7 +1,9 @@
 from d20.db import get_db
 
 
-def create_session(user_id, store_id, table_num, day, start_time, end_time, game_ids=None):
+def create_session(
+    user_id, store_id, table_num, day, start_time, end_time, game_ids=None
+):
     db = get_db()
     cursor = db.execute(
         "insert into Session (user_id, store_id, table_num, day, start_time, end_time)"

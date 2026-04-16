@@ -158,12 +158,9 @@ create table Orders (
 
 -- The history table
 -- This needs to have every filled out trade
--- TODO this is thinking remove it
 -- One buying and one selling trade is needed as we match them
 -- The execution price is specified to determine which of the two prices the trade happened at
--- The quantity is also needed
--- and an executed at
--- TODO
+-- The quantity is also needed and an executed at
 create table MarketHistory (
     buy_order_id integer not null,
     sell_order_id integer not null,
