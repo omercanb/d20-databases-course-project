@@ -1,7 +1,6 @@
 from d20.db import get_db
 
 
-# MarketParticipant Functions
 def create_market_participant(
     customer_id=None, store_id=None, available_cash=0.0, reserved_cash=0.0
 ):
@@ -60,20 +59,94 @@ def get_market_participant_by_store(store_id):
     )
 
 
-def update_available_cash(participant_id, amount):
-    """Add/subtract from available cash (use negative amount to subtract)."""
+def increment_available_cash(participant_id, amount):
+    """Increase available cash for a participant.
+
+    Args:
+        participant_id: Market participant ID
+        amount: Amount to add to available_cash
+    """
     participant = get_market_participant(participant_id)
     if not participant:
         raise ValueError(f"Participant {participant_id} not found")
 
     new_available = participant["availiable_cash"] + amount
-    if new_available < 0:
-        raise ValueError("Available cash cannot be negative")
 
     db = get_db()
     db.execute(
         "update MarketPariticipant set availiable_cash = ? where id = ?",
         (new_available, participant_id),
+    )
+    db.commit()
+
+
+def decrement_available_cash(participant_id, amount):
+    """Decrease available cash for a participant.
+
+    Args:
+        participant_id: Market participant ID
+        amount: Amount to subtract from available_cash
+    """
+    participant = get_market_participant(participant_id)
+    if not participant:
+        raise ValueError(f"Participant {participant_id} not found")
+
+    new_available = participant["availiable_cash"] - amount
+    if new_available < 0:
+        raise ValueError(
+            f"Cannot decrease available cash by ${amount:.2f}. Only ${participant['availiable_cash']:.2f} available."
+        )
+
+    db = get_db()
+    db.execute(
+        "update MarketPariticipant set availiable_cash = ? where id = ?",
+        (new_available, participant_id),
+    )
+    db.commit()
+
+
+def increment_reserved_cash(participant_id, amount):
+    """Increase reserved cash for a participant.
+
+    Args:
+        participant_id: Market participant ID
+        amount: Amount to add to reserved_cash
+    """
+    participant = get_market_participant(participant_id)
+    if not participant:
+        raise ValueError(f"Participant {participant_id} not found")
+
+    new_reserved = participant["reserved_cash"] + amount
+
+    db = get_db()
+    db.execute(
+        "update MarketPariticipant set reserved_cash = ? where id = ?",
+        (new_reserved, participant_id),
+    )
+    db.commit()
+
+
+def decrement_reserved_cash(participant_id, amount):
+    """Decrease reserved cash for a participant.
+
+    Args:
+        participant_id: Market participant ID
+        amount: Amount to subtract from reserved_cash
+    """
+    participant = get_market_participant(participant_id)
+    if not participant:
+        raise ValueError(f"Participant {participant_id} not found")
+
+    new_reserved = participant["reserved_cash"] - amount
+    if new_reserved < 0:
+        raise ValueError(
+            f"Cannot decrease reserved cash by ${amount:.2f}. Only ${participant['reserved_cash']:.2f} reserved."
+        )
+
+    db = get_db()
+    db.execute(
+        "update MarketPariticipant set reserved_cash = ? where id = ?",
+        (new_reserved, participant_id),
     )
     db.commit()
 

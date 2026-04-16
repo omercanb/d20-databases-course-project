@@ -16,7 +16,8 @@ from d20.db.market.market_participant import (
     get_market_participant,
     get_market_participant_by_customer,
     get_market_participant_by_store,
-    update_available_cash,
+    increment_available_cash,
+    decrement_available_cash,
 )
 from d20.db.market.participant_inventory import (
     create_participant_inventory,
@@ -95,7 +96,7 @@ def account_load_cash():
         flash("Amount must be positive.")
     else:
         try:
-            update_available_cash(g.market_participant["id"], amount)
+            increment_available_cash(g.market_participant["id"], amount)
             flash(f"Loaded ${amount:.2f} successfully.")
         except Exception as e:
             flash(f"Error loading cash: {str(e)}")
@@ -107,7 +108,7 @@ def account_withdraw_cash():
         flash("Amount must be positive.")
     else:
         try:
-            update_available_cash(g.market_participant["id"], -amount)
+            decrement_available_cash(g.market_participant["id"], amount)
             flash(f"Withdrew ${amount:.2f} successfully.")
         except ValueError as e:
             flash(f"Cannot withdraw: {str(e)}")

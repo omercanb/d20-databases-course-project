@@ -145,7 +145,7 @@ create table Orders (
     participant_id integer not null,
     game_id integer not null,
     order_type text check (order_type in ('LIMIT', 'MARKET')) not null,
-    side text check (order_type in ('BUY', 'SELL')) not null,
+    side text check (side in ('BUY', 'SELL')) not null,
     -- The constraint on price is because market orders should have no price (they execute at a specific price and that is in the history)
     -- And the price for a limit order can't be negative 
     price decimal(10, 2) check((order_type = 'LIMIT' and price > 0) or (order_type = 'MARKET' and price is null)),

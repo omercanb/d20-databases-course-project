@@ -101,44 +101,92 @@ def update_game_quantity(
     db.commit()
 
 
-# def increment_available_quantity(participant_id, game_id, amount):
-#     """Add to available quantity (use negative amount to subtract)."""
-#     inventory = get_participant_inventory_for_game(participant_id, game_id)
-#     if not inventory:
-#         raise ValueError(
-#             f"Inventory not found for participant {participant_id}, game {game_id}"
-#         )
-#
-#     new_available = inventory["available_quantity"] + amount
-#     if new_available < 0:
-#         raise ValueError("Available quantity cannot be negative")
-#
-#     db = get_db()
-#     db.execute(
-#         "update MarketParticipantInventory set available_quantity = ? where participant_id = ? and game_id = ?",
-#         (new_available, participant_id, game_id),
-#     )
-#     db.commit()
-#
-#
-# def increment_reserved_quantity(participant_id, game_id, amount):
-#     """Add to reserved quantity (use negative amount to subtract)."""
-#     inventory = get_participant_inventory_for_game(participant_id, game_id)
-#     if not inventory:
-#         raise ValueError(
-#             f"Inventory not found for participant {participant_id}, game {game_id}"
-#         )
-#
-#     new_reserved = inventory["reserved_quantity"] + amount
-#     if new_reserved < 0:
-#         raise ValueError("Reserved quantity cannot be negative")
-#
-#     db = get_db()
-#     db.execute(
-#         "update MarketParticipantInventory set reserved_quantity = ? where participant_id = ? and game_id = ?",
-#         (new_reserved, participant_id, game_id),
-#     )
-#     db.commit()
+def increment_available_quantity(participant_id, game_id, amount):
+    """Increase available quantity for a participant's game.
+
+    Args:
+        participant_id: Market participant ID
+        game_id: Game ID
+        amount: Amount to add to available_quantity
+    """
+    inventory = get_participant_inventory_for_game(participant_id, game_id)
+    if not inventory:
+        raise ValueError(
+            f"Inventory not found for participant {participant_id}, game {game_id}"
+        )
+
+    new_available = inventory["available_quantity"] + amount
+    if new_available < 0:
+        raise ValueError("Available quantity cannot be negative")
+
+    update_available_quantity(participant_id, game_id, new_available)
+
+
+def decrement_available_quantity(participant_id, game_id, amount):
+    """Decrease available quantity for a participant's game.
+
+    Args:
+        participant_id: Market participant ID
+        game_id: Game ID
+        amount: Amount to subtract from available_quantity
+    """
+    inventory = get_participant_inventory_for_game(participant_id, game_id)
+    if not inventory:
+        raise ValueError(
+            f"Inventory not found for participant {participant_id}, game {game_id}"
+        )
+
+    new_available = inventory["available_quantity"] - amount
+    if new_available < 0:
+        raise ValueError(
+            f"Cannot decrease available quantity by {amount}. Only {inventory['available_quantity']} available."
+        )
+
+    update_available_quantity(participant_id, game_id, new_available)
+
+
+def increment_reserved_quantity(participant_id, game_id, amount):
+    """Increase reserved quantity for a participant's game.
+
+    Args:
+        participant_id: Market participant ID
+        game_id: Game ID
+        amount: Amount to add to reserved_quantity
+    """
+    inventory = get_participant_inventory_for_game(participant_id, game_id)
+    if not inventory:
+        raise ValueError(
+            f"Inventory not found for participant {participant_id}, game {game_id}"
+        )
+
+    new_reserved = inventory["reserved_quantity"] + amount
+    if new_reserved < 0:
+        raise ValueError("Reserved quantity cannot be negative")
+
+    update_reserved_quantity(participant_id, game_id, new_reserved)
+
+
+def decrement_reserved_quantity(participant_id, game_id, amount):
+    """Decrease reserved quantity for a participant's game.
+
+    Args:
+        participant_id: Market participant ID
+        game_id: Game ID
+        amount: Amount to subtract from reserved_quantity
+    """
+    inventory = get_participant_inventory_for_game(participant_id, game_id)
+    if not inventory:
+        raise ValueError(
+            f"Inventory not found for participant {participant_id}, game {game_id}"
+        )
+
+    new_reserved = inventory["reserved_quantity"] - amount
+    if new_reserved < 0:
+        raise ValueError(
+            f"Cannot decrease reserved quantity by {amount}. Only {inventory['reserved_quantity']} reserved."
+        )
+
+    update_reserved_quantity(participant_id, game_id, new_reserved)
 
 
 def delete_market_inventory(participant_id, game_id):
