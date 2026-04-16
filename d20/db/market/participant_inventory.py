@@ -64,6 +64,11 @@ def update_available_quantity(participant_id, game_id, quantity):
         (quantity, participant_id, game_id),
     )
     db.commit()
+    inventory = get_participant_inventory_for_game(participant_id, game_id)
+    available = inventory["available_quantity"]
+    reserved = inventory["reserved_quantity"]
+    if available == 0 and reserved == 0:
+        delete_market_inventory(participant_id, game_id)
 
 
 def update_reserved_quantity(participant_id, game_id, quantity):
@@ -74,12 +79,20 @@ def update_reserved_quantity(participant_id, game_id, quantity):
         (quantity, participant_id, game_id),
     )
     db.commit()
+    inventory = get_participant_inventory_for_game(participant_id, game_id)
+    available = inventory["available_quantity"]
+    reserved = inventory["reserved_quantity"]
+    if available == 0 and reserved == 0:
+        delete_market_inventory(participant_id, game_id)
 
 
 def update_game_quantity(
     participant_id, game_id, available_quantity, reserved_quantity
 ):
     """Update both available and reserved quantities."""
+    if available_quantity == 0 and reserved_quantity == 0:
+        delete_market_inventory(participant_id, game_id)
+        return
     db = get_db()
     db.execute(
         "update MarketParticipantInventory set available_quantity = ?, reserved_quantity = ? where participant_id = ? and game_id = ?",

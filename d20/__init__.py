@@ -51,6 +51,10 @@ def create_app(test_config=None):
     from .routes import stores
 
     app.register_blueprint(stores.bp)
+
+    from .routes import market
+
+    app.register_blueprint(market.bp)
     app.add_url_rule("/", endpoint="index")
 
     return app

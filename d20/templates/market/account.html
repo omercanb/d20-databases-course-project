@@ -1,0 +1,219 @@
+{% extends 'base.html' %}
+{% block header %}
+    <h1>
+        {% block title %}Trading Account{% endblock %}
+    </h1>
+{% endblock %}
+{% block content %}
+    <div class="container">
+        <!-- CASH SECTION -->
+        <section>
+            <h2 class="card-section-title">Cash Management</h2>
+            <div class="row">
+                <!-- Left Column: Cash Display -->
+                <div class="col w-50">
+                    <div class="d-flex flex-column gap-3">
+                        <div class="card store-card">
+                            <div class="card-body">
+                                <h5 class="card-title">Available Cash</h5>
+                                <p class="card-text" style="font-size: 1.5rem; font-weight: bold;">
+                                    ${{ "%.2f"|format(participant['availiable_cash']) }}
+                                </p>
+                            </div>
+                        </div>
+                        <div class="card store-card">
+                            <div class="card-body">
+                                <h5 class="card-title">Reserved Cash</h5>
+                                <p class="card-text"
+                                   style="font-size: 1.5rem;
+                                          font-weight: bold;
+                                          color: #ff9800">${{ "%.2f"|format(participant['reserved_cash']) }}</p>
+                            </div>
+                        </div>
+                        <div class="card store-card">
+                            <div class="card-body">
+                                <h5 class="card-title">Total Cash</h5>
+                                <p class="card-text"
+                                   style="font-size: 1.5rem;
+                                          font-weight: bold;
+                                          color: #4caf50">
+                                    ${{ "%.2f"|format(participant['availiable_cash'] + participant['reserved_cash']) }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Right Column: Forms -->
+                <div class="col w-50">
+                    <div class="d-flex flex-column gap-4">
+                        <!-- Load Cash Form -->
+                        <div>
+                            <h3>Load Cash</h3>
+                            <form method="post" class="d-flex gap-2 align-items-end">
+                                <input type="hidden" name="action" value="load_cash">
+                                <div style="flex: 1;">
+                                    <label for="cash-amount" class="form-label">Amount ($)</label>
+                                    <input type="number"
+                                           id="cash-amount"
+                                           name="amount"
+                                           step="0.01"
+                                           min="0.01"
+                                           required
+                                           class="form-control"
+                                           placeholder="0.00">
+                                </div>
+                                <button type="submit" class="btn btn-primary">Load</button>
+                            </form>
+                        </div>
+                        <!-- Withdraw Cash Form -->
+                        <div>
+                            <h3>Withdraw Cash</h3>
+                            <form method="post" class="d-flex gap-2 align-items-end">
+                                <input type="hidden" name="action" value="withdraw_cash">
+                                <div style="flex: 1;">
+                                    <label for="withdraw-amount" class="form-label">Amount ($)</label>
+                                    <input type="number"
+                                           id="withdraw-amount"
+                                           name="amount"
+                                           step="0.01"
+                                           min="0.01"
+                                           max="{{ "%.2f"|format(participant['availiable_cash']) }}"
+                                           required
+                                           class="form-control"
+                                           placeholder="0.00">
+                                </div>
+                                <button type="submit" class="btn btn-warning">Withdraw</button>
+                            </form>
+                            <script>
+                            document.addEventListener('DOMContentLoaded', function() {
+                                const withdrawInput = document.getElementById('withdraw-amount');
+                                withdrawInput.max = {{ participant['availiable_cash'] }};
+                            });
+                            </script>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <section class="pt-4">
+            <h2 class="card-section-title">Market Inventory</h2>
+            <div class="row">
+                <div class="col w-50">
+                    <!-- Inventory Table -->
+                    {% if inventory %}
+                        <div class="session-list">
+                            <div class="inventory-header">
+                                <div>Game</div>
+                                <div>Available</div>
+                                <div>Reserved</div>
+                                <div>Total</div>
+                            </div>
+                            {% for item in inventory %}
+                                <div class="inventory-row">
+                                    <div>
+                                        <strong>{{ item['name'] }}</strong>
+                                    </div>
+                                    <div>{{ item['available_quantity'] }}</div>
+                                    <div>{{ item['reserved_quantity'] }}</div>
+                                    <div>{{ item['available_quantity'] + item['reserved_quantity'] }}</div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No games in your market inventory.</p>
+                {% endif %}
+                <!-- Add and Remove Games Section  -->
+                <div class="col w-50">
+                    <!-- <div class="d-flex flex-column gap-4" style="align-items: flex-start"> -->
+                    <div class="d-flex flex-column gap-4">
+                        <h3>Add Games to Market</h3>
+                        <form method="post"
+                              action="{{ url_for("market.account") }}"
+                              class="d-flex gap-2 align-items-end">
+                            <input type="hidden" name="action" value="add_inventory">
+                            <div class="container">
+                                <div class="row align-items-end">
+                                    <div class="col-6">
+                                        <label for="game-select" class="form-label">Game</label>
+                                        <select id="game-select" name="game_id" required class="form-select">
+                                            <option value="">Select a game...</option>
+                                            {% for game in all_games %}<option value="{{ game['id'] }}">{{ game['name'] }}</option>{% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col" style="flex: 1;">
+                                        <label for="qty-to-add" class="form-label" style="white-space: nowrap;">Number of Copies</label>
+                                        <input type="number"
+                                               id="qty-to-add"
+                                               name="qty_to_add"
+                                               value="1"
+                                               min="1"
+                                               required
+                                               class="form-control">
+                                    </div>
+                                    <div class="col">
+                                        <button type="submit" class="btn btn-primary">Add</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                        <div>
+                            <h3>Remove Games from Market</h3>
+                            {% set available_games = inventory|selectattr('available_quantity', 'greaterthan', 0)|list %}
+                            {% if available_games %}
+                                <form method="post"
+                                      action="{{ url_for("market.account") }}"
+                                      class="d-flex gap-2 align-items-end">
+                                    <input type="hidden" name="action" value="remove_available">
+                                    <div class="container">
+                                        <div class="row align-items-end">
+                                            <div class="col-6">
+                                                <label for="remove-game-select" class="form-label">Game</label>
+                                                <select id="remove-game-select" name="game_id" required class="form-select">
+                                                    <option value="">Select a game...</option>
+                                                    {% for game in available_games %}
+                                                        <!-- Data max is used to set the max amount of removable copies -->
+                                                        <option data-max="{{ game['available_quantity'] }}"
+                                                                value="{{ game['game_id'] }}">
+                                                            {{ game['name'] }} ({{ game['available_quantity'] }} available)
+                                                        </option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                            <div class="col">
+                                                <label for="remove-qty" class="form-label" style="white-space: nowrap;">Number of Copies</label>
+                                                <input type="number"
+                                                       id="remove-qty"
+                                                       name="quantity_to_remove"
+                                                       value="1"
+                                                       min="1"
+                                                       required
+                                                       class="form-control">
+                                            </div>
+                                            <div class="col">
+                                                <button type="submit" class="btn btn-warning">Remove</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </form>
+                                <script>
+                                document.addEventListener('DOMContentLoaded', function() {
+                                    const select = document.getElementById('remove-game-select');
+                                    const input = document.getElementById('remove-qty');
+                                    select.addEventListener('change', function() {
+                                            const selectedOption = select.options[select.selectedIndex];
+                                            input.max = selectedOption.dataset.max;
+                                    });
+                                });
+                                </script>
+                            {% else %}
+                                <p class="text-muted">No available copies to remove.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

@@ -17,6 +17,9 @@
                  height="50">
         </h1>
         <ul class="navbar-nav d-flex flex-row gap-3">
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for("market.account") }}">Market</a>
+            </li>
             {% if g.user %}
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for("stores.stores") }}">Stores</a>

@@ -15,11 +15,11 @@ from flask import (
 from d20.db import get_db
 from d20.db.game import (
     create_game_copy,
-    get_games,
     delete_game_copy,
     get_available_games_during,
     get_available_games_with_counts,
     get_game_copies,
+    get_games,
     get_unavailable_games_during,
 )
 from d20.db.session import (
@@ -33,11 +33,11 @@ from d20.db.session import (
 )
 from d20.db.stores import (
     create_table,
-    get_tables,
-    get_table,
     delete_table,
-    update_table,
     get_store_by_id,
+    get_table,
+    get_tables,
+    update_table,
 )
 
 bp = Blueprint("stores", __name__)
@@ -267,7 +267,9 @@ def select_games(store_id, table_num):
     store = get_store_by_id(store_id)
     table = get_table(store_id, table_num)
     available_games = get_available_games_during(store_id, day, start_time, end_time)
-    unavailable_games = get_unavailable_games_during(store_id, day, start_time, end_time)
+    unavailable_games = get_unavailable_games_during(
+        store_id, day, start_time, end_time
+    )
 
     return render_template(
         "stores/select_games.html",
