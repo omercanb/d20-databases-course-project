@@ -191,6 +191,12 @@ def try_match_order(order_id):
             buy_order_id, sell_order_id, buyer, seller, execution_price, num_fills
         )
 
+    # If we have a market order and don't have enough liqudity we fill what we can then cancel the order
+    if order_type == "MARKET" and remaining_matches_for_completion > 0:
+        cancel_order(order_id)
+
+    return total_fills
+
 
 def get_order(order_id):
     """Get an order by ID."""

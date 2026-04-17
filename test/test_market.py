@@ -129,7 +129,7 @@ def test_limit_sell_matches_buy(app):
 
 
 def test_market_buy_matches_sell(app):
-    """Buyer MARKET order matches seller SELL LIMIT. Execution at seller's price."""
+    """Buyer MARKET order matches seller SELL LIMIT. Execution at seller's price. But not enough liquidity so order can't complete fully"""
     with app.app_context():
         buyer_id, seller_id = make_participants()
 
@@ -150,16 +150,17 @@ def test_market_buy_matches_sell(app):
             order_type="MARKET",
             side="BUY",
             price=None,
-            initial_quantity=4,
+            initial_quantity=8,
         )
 
         # Match the new buy order
-        try_match_order(buy_order_id)
+        num_fills = try_match_order(buy_order_id)
+        assert num_fills == 4
 
         # Verify both COMPLETED
         buy = get_order(buy_order_id)
         sell = get_order(sell_order_id)
-        assert buy["status"] == "COMPLETED"
+        assert buy["status"] == "CANCELLED"
         assert sell["status"] == "COMPLETED"
 
         # Verify execution at seller's price ($8)
