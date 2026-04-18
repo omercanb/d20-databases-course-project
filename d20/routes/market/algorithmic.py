@@ -2,9 +2,11 @@ import io
 from contextlib import redirect_stderr, redirect_stdout
 
 from flask import g, jsonify, render_template, request
-from plox.lox import run
+from plox.runner import LoxRunner
 
+from d20.db.game import InvalidSymbolError
 from d20.db.market.participant_inventory import get_participant_inventory
+from d20.routes.market import market_api
 
 from . import bp, market_login_required
 
@@ -30,13 +32,11 @@ def algorithmic_run():
     code = request.json.get("code", "")
     participant_id = g.market_participant["id"]
 
-    # TODO: Implement actual language execution here
-    # For now, return a placeholder response
-    output, err = run_plox(code)
+    output, err = run_plox_and_capture(code)
     if err:
         result = {
             "success": False,
-            "output": None,
+            "output": output,
             "error": str(err),
         }
     else:
@@ -45,19 +45,49 @@ def algorithmic_run():
             "output": output,
             "error": None,
         }
+    print(result)
     return jsonify(result)
 
 
-def run_plox(code):
-    try:
-        with redirect_stdout(io.StringIO()) as stdout:
-            with redirect_stderr(io.StringIO()) as stderr:
-                run(code)
-        output = stdout.getvalue()
-        errors = stderr.getvalue()
-        if errors:
-            return None, errors
-        else:
-            return output, None
-    except Exception as e:
-        return None, e
+def run_plox_and_capture(code):
+    runner = LoxRunner()
+    runner.add_builtin("get_price", market_api.GetPrice())
+    runner.add_builtin("market_buy", market_api.MarketBuy())
+    runner.add_builtin("market_sell", market_api.MarketSell())
+    with redirect_stdout(io.StringIO()) as stdout:
+        with redirect_stderr(io.StringIO()) as stderr:
+            try:
+                runner.run(code)
+                output = stdout.getvalue()
+                errors = stderr.getvalue()
+                if errors:
+                    return output, errors
+                else:
+                    return output, None
+            except InvalidSymbolError as e:
+                output = stdout.getvalue()
+                return output, f"Symbol Error: {e}"
+            except Exception as e:
+                output = stdout.getvalue()
+                raise e
+                return output, f"Error: {e} Error Type: {type(e)}"
+
+
+# def run_plox(code):
+#     scanner = Scanner(source)
+#     tokens = scanner.scan_tokens()
+#
+#     parser = Parser(tokens)
+#     statements = parser.parse()
+#
+#     if had_error:
+#         return
+#
+#     if print_tree:
+#         for statement in statements:
+#             AstPrinter().print_stmt(statement)
+#
+#     if had_error:
+#         return
+#
+#     interpreter.interpret(statements)

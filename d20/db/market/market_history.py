@@ -58,6 +58,8 @@ def get_trades_by_participant(participant_id):
         )
         .fetchall()
     )
+
+
 #
 #
 # def get_trades_as_buyer(participant_id):
@@ -110,6 +112,21 @@ def get_all_trades():
         .execute("select * from MarketHistory order by executed_at desc")
         .fetchall()
     )
+
+
+def get_price(game_symbol):
+    """Returns a single row with price"""
+    buy = (
+        get_db()
+        .execute(
+            "select execution_price from MarketHistory where game_symbol = ? order by executed_at desc limit 1",
+            (game_symbol,),
+        )
+        .fetchone()
+    )
+    if buy is None:
+        return None
+    return buy["execution_price"]
 
 
 #

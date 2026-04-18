@@ -40,7 +40,7 @@ def create_order(
         initial_quantity: Total quantity requested
 
     Returns:
-        The ID of the newly created order
+        (The ID of the newly created order, any errors, and the number of fills)
 
     Raises:
         ValueError: If participant doesn't have enough available cash/inventory

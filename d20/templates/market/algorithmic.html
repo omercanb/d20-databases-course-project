@@ -50,12 +50,11 @@
                     <h3>Trading Code</h3>
                     <form id="algo-form">
                         <div class="form-group">
-                            <textarea
-                                id="algo-code"
-                                name="code"
-                                class="form-control"
-                                rows="20"
-                                placeholder="Write your trading algorithm here..."></textarea>
+                            <textarea id="algo-code"
+                                      name="code"
+                                      class="form-control"
+                                      rows="20"
+                                      placeholder="Write your trading algorithm here..."></textarea>
                         </div>
                         <button type="button" id="run-button" class="btn btn-primary mt-3">Run</button>
                     </form>
@@ -63,10 +62,18 @@
                 <!-- RIGHT COLUMN: OUTPUT -->
                 <div class="col-6">
                     <h3>Output</h3>
-                    <div id="output-container" class="border rounded p-3" style="background-color: #f5f5f5; min-height: 400px; font-family: monospace; white-space: pre-wrap; word-wrap: break-word;">
+                    <div id="output-container"
+                         class="border rounded p-3"
+                         style="background-color: #f5f5f5;
+                                min-height: 400px;
+                                font-family: monospace;
+                                white-space: pre-wrap;
+                                word-wrap: break-word">
                         <p class="text-muted">Run code to see output...</p>
                     </div>
-                    <div id="error-container" style="display: none;" class="alert alert-danger mt-3">
+                    <div id="error-container"
+                         style="display: none"
+                         class="alert alert-danger mt-3">
                         <strong>Error:</strong>
                         <p id="error-message"></p>
                     </div>
@@ -74,7 +81,6 @@
             </div>
         </section>
     </div>
-
     <script>
         document.getElementById('run-button').addEventListener('click', async function() {
             const code = document.getElementById('algo-code').value;
@@ -97,17 +103,23 @@
 
                 const data = await response.json();
 
-                if (data.success) {
-                    outputContainer.textContent = data.output || '(no output)';
-                    errorContainer.style.display = 'none';
+                // Always display output if it exists
+                if (data.output) {
+                    outputContainer.textContent = data.output;
                 } else {
-                    outputContainer.textContent = '';
-                    errorMessage.textContent = data.error || 'Unknown error';
+                    outputContainer.textContent = '(no output)';
+                }
+
+                // Show error separately if it exists
+                if (data.error) {
+                    errorMessage.textContent = data.error;
                     errorContainer.style.display = 'block';
+                } else {
+                    errorContainer.style.display = 'none';
                 }
             } catch (error) {
                 outputContainer.textContent = '';
-                errorMessage.textContent = error.message;
+                errorMessage.textContent = `Network error: ${error.message}`;
                 errorContainer.style.display = 'block';
             }
         });
