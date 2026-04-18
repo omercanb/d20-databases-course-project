@@ -1,0 +1,6 @@
+{
+  "pythonPath": ".venv/bin/python",
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "basic",
+  "extraPaths": ["./lang"]
+}

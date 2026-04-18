@@ -46,30 +46,18 @@ def record_trade(
     return 1
 
 
-# def get_trade(buy_order_id, sell_order_id):
-#     """Get a trade by its order IDs (composite primary key)."""
-#     return (
-#         get_db()
-#         .execute(
-#             "select * from MarketHistory where buy_order_id = ? and sell_order_id = ?",
-#             (buy_order_id, sell_order_id),
-#         )
-#         .fetchone()
-#     )
-#
-#
-# def get_trades_by_participant(participant_id):
-#     """Get all trades involving a participant (as buyer or seller), most recent first."""
-#     return (
-#         get_db()
-#         .execute(
-#             """select * from MarketHistory
-#                where buyer_id = ? or seller_id = ?
-#                order by executed_at desc""",
-#             (participant_id, participant_id),
-#         )
-#         .fetchall()
-#     )
+def get_trades_by_participant(participant_id):
+    """Get all trades involving a participant (as buyer or seller), most recent first."""
+    return (
+        get_db()
+        .execute(
+            """select * from MarketHistory
+               where buyer_id = ? or seller_id = ?
+               order by executed_at desc""",
+            (participant_id, participant_id),
+        )
+        .fetchall()
+    )
 #
 #
 # def get_trades_as_buyer(participant_id):

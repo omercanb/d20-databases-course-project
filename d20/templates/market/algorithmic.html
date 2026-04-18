@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% block header %}
+    <h1>
+        {% block title %}Trading Account - Algorithmic{% endblock %}
+    </h1>
+{% endblock %}
+{% block content %}
+    <div class="container">
+        {% include 'market/_subnav.html' %}
+        <!-- INVENTORY DISPLAY -->
+        <section class="mt-4">
+            <div class="row">
+                <div class="col">
+                    <h2 class="card-section-title">Market Inventory</h2>
+                    {% if inventory %}
+                        <table class="table">
+                            <thead class="table-success">
+                                <tr>
+                                    <th>Game</th>
+                                    <th>Available</th>
+                                    <th>Reserved</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in inventory %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ item['name'] }}</strong>
+                                        </td>
+                                        <td>{{ item['available_quantity'] }}</td>
+                                        <td>{{ item['reserved_quantity'] }}</td>
+                                        <td>{{ item['available_quantity'] + item['reserved_quantity'] }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p class="text-muted">No games in your market inventory.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+        <!-- CODE EDITOR AND OUTPUT -->
+        <section class="mt-4">
+            <h2 class="card-section-title">Algorithmic Trading</h2>
+            <div class="row">
+                <!-- LEFT COLUMN: CODE EDITOR -->
+                <div class="col-6">
+                    <h3>Trading Code</h3>
+                    <form id="algo-form">
+                        <div class="form-group">
+                            <textarea
+                                id="algo-code"
+                                name="code"
+                                class="form-control"
+                                rows="20"
+                                placeholder="Write your trading algorithm here..."></textarea>
+                        </div>
+                        <button type="button" id="run-button" class="btn btn-primary mt-3">Run</button>
+                    </form>
+                </div>
+                <!-- RIGHT COLUMN: OUTPUT -->
+                <div class="col-6">
+                    <h3>Output</h3>
+                    <div id="output-container" class="border rounded p-3" style="background-color: #f5f5f5; min-height: 400px; font-family: monospace; white-space: pre-wrap; word-wrap: break-word;">
+                        <p class="text-muted">Run code to see output...</p>
+                    </div>
+                    <div id="error-container" style="display: none;" class="alert alert-danger mt-3">
+                        <strong>Error:</strong>
+                        <p id="error-message"></p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        document.getElementById('run-button').addEventListener('click', async function() {
+            const code = document.getElementById('algo-code').value;
+            const outputContainer = document.getElementById('output-container');
+            const errorContainer = document.getElementById('error-container');
+            const errorMessage = document.getElementById('error-message');
+
+            // Show loading state
+            outputContainer.textContent = 'Running...';
+            errorContainer.style.display = 'none';
+
+            try {
+                const response = await fetch('{{ url_for("market.algorithmic_run") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ code: code })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    outputContainer.textContent = data.output || '(no output)';
+                    errorContainer.style.display = 'none';
+                } else {
+                    outputContainer.textContent = '';
+                    errorMessage.textContent = data.error || 'Unknown error';
+                    errorContainer.style.display = 'block';
+                }
+            } catch (error) {
+                outputContainer.textContent = '';
+                errorMessage.textContent = error.message;
+                errorContainer.style.display = 'block';
+            }
+        });
+    </script>
+{% endblock %}
