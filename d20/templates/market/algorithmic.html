@@ -51,12 +51,9 @@
                     <div class="list-group"
                          id="scripts-list"
                          style="max-height: 500px;
-                                overflow-y: auto">
-                        {% include 'market/htmx/_scripts_list.html' %}
-                    </div>
+                                overflow-y: auto">{% include 'market/htmx/_scripts_list.html' %}</div>
                     <div class="mt-3">
-                        <button class="btn btn-success btn-sm w-100"
-                                onclick="createNewScript()">New Script</button>
+                        <button class="btn btn-success btn-sm w-100" onclick="createNewScript()">New Script</button>
                     </div>
                     <div id="script-actions" style="display: none;" class="mt-2">
                         <button class="btn btn-warning btn-sm w-100" onclick="renameScript()">Rename</button>
