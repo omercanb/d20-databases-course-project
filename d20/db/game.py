@@ -3,12 +3,16 @@ from d20.db import get_db
 
 # Game Functions
 def create_game(name, symbol, genre=None, min_players=None, max_players=None,
-                difficulty=None, avg_play_time=None, description=None):
+                complexity_rating=None, avg_duration=None, description=None,
+                publisher=None, strategy_rating=None, luck_rating=None,
+                interaction_rating=None):
     db = get_db()
     cursor = db.execute(
-        "insert into Game (name, symbol, genre, min_players, max_players, difficulty, avg_play_time, description)"
-        " values (?, ?, ?, ?, ?, ?, ?, ?)",
-        (name, symbol, genre, min_players, max_players, difficulty, avg_play_time, description),
+        "insert into Game (name, publisher, symbol, genre, min_players, max_players,"
+        " avg_duration, complexity_rating, strategy_rating, luck_rating, interaction_rating, description)"
+        " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (name, publisher, symbol, genre, min_players, max_players,
+         avg_duration, complexity_rating, strategy_rating, luck_rating, interaction_rating, description),
     )
     db.commit()
     return cursor.lastrowid
@@ -57,7 +61,7 @@ def create_game_copy(game_id, store_id):
         (game_id, store_id),
     ).fetchone()[0]
     db.execute(
-        f"insert into GameCopy (game_id, store_id, copy_num) values (?, ?, ?)",
+        "insert into GameCopy (game_id, store_id, copy_num) values (?, ?, ?)",
         (game_id, store_id, next_num),
     )
     db.commit()
@@ -243,7 +247,7 @@ def delete_damage_report(session_id, game_id, store_id, copy_num):
 # Game Library / Browse Functions
 
 def get_games_filtered(store_id, genre=None, min_players=None, max_players=None,
-                       difficulty=None, max_avg_play_time=None, available_only=False,
+                       complexity_rating=None, max_avg_duration=None, available_only=False,
                        search=None):
     """Get games at a store with optional filters."""
     query = """
@@ -263,12 +267,12 @@ def get_games_filtered(store_id, genre=None, min_players=None, max_players=None,
     if max_players is not None:
         query += " and Game.max_players <= ?"
         params.append(max_players)
-    if difficulty is not None:
-        query += " and Game.difficulty = ?"
-        params.append(difficulty)
-    if max_avg_play_time is not None:
-        query += " and Game.avg_play_time <= ?"
-        params.append(max_avg_play_time)
+    if complexity_rating is not None:
+        query += " and Game.complexity_rating = ?"
+        params.append(complexity_rating)
+    if max_avg_duration is not None:
+        query += " and Game.avg_duration <= ?"
+        params.append(max_avg_duration)
     if available_only:
         query += """
             and Game.id in (

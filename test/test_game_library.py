@@ -35,17 +35,17 @@ def _insert_game(
     genre="Strategy",
     min_players=2,
     max_players=2,
-    difficulty=3,
-    avg_play_time=60,
+    complexity_rating=3.0,
+    avg_duration=60,
     description="Classic chess",
 ):
     db.execute(
         """
         insert into Game (name, symbol, genre, min_players, max_players,
-                          difficulty, avg_play_time, description)
+                          complexity_rating, avg_duration, description)
         values (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (name, symbol, genre, min_players, max_players, difficulty, avg_play_time, description),
+        (name, symbol, genre, min_players, max_players, complexity_rating, avg_duration, description),
     )
     db.commit()
     return db.execute("select id from Game where name = ?", (name,)).fetchone()["id"]
@@ -79,8 +79,8 @@ class TestGetGamesFiltered:
                 genre="Strategy",
                 min_players=2,
                 max_players=2,
-                difficulty=3,
-                avg_play_time=60,
+                complexity_rating=3.0,
+                avg_duration=60,
             )
             game2_id = _insert_game(
                 db,
@@ -89,8 +89,8 @@ class TestGetGamesFiltered:
                 genre="Euro",
                 min_players=3,
                 max_players=4,
-                difficulty=2,
-                avg_play_time=90,
+                complexity_rating=2.0,
+                avg_duration=90,
             )
             _insert_game_copy(db, game1_id, store_id, copy_num=1)
             _insert_game_copy(db, game2_id, store_id, copy_num=1)
@@ -135,18 +135,18 @@ class TestGetGamesFiltered:
         assert "Chess" in names
         assert "Catan" not in names
 
-    def test_difficulty_filter(self, app):
+    def test_complexity_rating_filter(self, app):
         store_id, game1_id, game2_id = self._setup(app)
         with app.app_context():
-            games = get_games_filtered(store_id, difficulty=2)
+            games = get_games_filtered(store_id, complexity_rating=2.0)
         assert len(games) == 1
         assert games[0]["name"] == "Catan"
 
-    def test_max_avg_play_time_filter(self, app):
+    def test_max_avg_duration_filter(self, app):
         store_id, game1_id, game2_id = self._setup(app)
         with app.app_context():
-            # avg_play_time <= 60 should include only Chess (60), not Catan (90)
-            games = get_games_filtered(store_id, max_avg_play_time=60)
+            # avg_duration <= 60 should include only Chess (60), not Catan (90)
+            games = get_games_filtered(store_id, max_avg_duration=60)
         names = [g["name"] for g in games]
         assert "Chess" in names
         assert "Catan" not in names
@@ -166,7 +166,7 @@ class TestGetGamesFiltered:
                 store_id,
                 genre="Strategy",
                 max_players=4,
-                difficulty=3,
+                complexity_rating=3.0,
             )
         assert len(games) == 1
         assert games[0]["name"] == "Chess"
@@ -320,7 +320,7 @@ class TestGameLibraryRoute:
             store_id = _insert_store(db)
             game_id = _insert_game(
                 db, name="Dominion", symbol="DO", genre="Deck-Building",
-                min_players=2, max_players=4, difficulty=2, avg_play_time=30,
+                min_players=2, max_players=4, complexity_rating=2.0, avg_duration=30,
             )
             _insert_game_copy(db, game_id, store_id)
             return store_id, game_id
@@ -342,11 +342,11 @@ class TestGameLibraryRoute:
         assert response.status_code == 200
         assert b"Dominion" not in response.data
 
-    def test_invalid_difficulty_flashes_error(self, client, app):
+    def test_complexity_rating_filter_via_route(self, client, app):
         store_id, _ = self._setup_store_and_game(app)
-        response = client.get(f"/store/{store_id}/games?difficulty=9")
+        response = client.get(f"/store/{store_id}/games?complexity_rating=2.0")
         assert response.status_code == 200
-        assert b"Difficulty" in response.data
+        assert b"Dominion" in response.data
 
     def test_invalid_min_players_flashes_error(self, client, app):
         store_id, _ = self._setup_store_and_game(app)
@@ -472,8 +472,8 @@ class TestGetGamesFilteredSearch:
                 genre="RPG",
                 min_players=1,
                 max_players=4,
-                difficulty=3,
-                avg_play_time=90,
+                complexity_rating=3.0,
+                avg_duration=90,
                 description="Slay the dragon and save the kingdom",
             )
             game2_id = _insert_game(
@@ -483,8 +483,8 @@ class TestGetGamesFilteredSearch:
                 genre="Strategy",
                 min_players=2,
                 max_players=2,
-                difficulty=4,
-                avg_play_time=60,
+                complexity_rating=4.0,
+                avg_duration=60,
                 description="Classic board game of kings",
             )
             _insert_game_copy(db, game1_id, store_id, copy_num=1)
@@ -569,8 +569,8 @@ class TestAvailableGamesDuringColumns:
                 genre="Nature",
                 min_players=1,
                 max_players=5,
-                difficulty=2,
-                avg_play_time=70,
+                complexity_rating=2.0,
+                avg_duration=70,
                 description="Bird card game",
             )
             _insert_game_copy(db, game_id, store_id, copy_num=1)
@@ -583,11 +583,11 @@ class TestAvailableGamesDuringColumns:
         assert len(games) == 1
         assert games[0]["genre"] == "Nature"
 
-    def test_available_games_includes_difficulty(self, app):
+    def test_available_games_includes_complexity_rating(self, app):
         store_id, game_id = self._setup(app)
         with app.app_context():
             games = get_available_games_during(store_id, "2099-01-01", 9, 20)
-        assert games[0]["difficulty"] == 2
+        assert games[0]["complexity_rating"] == pytest.approx(2.0)
 
     def test_available_games_includes_min_max_players(self, app):
         store_id, game_id = self._setup(app)
@@ -596,11 +596,11 @@ class TestAvailableGamesDuringColumns:
         assert games[0]["min_players"] == 1
         assert games[0]["max_players"] == 5
 
-    def test_available_games_includes_avg_play_time(self, app):
+    def test_available_games_includes_avg_duration(self, app):
         store_id, game_id = self._setup(app)
         with app.app_context():
             games = get_available_games_during(store_id, "2099-01-01", 9, 20)
-        assert games[0]["avg_play_time"] == 70
+        assert games[0]["avg_duration"] == 70
 
     def test_available_games_still_has_copy_aggregates(self, app):
         store_id, game_id = self._setup(app)
@@ -615,7 +615,7 @@ class TestAvailableGamesDuringColumns:
 # ---------------------------------------------------------------------------
 
 class TestSelectGamesRoute:
-    """Verify that the select_games route renders genre/difficulty details."""
+    """Verify that the select_games route renders genre/complexity rating details."""
 
     def _setup(self, app):
         with app.app_context():
@@ -628,8 +628,8 @@ class TestSelectGamesRoute:
                 genre="Farming",
                 min_players=1,
                 max_players=5,
-                difficulty=4,
-                avg_play_time=120,
+                complexity_rating=4.0,
+                avg_duration=120,
                 description="Farming strategy game",
             )
             _insert_game_copy(db, game_id, store_id, copy_num=1)
@@ -653,14 +653,14 @@ class TestSelectGamesRoute:
         assert response.status_code == 200
         assert b"Farming" in response.data
 
-    def test_select_games_shows_difficulty_stars(self, client, app):
+    def test_select_games_shows_complexity_rating(self, client, app):
         store_id, game_id = self._setup(app)
         self._login(client)
         response = client.get(
             f"/store/{store_id}/table/1/select-games?day=2099-01-01&start_time=9&end_time=20"
         )
         assert response.status_code == 200
-        assert "Difficulty".encode() in response.data
+        assert b"Complexity" in response.data
 
     def test_select_games_shows_player_range(self, client, app):
         store_id, game_id = self._setup(app)

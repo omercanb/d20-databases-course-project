@@ -19,7 +19,6 @@ from d20.db.game import (
     delete_game_copy,
     get_available_games_during,
     get_available_games_with_counts,
-    get_game_copies,
     get_game_copies_with_condition,
     get_game_detail,
     get_games,
@@ -30,11 +29,9 @@ from d20.db.game import (
     rate_game,
 )
 from d20.db.session import (
-    MAX_RESERVATIONS,
     create_session,
     delete_session,
     get_available_tables,
-    get_reservation_count,
     get_session,
     get_session_games,
     get_unavailable_tables,
@@ -82,8 +79,6 @@ def stores():
     stores = db.execute(
         "select * from Store where name like ?", (f"%{search}%",)
     ).fetchall()
-
-    # stores = db.execute("select * from Store").fetchall()
 
     return render_template("stores/stores.html", stores=stores, search=search)
 
@@ -226,18 +221,6 @@ def store(store_id):
     tables = get_tables(store_id)
     games = get_available_games_with_counts(store_id)
     return render_template("stores/store.html", store=store, tables=tables, games=games)
-    # else:
-    #     # A request is made for the available tables
-    #     tables = get_available_tables(store_id, start_time, end_time)
-    #     print(tables)
-    #     game_copies = get_game_copies(store_id)
-    #     return render_template(
-    #         "stores/store.html",
-    #         tables=tables,
-    #         game_copies=game_copies,
-    #         start_time=start_time,
-    #         end_time=end_time,
-    #     )
 
 
 @bp.route("/store/<int:store_id>/book")
@@ -345,19 +328,20 @@ def game_library(store_id):
     genre = request.args.get("genre") or None
     min_players = request.args.get("min_players", type=int)
     max_players = request.args.get("max_players", type=int)
-    difficulty = request.args.get("difficulty", type=int)
-    max_avg_play_time = request.args.get("max_avg_play_time", type=int)
+    complexity_rating = request.args.get("complexity_rating", type=float)
+    max_avg_duration = request.args.get("max_avg_duration", type=int)
     available_only = request.args.get("available_only") == "1"
     search = request.args.get("search") or None
 
     errors = []
-    if difficulty is not None and not (1 <= difficulty <= 5):
-        errors.append("Difficulty must be between 1 and 5.")
-        difficulty = None
     if min_players is not None and min_players < 1:
         errors.append("Minimum players must be at least 1.")
         min_players = None
-    if min_players is not None and max_players is not None and max_players < min_players:
+    if (
+        min_players is not None
+        and max_players is not None
+        and max_players < min_players
+    ):
         errors.append("Maximum players must be >= minimum players.")
         max_players = None
 
@@ -369,8 +353,8 @@ def game_library(store_id):
         genre=genre,
         min_players=min_players,
         max_players=max_players,
-        difficulty=difficulty,
-        max_avg_play_time=max_avg_play_time,
+        complexity_rating=complexity_rating,
+        max_avg_duration=max_avg_duration,
         available_only=available_only,
         search=search,
     )
@@ -386,8 +370,8 @@ def game_library(store_id):
         selected_genre=genre,
         min_players=min_players,
         max_players=max_players,
-        difficulty=difficulty,
-        max_avg_play_time=max_avg_play_time,
+        complexity_rating=complexity_rating,
+        max_avg_duration=max_avg_duration,
         available_only=available_only,
         search=search,
     )
@@ -422,7 +406,9 @@ def rate_game_route(store_id, game_id):
     rating = request.form.get("rating", type=int)
     if rating is None or not (1 <= rating <= 5):
         flash("Rating must be between 1 and 5.")
-        return redirect(url_for("stores.game_detail", store_id=store_id, game_id=game_id))
+        return redirect(
+            url_for("stores.game_detail", store_id=store_id, game_id=game_id)
+        )
 
     rate_game(g.user["id"], game_id, rating)
     flash("Rating submitted successfully.")

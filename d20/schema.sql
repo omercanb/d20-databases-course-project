@@ -56,12 +56,16 @@ create table 'Table' (
 create table Game (
     id integer primary key autoincrement,
     name text not null unique,
+    publisher text,
     symbol text not null unique,
     genre text,
     min_players integer,
     max_players integer,
-    difficulty integer check(difficulty between 1 and 5),
-    avg_play_time integer,
+    avg_duration integer,
+    complexity_rating real,
+    strategy_rating real,
+    luck_rating real,
+    interaction_rating real,
     description text,
     avg_rating real default 0
 );

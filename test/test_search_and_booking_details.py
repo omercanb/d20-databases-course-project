@@ -30,17 +30,17 @@ def _insert_game(
     genre="Strategy",
     min_players=2,
     max_players=4,
-    difficulty=3,
-    avg_play_time=60,
+    complexity_rating=3.0,
+    avg_duration=60,
     description="A test game",
 ):
     db.execute(
         """
         insert into Game (name, symbol, genre, min_players, max_players,
-                          difficulty, avg_play_time, description)
+                          complexity_rating, avg_duration, description)
         values (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (name, symbol, genre, min_players, max_players, difficulty, avg_play_time, description),
+        (name, symbol, genre, min_players, max_players, complexity_rating, avg_duration, description),
     )
     db.commit()
     return db.execute("select id from Game where name = ?", (name,)).fetchone()["id"]
@@ -81,8 +81,8 @@ class TestGetGamesFilteredSearch:
                 genre="Euro",
                 min_players=3,
                 max_players=4,
-                difficulty=2,
-                avg_play_time=90,
+                complexity_rating=2.0,
+                avg_duration=90,
                 description="Settle and trade on an island",
             )
             chess_id = _insert_game(
@@ -92,8 +92,8 @@ class TestGetGamesFilteredSearch:
                 genre="Abstract",
                 min_players=2,
                 max_players=2,
-                difficulty=5,
-                avg_play_time=60,
+                complexity_rating=5.0,
+                avg_duration=60,
                 description="Battle of wits with pieces on a board",
             )
             _insert_game_copy(db, catan_id, store_id)
@@ -232,8 +232,8 @@ class TestGetAvailableGamesDuringColumns:
                 genre="Nature",
                 min_players=1,
                 max_players=5,
-                difficulty=2,
-                avg_play_time=70,
+                complexity_rating=2.0,
+                avg_duration=70,
                 description="Attract birds to your wildlife preserve",
             )
             _insert_game_copy(db, game_id, store_id)
@@ -246,11 +246,11 @@ class TestGetAvailableGamesDuringColumns:
         assert len(games) == 1
         assert games[0]["genre"] == "Nature"
 
-    def test_returns_difficulty_column(self, app):
+    def test_returns_complexity_rating_column(self, app):
         store_id, _ = self._setup(app)
         with app.app_context():
             games = get_available_games_during(store_id, "2099-01-01", 9, 20)
-        assert games[0]["difficulty"] == 2
+        assert games[0]["complexity_rating"] == pytest.approx(2.0)
 
     def test_returns_min_players_column(self, app):
         store_id, _ = self._setup(app)
@@ -264,11 +264,11 @@ class TestGetAvailableGamesDuringColumns:
             games = get_available_games_during(store_id, "2099-01-01", 9, 20)
         assert games[0]["max_players"] == 5
 
-    def test_returns_avg_play_time_column(self, app):
+    def test_returns_avg_duration_column(self, app):
         store_id, _ = self._setup(app)
         with app.app_context():
             games = get_available_games_during(store_id, "2099-01-01", 9, 20)
-        assert games[0]["avg_play_time"] == 70
+        assert games[0]["avg_duration"] == 70
 
 
 # ---------------------------------------------------------------------------
@@ -290,8 +290,8 @@ class TestGetUnavailableGamesDuringColumns:
                 genre="Farming",
                 min_players=1,
                 max_players=5,
-                difficulty=4,
-                avg_play_time=120,
+                complexity_rating=4.0,
+                avg_duration=120,
                 description="Farming strategy game",
             )
             _insert_game_copy(db, game_id, store_id, copy_num=1)
@@ -334,11 +334,11 @@ class TestGetUnavailableGamesDuringColumns:
         assert len(games) == 1
         assert games[0]["genre"] == "Farming"
 
-    def test_returns_difficulty_column(self, app):
+    def test_returns_complexity_rating_column(self, app):
         store_id, _ = self._setup(app)
         with app.app_context():
             games = get_unavailable_games_during(store_id, "2099-06-01", 9, 20)
-        assert games[0]["difficulty"] == 4
+        assert games[0]["complexity_rating"] == pytest.approx(4.0)
 
     def test_returns_min_players_column(self, app):
         store_id, _ = self._setup(app)
@@ -352,11 +352,11 @@ class TestGetUnavailableGamesDuringColumns:
             games = get_unavailable_games_during(store_id, "2099-06-01", 9, 20)
         assert games[0]["max_players"] == 5
 
-    def test_returns_avg_play_time_column(self, app):
+    def test_returns_avg_duration_column(self, app):
         store_id, _ = self._setup(app)
         with app.app_context():
             games = get_unavailable_games_during(store_id, "2099-06-01", 9, 20)
-        assert games[0]["avg_play_time"] == 120
+        assert games[0]["avg_duration"] == 120
 
 
 # ---------------------------------------------------------------------------
@@ -377,8 +377,8 @@ class TestSelectGamesRouteDetails:
                 genre="Economic",
                 min_players=2,
                 max_players=6,
-                difficulty=4,
-                avg_play_time=150,
+                complexity_rating=4.0,
+                avg_duration=150,
                 description="Build your power network",
             )
             _insert_game_copy(db, game_id, store_id)
@@ -412,13 +412,13 @@ class TestSelectGamesRouteDetails:
         )
         assert b"Economic" in response.data
 
-    def test_select_games_renders_difficulty(self, client, app):
+    def test_select_games_renders_complexity(self, client, app):
         store_id, _ = self._setup(app)
         self._login(client)
         response = client.get(
             f"/store/{store_id}/table/1/select-games?day=2099-01-01&start_time=9&end_time=20"
         )
-        assert b"Difficulty" in response.data
+        assert b"Complexity" in response.data
 
     def test_select_games_renders_player_count(self, client, app):
         store_id, _ = self._setup(app)
@@ -428,7 +428,7 @@ class TestSelectGamesRouteDetails:
         )
         assert b"players" in response.data
 
-    def test_select_games_renders_avg_play_time(self, client, app):
+    def test_select_games_renders_avg_duration(self, client, app):
         store_id, _ = self._setup(app)
         self._login(client)
         response = client.get(
