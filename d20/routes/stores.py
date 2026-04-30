@@ -3,6 +3,7 @@ from datetime import date
 
 from flask import (
     Blueprint,
+    abort,
     flash,
     g,
     redirect,
@@ -18,9 +19,14 @@ from d20.db.game import (
     delete_game_copy,
     get_available_games_during,
     get_available_games_with_counts,
-    get_game_copies,
+    get_game_copies_with_condition,
+    get_game_detail,
     get_games,
+    get_games_filtered,
+    get_store_genres,
     get_unavailable_games_during,
+    get_user_rating,
+    rate_game,
 )
 from d20.db.session import (
     MAX_RESERVATIONS,
@@ -75,8 +81,6 @@ def stores():
     stores = db.execute(
         "select * from Store where name like ?", (f"%{search}%",)
     ).fetchall()
-
-    # stores = db.execute("select * from Store").fetchall()
 
     return render_template("stores/stores.html", stores=stores, search=search)
 
@@ -219,18 +223,6 @@ def store(store_id):
     tables = get_tables(store_id)
     games = get_available_games_with_counts(store_id)
     return render_template("stores/store.html", store=store, tables=tables, games=games)
-    # else:
-    #     # A request is made for the available tables
-    #     tables = get_available_tables(store_id, start_time, end_time)
-    #     print(tables)
-    #     game_copies = get_game_copies(store_id)
-    #     return render_template(
-    #         "stores/store.html",
-    #         tables=tables,
-    #         game_copies=game_copies,
-    #         start_time=start_time,
-    #         end_time=end_time,
-    #     )
 
 
 @bp.route("/store/<int:store_id>/book")
@@ -344,3 +336,104 @@ def confirm_booking(store_id, table_num):
                 end_time=end_time,
             )
         )
+
+
+@bp.route("/store/<int:store_id>/games")
+def game_library(store_id):
+    genre = request.args.get("genre") or None
+    min_players = request.args.get("min_players", type=int)
+    max_players = request.args.get("max_players", type=int)
+    complexity_rating = request.args.get("complexity_rating", type=int)
+    strategy_rating = request.args.get("strategy_rating", type=int)
+    luck_rating = request.args.get("luck_rating", type=int)
+    interaction_rating = request.args.get("interaction_rating", type=int)
+    max_avg_duration = request.args.get("max_avg_duration", type=int)
+    available_only = request.args.get("available_only") == "1"
+    search = request.args.get("search") or None
+
+    errors = []
+    if min_players is not None and min_players < 1:
+        errors.append("Minimum players must be at least 1.")
+        min_players = None
+    if (
+        min_players is not None
+        and max_players is not None
+        and max_players < min_players
+    ):
+        errors.append("Maximum players must be >= minimum players.")
+        max_players = None
+
+    for err in errors:
+        flash(err)
+
+    games = get_games_filtered(
+        store_id,
+        genre=genre,
+        min_players=min_players,
+        max_players=max_players,
+        complexity_rating=complexity_rating,
+        strategy_rating=strategy_rating,
+        luck_rating=luck_rating,
+        interaction_rating=interaction_rating,
+        max_avg_duration=max_avg_duration,
+        available_only=available_only,
+        search=search,
+    )
+
+    store = get_store_by_id(store_id)
+    genres = get_store_genres(store_id)
+
+    return render_template(
+        "stores/game_library.html",
+        store=store,
+        games=games,
+        genres=genres,
+        selected_genre=genre,
+        min_players=min_players,
+        max_players=max_players,
+        complexity_rating=complexity_rating,
+        strategy_rating=strategy_rating,
+        luck_rating=luck_rating,
+        interaction_rating=interaction_rating,
+        max_avg_duration=max_avg_duration,
+        available_only=available_only,
+        search=search,
+    )
+
+
+@bp.route("/store/<int:store_id>/game/<int:game_id>")
+def game_detail(store_id, game_id):
+    store = get_store_by_id(store_id)
+    game = get_game_detail(game_id)
+    if game is None:
+        abort(404)
+    copies = get_game_copies_with_condition(game_id, store_id)
+    user_rating = None
+    if g.user:
+        user_rating = get_user_rating(g.user["id"], game_id)
+    return render_template(
+        "stores/game_detail.html",
+        store=store,
+        game=game,
+        copies=copies,
+        user_rating=user_rating,
+    )
+
+
+@bp.route("/store/<int:store_id>/game/<int:game_id>/rate", methods=("POST",))
+def rate_game_route(store_id, game_id):
+    if not g.user:
+        return redirect(url_for("auth.login"))
+
+    if get_game_detail(game_id) is None:
+        abort(404)
+    rating = request.form.get("rating", type=int)
+    if rating is None or not (1 <= rating <= 5):
+        flash("Rating must be between 1 and 5.")
+        return redirect(
+            url_for("stores.game_detail", store_id=store_id, game_id=game_id)
+        )
+
+    rate_game(g.user["id"], game_id, rating)
+    flash("Rating submitted successfully.")
+    return redirect(url_for("stores.game_detail", store_id=store_id, game_id=game_id))

@@ -3,6 +3,7 @@ drop table if exists Owner;
 drop table if exists Customer;
 drop table if exists Store;
 drop table if exists 'Table';
+drop table if exists GameRating;
 drop table if exists Game;
 drop table if exists GameCopy;
 drop table if exists Session;
@@ -58,7 +59,18 @@ create table 'Table' (
 create table Game (
     id integer primary key autoincrement,
     name text not null unique,
+    publisher text,
     symbol text not null unique,
+    genre text,
+    min_players integer,
+    max_players integer,
+    avg_duration integer,
+    complexity_rating integer,
+    strategy_rating integer,
+    luck_rating integer,
+    interaction_rating integer,
+    description text,
+    avg_rating real default 0,
     base_price decimal(10, 2) default 10.00
 );
 
@@ -66,9 +78,19 @@ create table GameCopy (
     game_id integer not null,
     store_id integer not null,
     copy_num integer not null,
+    condition text not null default 'good' check(condition in ('good', 'minor_wear', 'damaged', 'missing_pieces')),
     foreign key (game_id) references Game(id),
     foreign key (store_id) references Store(id),
     primary key (game_id, store_id, copy_num)
+);
+
+create table GameRating (
+    user_id integer not null,
+    game_id integer not null,
+    rating integer not null check(rating between 1 and 5),
+    primary key (user_id, game_id),
+    foreign key (user_id) references User(id),
+    foreign key (game_id) references Game(id)
 );
 
 create table Session (

@@ -38,11 +38,65 @@ def seed_stores():
 
 def seed_games():
     games = [
-        ("Freakopoly", "FRKPOL"),
-        ("Secret Freak", "SCRTFRK"),
-        ("Freaknames", "FRKNMS"),
+        {
+            "name": "Freakopoly",
+            "symbol": "FRKPOL",
+            "publisher": "Freak Games",
+            "genre": "Strategy",
+            "min_players": 2,
+            "max_players": 6,
+            "avg_duration": 120,
+            "complexity_rating": 3,
+            "strategy_rating": 4,
+            "luck_rating": 4,
+            "interaction_rating": 5,
+            "description": "A freaky twist on the classic property trading game.",
+        },
+        {
+            "name": "Secret Freak",
+            "symbol": "SCRTFRK",
+            "publisher": "Freak Games",
+            "genre": "Social Deduction",
+            "min_players": 4,
+            "max_players": 10,
+            "avg_duration": 45,
+            "complexity_rating": 2,
+            "strategy_rating": 3,
+            "luck_rating": 2,
+            "interaction_rating": 5,
+            "description": "Uncover the secret freak among your friends.",
+        },
+        {
+            "name": "Freaknames",
+            "symbol": "FRKNMS",
+            "publisher": "Freak Games",
+            "genre": "Party",
+            "min_players": 2,
+            "max_players": 8,
+            "avg_duration": 30,
+            "complexity_rating": 1,
+            "strategy_rating": 2,
+            "luck_rating": 1,
+            "interaction_rating": 4,
+            "description": "A hilarious party word game for all ages.",
+        },
     ]
-    return [create_game(name, symbol) for name, symbol in games]
+    return [
+        create_game(
+            g["name"], g["symbol"],
+            publisher=g["publisher"],
+            genre=g["genre"],
+            min_players=g["min_players"],
+            max_players=g["max_players"],
+            avg_duration=g["avg_duration"],
+            complexity_rating=g["complexity_rating"],
+            strategy_rating=g["strategy_rating"],
+            luck_rating=g["luck_rating"],
+            interaction_rating=g["interaction_rating"],
+            description=g["description"],
+        )
+        for g in games
+    ]
 
 
 def seed_game_copies(store_ids, game_ids):
