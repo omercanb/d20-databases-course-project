@@ -119,11 +119,8 @@ def delete_session(session_id):
     db.commit()
 
 
-def get_available_tables(store_id, day, start_time, end_time):
-    return (
-        get_db()
-        .execute(
-            """
+def get_available_tables(store_id, day, start_time, end_time, min_capacity=None):
+    query = """
         select * from "Table"
         where store_id = ?
         and (store_id, table_num) not in (
@@ -133,18 +130,16 @@ def get_available_tables(store_id, day, start_time, end_time):
             and start_time < ?
             and end_time > ?
         )
-        """,
-            (store_id, store_id, day, end_time, start_time),
-        )
-        .fetchall()
-    )
+        """
+    params = (store_id, store_id, day, end_time, start_time)
+    if min_capacity is not None:
+        query += " and (capacity is null or capacity >= ?)"
+        params += (min_capacity,)
+    return get_db().execute(query, params).fetchall()
 
 
-def get_unavailable_tables(store_id, day, start_time, end_time):
-    return (
-        get_db()
-        .execute(
-            """
+def get_unavailable_tables(store_id, day, start_time, end_time, min_capacity=None):
+    query = """
         select * from "Table"
         where store_id = ?
         and (store_id, table_num) in (
@@ -154,8 +149,9 @@ def get_unavailable_tables(store_id, day, start_time, end_time):
             and start_time < ?
             and end_time > ?
         )
-        """,
-            (store_id, store_id, day, end_time, start_time),
-        )
-        .fetchall()
-    )
+        """
+    params = (store_id, store_id, day, end_time, start_time)
+    if min_capacity is not None:
+        query += " and (capacity is null or capacity >= ?)"
+        params += (min_capacity,)
+    return get_db().execute(query, params).fetchall()

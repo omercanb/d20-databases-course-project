@@ -236,12 +236,15 @@ def book_session(store_id):
     start_time = request.args.get("start_time")
     end_time = request.args.get("end_time")
     day = request.args.get("day")
+    min_capacity = request.args.get("min_capacity", type=int)
+    if min_capacity is not None and min_capacity < 1:
+        min_capacity = None
     if not start_time:
         start_time = 9
         end_time = 20
         day = str(date.today())
-    tables = get_available_tables(store_id, day, start_time, end_time)
-    unvailable_tables = get_unavailable_tables(store_id, day, start_time, end_time)
+    tables = get_available_tables(store_id, day, start_time, end_time, min_capacity=min_capacity)
+    unvailable_tables = get_unavailable_tables(store_id, day, start_time, end_time, min_capacity=min_capacity)
     store = get_store_by_id(store_id)
     return render_template(
         "stores/book_session.html",
@@ -252,6 +255,7 @@ def book_session(store_id):
         today=str(date.today()),
         start_time=start_time,
         end_time=end_time,
+        min_capacity=min_capacity,
     )
 
 

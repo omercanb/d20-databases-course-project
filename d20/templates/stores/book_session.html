@@ -20,9 +20,15 @@
                            class="form-control mb-4"
                            min="{{ today }}"
                            value="{{ day }}" />
-                    <input type="hidden" name="day" id="day" />
                     <input type="hidden" name="start_time" id="start_time" />
                     <input type="hidden" name="end_time" id="end_time" />
+                    <input type="number"
+                           id="min_capacity"
+                           name="min_capacity"
+                           class="form-control mb-4"
+                           min="1"
+                           placeholder="Min. seats (optional)"
+                           value="{{ min_capacity or '' }}" />
                     <div id="time-slider"></div>
                     <p class="mt-2">
                         Selected: <span id="slider-label"></span>
