@@ -29,9 +29,11 @@ from d20.db.game import (
     rate_game,
 )
 from d20.db.session import (
+    MAX_RESERVATIONS,
     create_session,
     delete_session,
     get_available_tables,
+    get_reservation_count,
     get_session,
     get_session_games,
     get_unavailable_tables,
@@ -289,6 +291,19 @@ def confirm_booking(store_id, table_num):
 
     if not selected_games:
         flash("Please select at least one game.")
+        return redirect(
+            url_for(
+                "stores.select_games",
+                store_id=store_id,
+                table_num=table_num,
+                day=day,
+                start_time=start_time,
+                end_time=end_time,
+            )
+        )
+
+    if get_reservation_count(g.user["id"]) >= MAX_RESERVATIONS:
+        flash("You have reached the maximum number of active reservations.")
         return redirect(
             url_for(
                 "stores.select_games",
