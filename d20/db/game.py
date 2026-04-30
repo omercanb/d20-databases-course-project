@@ -247,8 +247,9 @@ def delete_damage_report(session_id, game_id, store_id, copy_num):
 # Game Library / Browse Functions
 
 def get_games_filtered(store_id, genre=None, min_players=None, max_players=None,
-                       complexity_rating=None, max_avg_duration=None, available_only=False,
-                       search=None):
+                       complexity_rating=None, strategy_rating=None, luck_rating=None,
+                       interaction_rating=None, max_avg_duration=None,
+                       available_only=False, search=None):
     """Get games at a store with optional filters."""
     query = """
         select distinct Game.*
@@ -270,6 +271,15 @@ def get_games_filtered(store_id, genre=None, min_players=None, max_players=None,
     if complexity_rating is not None:
         query += " and Game.complexity_rating = ?"
         params.append(complexity_rating)
+    if strategy_rating is not None:
+        query += " and Game.strategy_rating = ?"
+        params.append(strategy_rating)
+    if luck_rating is not None:
+        query += " and Game.luck_rating = ?"
+        params.append(luck_rating)
+    if interaction_rating is not None:
+        query += " and Game.interaction_rating = ?"
+        params.append(interaction_rating)
     if max_avg_duration is not None:
         query += " and Game.avg_duration <= ?"
         params.append(max_avg_duration)

@@ -33,7 +33,7 @@
                                                     {{ game['available_copies'] }} of {{ game['total_copies'] }} available
                                                 </p>
                                                 {% if game['genre'] %}<small class="text-muted d-block">{{ game['genre'] }}</small>{% endif %}
-                                                {% if game['complexity_rating'] %}<small class="text-muted d-block">Complexity: {{ "%.1f"|format(game['complexity_rating']) }}/5</small>{% endif %}
+                                                {% if game['complexity_rating'] %}<small class="text-muted d-block">Complexity: {{ game['complexity_rating'] }}/5</small>{% endif %}
                                                 {% if game['min_players'] and game['max_players'] %}<small class="text-muted d-block">{{ game['min_players'] }}–{{ game['max_players'] }} players</small>{% endif %}
                                                 {% if game['avg_duration'] %}<small class="text-muted d-block">~{{ game['avg_duration'] }} min</small>{% endif %}
                                                 {% if game['avg_rating'] %}<small class="text-muted d-block">★ {{ "%.1f"|format(game['avg_rating']) }}/5</small>{% endif %}
@@ -55,7 +55,7 @@
                                         <h5 class="card-title text-muted">{{ game['name'] }}</h5>
                                         <p class="card-text text-muted">All {{ game['total_copies'] }} copies booked</p>
                                         {% if game['genre'] %}<small class="text-muted d-block">{{ game['genre'] }}</small>{% endif %}
-                                        {% if game['complexity_rating'] %}<small class="text-muted d-block">Complexity: {{ "%.1f"|format(game['complexity_rating']) }}/5</small>{% endif %}
+                                        {% if game['complexity_rating'] %}<small class="text-muted d-block">Complexity: {{ game['complexity_rating'] }}/5</small>{% endif %}
                                         {% if game['min_players'] and game['max_players'] %}<small class="text-muted d-block">{{ game['min_players'] }}–{{ game['max_players'] }} players</small>{% endif %}
                                         {% if game['avg_duration'] %}<small class="text-muted d-block">~{{ game['avg_duration'] }} min</small>{% endif %}
                                         {% if game['avg_rating'] %}<small class="text-muted d-block">★ {{ "%.1f"|format(game['avg_rating']) }}/5</small>{% endif %}

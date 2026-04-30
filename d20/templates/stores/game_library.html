@@ -37,8 +37,26 @@
             <div class="col-md-2">
                 <label for="complexity_rating" class="form-label">Complexity</label>
                 <input type="number" name="complexity_rating" id="complexity_rating" class="form-control"
-                       min="0" max="5" step="0.1"
+                       min="0" max="5" step="1"
                        value="{{ complexity_rating if complexity_rating is not none else '' }}">
+            </div>
+            <div class="col-md-2">
+                <label for="strategy_rating" class="form-label">Strategy</label>
+                <input type="number" name="strategy_rating" id="strategy_rating" class="form-control"
+                       min="0" max="5" step="1"
+                       value="{{ strategy_rating if strategy_rating is not none else '' }}">
+            </div>
+            <div class="col-md-2">
+                <label for="luck_rating" class="form-label">Luck</label>
+                <input type="number" name="luck_rating" id="luck_rating" class="form-control"
+                       min="0" max="5" step="1"
+                       value="{{ luck_rating if luck_rating is not none else '' }}">
+            </div>
+            <div class="col-md-2">
+                <label for="interaction_rating" class="form-label">Interaction</label>
+                <input type="number" name="interaction_rating" id="interaction_rating" class="form-control"
+                       min="0" max="5" step="1"
+                       value="{{ interaction_rating if interaction_rating is not none else '' }}">
             </div>
             <div class="col-md-2">
                 <label for="max_avg_duration" class="form-label">Max Duration (min)</label>
@@ -73,7 +91,7 @@
                             <div class="card-text">
                                 {% if game['complexity_rating'] %}
                                     <p class="mb-1">
-                                        <small class="text-muted">Complexity: {{ "%.1f"|format(game['complexity_rating']) }}/5</small>
+                                        <small class="text-muted">Complexity: {{ game['complexity_rating'] }}/5</small>
                                     </p>
                                 {% endif %}
                                 {% if game['avg_rating'] %}
@@ -93,17 +111,17 @@
                                 {% endif %}
                                 {% if game['strategy_rating'] %}
                                     <p class="mb-1">
-                                        <small class="text-muted">Strategy: {{ "%.1f"|format(game['strategy_rating']) }}/5</small>
+                                        <small class="text-muted">Strategy: {{ game['strategy_rating'] }}/5</small>
                                     </p>
                                 {% endif %}
                                 {% if game['luck_rating'] %}
                                     <p class="mb-1">
-                                        <small class="text-muted">Luck: {{ "%.1f"|format(game['luck_rating']) }}/5</small>
+                                        <small class="text-muted">Luck: {{ game['luck_rating'] }}/5</small>
                                     </p>
                                 {% endif %}
                                 {% if game['interaction_rating'] %}
                                     <p class="mb-1">
-                                        <small class="text-muted">Interaction: {{ "%.1f"|format(game['interaction_rating']) }}/5</small>
+                                        <small class="text-muted">Interaction: {{ game['interaction_rating'] }}/5</small>
                                     </p>
                                 {% endif %}
                             </div>

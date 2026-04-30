@@ -328,7 +328,10 @@ def game_library(store_id):
     genre = request.args.get("genre") or None
     min_players = request.args.get("min_players", type=int)
     max_players = request.args.get("max_players", type=int)
-    complexity_rating = request.args.get("complexity_rating", type=float)
+    complexity_rating = request.args.get("complexity_rating", type=int)
+    strategy_rating = request.args.get("strategy_rating", type=int)
+    luck_rating = request.args.get("luck_rating", type=int)
+    interaction_rating = request.args.get("interaction_rating", type=int)
     max_avg_duration = request.args.get("max_avg_duration", type=int)
     available_only = request.args.get("available_only") == "1"
     search = request.args.get("search") or None
@@ -354,6 +357,9 @@ def game_library(store_id):
         min_players=min_players,
         max_players=max_players,
         complexity_rating=complexity_rating,
+        strategy_rating=strategy_rating,
+        luck_rating=luck_rating,
+        interaction_rating=interaction_rating,
         max_avg_duration=max_avg_duration,
         available_only=available_only,
         search=search,
@@ -371,6 +377,9 @@ def game_library(store_id):
         min_players=min_players,
         max_players=max_players,
         complexity_rating=complexity_rating,
+        strategy_rating=strategy_rating,
+        luck_rating=luck_rating,
+        interaction_rating=interaction_rating,
         max_avg_duration=max_avg_duration,
         available_only=available_only,
         search=search,

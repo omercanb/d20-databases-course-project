@@ -28,16 +28,16 @@
                                 <li><strong>Avg Duration:</strong> {{ game['avg_duration'] }} minutes</li>
                             {% endif %}
                             {% if game['complexity_rating'] %}
-                                <li><strong>Complexity:</strong> {{ "%.1f"|format(game['complexity_rating']) }} / 5</li>
+                                <li><strong>Complexity:</strong> {{ game['complexity_rating'] }} / 5</li>
                             {% endif %}
                             {% if game['strategy_rating'] %}
-                                <li><strong>Strategy:</strong> {{ "%.1f"|format(game['strategy_rating']) }} / 5</li>
+                                <li><strong>Strategy:</strong> {{ game['strategy_rating'] }} / 5</li>
                             {% endif %}
                             {% if game['luck_rating'] %}
-                                <li><strong>Luck:</strong> {{ "%.1f"|format(game['luck_rating']) }} / 5</li>
+                                <li><strong>Luck:</strong> {{ game['luck_rating'] }} / 5</li>
                             {% endif %}
                             {% if game['interaction_rating'] %}
-                                <li><strong>Interaction:</strong> {{ "%.1f"|format(game['interaction_rating']) }} / 5</li>
+                                <li><strong>Interaction:</strong> {{ game['interaction_rating'] }} / 5</li>
                             {% endif %}
                             {% if game['avg_rating'] %}
                                 <li><strong>Avg Rating:</strong> {{ "%.1f"|format(game['avg_rating']) }} / 5</li>

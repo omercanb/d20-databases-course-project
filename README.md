@@ -27,7 +27,7 @@ flask --app d20 init-db
 flask --app d20 seed
 ```
 
-`init-db` komutu `schema.sql`ı çalıştırıyor `seed` de örnek veri ekliyor, her yeni feature içın `seed` fonksiyonuyla bir örenk veri eklemek lazım. Örnek oyun isimleri de burda yaratılıyor.
+`init-db` komutu `schema.sql`ı çalıştırıyor `seed` de örnek veri ekliyor, her yeni feature içın `seed` fonksiyonuyla bir örnek veri eklemek lazım. Örnek oyun isimleri de burda yaratılıyor.
 
 ## Run
 
