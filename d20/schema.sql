@@ -67,7 +67,8 @@ create table Game (
     luck_rating real,
     interaction_rating real,
     description text,
-    avg_rating real default 0
+    avg_rating real default 0,
+    base_price decimal(10, 2) default 10.00
 );
 
 create table GameCopy (
