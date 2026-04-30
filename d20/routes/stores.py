@@ -428,12 +428,13 @@ def rate_game_route(store_id, game_id):
     if get_game_detail(game_id) is None:
         abort(404)
     rating = request.form.get("rating", type=int)
+    comment = request.form.get("comment") or None
     if rating is None or not (1 <= rating <= 5):
         flash("Rating must be between 1 and 5.")
         return redirect(
             url_for("stores.game_detail", store_id=store_id, game_id=game_id)
         )
 
-    rate_game(g.user["id"], game_id, rating)
+    rate_game(g.user["id"], game_id, rating, comment)
     flash("Rating submitted successfully.")
     return redirect(url_for("stores.game_detail", store_id=store_id, game_id=game_id))

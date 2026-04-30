@@ -15,7 +15,6 @@ drop table if exists Orders;
 drop table if exists MarketHistory;
 drop table if exists TradingScript;
 drop table if exists DynamicGamePrice;
-drop table if exists GameRating;
 drop trigger if exists update_dynamic_price_after_session;
 
 -- CREATE TABLE post (
@@ -88,6 +87,7 @@ create table GameRating (
     user_id integer not null,
     game_id integer not null,
     rating integer not null check(rating between 1 and 5),
+    comment text,
     primary key (user_id, game_id),
     foreign key (user_id) references User(id),
     foreign key (game_id) references Game(id)
@@ -154,17 +154,6 @@ create table GameDamage (
     foreign key (game_id, store_id, copy_num) references GameCopy(game_id, store_id, copy_num),
     primary key (session_id, game_id, store_id, copy_num)
 );
-
-create table GameRating (
-    id integer primary key autoincrement,
-    user_id integer not null,
-    game_id integer not null,
-    rating integer check(rating >= 1 and rating <= 5) not null,
-    comment text,
-    foreign key (user_id) references User(id),
-    foreign key (game_id) references Game(id)
-);
-
 
 -- create table tier (
 --     tier_id   integer primary key autoincrement,

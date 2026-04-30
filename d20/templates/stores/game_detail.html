@@ -65,6 +65,10 @@
                                         {% endfor %}
                                     </select>
                                 </div>
+                                <div class="mb-3">
+                                    <label for="comment" class="form-label">Comment</label>
+                                    <textarea name="comment" id="comment" class="form-control" rows="3">{{ user_rating['comment'] if user_rating and user_rating['comment'] else '' }}</textarea>
+                                </div>
                                 <button type="submit" class="btn btn-primary">
                                     {% if user_rating %}Update Rating{% else %}Submit Rating{% endif %}
                                 </button>

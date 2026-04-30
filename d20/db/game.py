@@ -339,12 +339,12 @@ def get_game_copies_with_condition(game_id, store_id):
     )
 
 
-def rate_game(user_id, game_id, rating):
+def rate_game(user_id, game_id, rating, comment=None):
     """Insert or replace a rating, then recompute avg_rating on the Game row."""
     db = get_db()
     db.execute(
-        "insert or replace into GameRating (user_id, game_id, rating) values (?, ?, ?)",
-        (user_id, game_id, rating),
+        "insert or replace into GameRating (user_id, game_id, rating, comment) values (?, ?, ?, ?)",
+        (user_id, game_id, rating, comment),
     )
     db.execute(
         "update Game set avg_rating = (select avg(rating) from GameRating where game_id = ?) where id = ?",
