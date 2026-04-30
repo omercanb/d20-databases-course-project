@@ -9,6 +9,8 @@
         <div class="mb-4">
             <a href="{{ url_for("stores.book_session", store_id=store['id']) }}"
                class="btn btn-primary btn-lg">Book Session</a>
+            <a href="{{ url_for("stores.game_library", store_id=store['id']) }}"
+               class="btn btn-outline-primary btn-lg ms-2">Game Library</a>
         </div>
         <section class="card-section">
             <h2 class="card-section-title">Tables</h2>

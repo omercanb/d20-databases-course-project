@@ -2,11 +2,13 @@ from d20.db import get_db
 
 
 # Game Functions
-def create_game(name, symbol):
+def create_game(name, symbol, genre=None, min_players=None, max_players=None,
+                difficulty=None, avg_play_time=None, description=None):
     db = get_db()
     cursor = db.execute(
-        f"insert into Game (name, symbol) values (?, ?)",
-        (name, symbol),
+        "insert into Game (name, symbol, genre, min_players, max_players, difficulty, avg_play_time, description)"
+        " values (?, ?, ?, ?, ?, ?, ?, ?)",
+        (name, symbol, genre, min_players, max_players, difficulty, avg_play_time, description),
     )
     db.commit()
     return cursor.lastrowid
@@ -107,7 +109,7 @@ def get_available_games_during(store_id, day, start_time, end_time):
         get_db()
         .execute(
             """
-            select Game.id, Game.name,
+            select Game.*,
                    count(GameCopy.copy_num) as total_copies,
                    (count(GameCopy.copy_num) - coalesce(sum(
                        case when SessionGameCopy.session_id is not null
@@ -122,7 +124,7 @@ def get_available_games_during(store_id, day, start_time, end_time):
                                          and GameCopy.store_id = SessionGameCopy.store_id
                                          and GameCopy.copy_num = SessionGameCopy.copy_num)
             left join Session on (SessionGameCopy.session_id = Session.id)
-            group by Game.id, Game.name
+            group by Game.id
             having available_copies > 0
             order by Game.name
             """,
@@ -138,7 +140,7 @@ def get_unavailable_games_during(store_id, day, start_time, end_time):
         get_db()
         .execute(
             """
-            select Game.id, Game.name,
+            select Game.*,
                    count(GameCopy.copy_num) as total_copies,
                    (count(GameCopy.copy_num) - coalesce(sum(
                        case when SessionGameCopy.session_id is not null
@@ -153,7 +155,7 @@ def get_unavailable_games_during(store_id, day, start_time, end_time):
                                          and GameCopy.store_id = SessionGameCopy.store_id
                                          and GameCopy.copy_num = SessionGameCopy.copy_num)
             left join Session on (SessionGameCopy.session_id = Session.id)
-            group by Game.id, Game.name
+            group by Game.id
             having available_copies = 0
             order by Game.name
             """,
@@ -236,3 +238,114 @@ def delete_damage_report(session_id, game_id, store_id, copy_num):
         (session_id, game_id, store_id, copy_num),
     )
     db.commit()
+
+
+# Game Library / Browse Functions
+
+def get_games_filtered(store_id, genre=None, min_players=None, max_players=None,
+                       difficulty=None, max_avg_play_time=None, available_only=False,
+                       search=None):
+    """Get games at a store with optional filters."""
+    query = """
+        select distinct Game.*
+        from Game
+        join GameCopy on (Game.id = GameCopy.game_id and GameCopy.store_id = ?)
+        where 1=1
+    """
+    params = [store_id]
+
+    if genre is not None:
+        query += " and Game.genre = ?"
+        params.append(genre)
+    if min_players is not None:
+        query += " and Game.min_players >= ?"
+        params.append(min_players)
+    if max_players is not None:
+        query += " and Game.max_players <= ?"
+        params.append(max_players)
+    if difficulty is not None:
+        query += " and Game.difficulty = ?"
+        params.append(difficulty)
+    if max_avg_play_time is not None:
+        query += " and Game.avg_play_time <= ?"
+        params.append(max_avg_play_time)
+    if available_only:
+        query += """
+            and Game.id in (
+                select GameCopy.game_id
+                from GameCopy
+                left join SessionGameCopy on (
+                    GameCopy.game_id = SessionGameCopy.game_id
+                    and GameCopy.store_id = SessionGameCopy.store_id
+                    and GameCopy.copy_num = SessionGameCopy.copy_num
+                )
+                left join Session on (SessionGameCopy.session_id = Session.id)
+                where GameCopy.store_id = ?
+                group by GameCopy.game_id
+                having count(GameCopy.copy_num) - coalesce(sum(
+                    case when SessionGameCopy.session_id is not null then 1 else 0 end
+                ), 0) > 0
+            )
+        """
+        params.append(store_id)
+    if search is not None:
+        query += " and (Game.name like ? or Game.description like ?)"
+        params.extend([f"%{search}%", f"%{search}%"])
+
+    query += " order by Game.name"
+    return get_db().execute(query, params).fetchall()
+
+
+def get_game_detail(game_id):
+    return get_db().execute("select * from Game where id = ?", (game_id,)).fetchone()
+
+
+def get_store_genres(store_id):
+    return get_db().execute(
+        """
+        select distinct Game.genre
+        from Game
+        join GameCopy on (Game.id = GameCopy.game_id and GameCopy.store_id = ?)
+        where Game.genre is not null
+        order by Game.genre
+        """,
+        (store_id,),
+    ).fetchall()
+
+
+def get_game_copies_with_condition(game_id, store_id):
+    """Return all GameCopy rows for a game at a store (includes condition column)."""
+    return (
+        get_db()
+        .execute(
+            "select * from GameCopy where game_id = ? and store_id = ?",
+            (game_id, store_id),
+        )
+        .fetchall()
+    )
+
+
+def rate_game(user_id, game_id, rating):
+    """Insert or replace a rating, then recompute avg_rating on the Game row."""
+    db = get_db()
+    db.execute(
+        "insert or replace into GameRating (user_id, game_id, rating) values (?, ?, ?)",
+        (user_id, game_id, rating),
+    )
+    db.execute(
+        "update Game set avg_rating = (select avg(rating) from GameRating where game_id = ?) where id = ?",
+        (game_id, game_id),
+    )
+    db.commit()
+
+
+def get_user_rating(user_id, game_id):
+    """Return the GameRating row for this user/game pair, or None."""
+    return (
+        get_db()
+        .execute(
+            "select * from GameRating where user_id = ? and game_id = ?",
+            (user_id, game_id),
+        )
+        .fetchone()
+    )

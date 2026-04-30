@@ -1,5 +1,16 @@
 from d20.db import get_db
 
+MAX_RESERVATIONS = 2
+
+
+def get_reservation_count(user_id):
+    row = get_db().execute(
+        "select count(*) as cnt from Session where user_id = ?"
+        " and (day > date('now') or (day = date('now') and end_time > strftime('%H', 'now', 'localtime')))",
+        (user_id,),
+    ).fetchone()
+    return row["cnt"]
+
 
 def create_session(
     user_id, store_id, table_num, day, start_time, end_time, game_ids=None

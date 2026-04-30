@@ -38,11 +38,49 @@ def seed_stores():
 
 def seed_games():
     games = [
-        ("Freakopoly", "FRKPOL"),
-        ("Secret Freak", "SCRTFRK"),
-        ("Freaknames", "FRKNMS"),
+        {
+            "name": "Freakopoly",
+            "symbol": "FRKPOL",
+            "genre": "Strategy",
+            "min_players": 2,
+            "max_players": 6,
+            "difficulty": 3,
+            "avg_play_time": 120,
+            "description": "A freaky twist on the classic property trading game.",
+        },
+        {
+            "name": "Secret Freak",
+            "symbol": "SCRTFRK",
+            "genre": "Social Deduction",
+            "min_players": 4,
+            "max_players": 10,
+            "difficulty": 2,
+            "avg_play_time": 45,
+            "description": "Uncover the secret freak among your friends.",
+        },
+        {
+            "name": "Freaknames",
+            "symbol": "FRKNMS",
+            "genre": "Party",
+            "min_players": 2,
+            "max_players": 8,
+            "difficulty": 1,
+            "avg_play_time": 30,
+            "description": "A hilarious party word game for all ages.",
+        },
     ]
-    return [create_game(name, symbol) for name, symbol in games]
+    return [
+        create_game(
+            g["name"], g["symbol"],
+            genre=g["genre"],
+            min_players=g["min_players"],
+            max_players=g["max_players"],
+            difficulty=g["difficulty"],
+            avg_play_time=g["avg_play_time"],
+            description=g["description"],
+        )
+        for g in games
+    ]
 
 
 def seed_game_copies(store_ids, game_ids):
