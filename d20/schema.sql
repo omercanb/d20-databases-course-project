@@ -13,6 +13,9 @@ drop table if exists MarketParticipantInventory;
 drop table if exists Orders;
 drop table if exists MarketHistory;
 drop table if exists TradingScript;
+drop table if exists DynamicGamePrice;
+drop table if exists GameRating;
+drop trigger if exists update_dynamic_price_after_session;
 
 -- CREATE TABLE post (
 --   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,7 +58,8 @@ create table 'Table' (
 create table Game (
     id integer primary key autoincrement,
     name text not null unique,
-    symbol text not null unique
+    symbol text not null unique,
+    base_price decimal(10, 2) default 10.00
 );
 
 create table GameCopy (
@@ -89,6 +93,35 @@ create table SessionGameCopy (
     primary key (session_id, game_id, store_id, copy_num)
 );
 
+create table DynamicGamePrice (
+    game_id integer not null,
+    time timestamp default current_timestamp,
+    price decimal(10, 2) not null,
+    foreign key (game_id) references Game(id)
+);
+
+create trigger update_dynamic_price_after_session
+after insert on SessionGameCopy
+begin
+    insert into DynamicGamePrice (game_id, price)
+    select 
+        NEW.game_id,
+        (select base_price from Game where id = NEW.game_id) * 
+        -- Popularity - 5% price increase per total plays
+        (1.0 + (
+            select count(*) from SessionGameCopy 
+            where game_id = NEW.game_id
+        ) * 0.05) *
+        -- Scarcity - less copies = higher price
+        (1.0 + (
+            1.0 / MAX(1, (select count(*) from GameCopy where game_id = NEW.game_id))
+        ) * 0.5) *
+        -- Quality - average rating above 3 higher price and below 3 lower price
+        (1.0 + (
+            COALESCE((select avg(rating) from GameRating where game_id = NEW.game_id), 3.0) - 3.0
+        ) * 0.1);
+end;
+
 create table GameDamage (
     session_id integer not null,
     game_id integer not null,
@@ -98,6 +131,16 @@ create table GameDamage (
     foreign key (session_id) references Session(id),
     foreign key (game_id, store_id, copy_num) references GameCopy(game_id, store_id, copy_num),
     primary key (session_id, game_id, store_id, copy_num)
+);
+
+create table GameRating (
+    id integer primary key autoincrement,
+    user_id integer not null,
+    game_id integer not null,
+    rating integer check(rating >= 1 and rating <= 5) not null,
+    comment text,
+    foreign key (user_id) references User(id),
+    foreign key (game_id) references Game(id)
 );
 
 
