@@ -24,6 +24,7 @@ from d20.db.game import (
     get_game_ratings,
     get_games,
     get_games_filtered,
+    get_latest_game_copy,
     get_similar_games,
     get_store_genres,
     get_unavailable_games_during,
@@ -180,15 +181,7 @@ def add_game_copy():
 @store_login_required
 def remove_game_copy(game_id):
     try:
-        # Get the latest copy
-        copy = (
-            get_db()
-            .execute(
-                "select copy_num from GameCopy where game_id = ? and store_id = ? order by copy_num desc limit 1",
-                (game_id, g.store["id"]),
-            )
-            .fetchone()
-        )
+        copy = get_latest_game_copy(game_id, g.store["id"])
 
         if not copy:
             flash("No copies of this game found.")
@@ -249,6 +242,8 @@ def store(store_id):
         flash(err)
 
     store = get_store_by_id(store_id)
+    if store is None:
+        abort(404)
     tables = get_tables(store_id)
     games = get_games_filtered(
         store_id,
@@ -297,6 +292,8 @@ def book_session(store_id):
     tables = get_available_tables(store_id, day, start_time, end_time)
     unvailable_tables = get_unavailable_tables(store_id, day, start_time, end_time)
     store = get_store_by_id(store_id)
+    if store is None:
+        abort(404)
     return render_template(
         "stores/book_session.html",
         store=store,
@@ -329,6 +326,8 @@ def select_games(store_id, table_num):
     interaction_rating = request.args.get("interaction_rating", type=int)
 
     store = get_store_by_id(store_id)
+    if store is None:
+        abort(404)
     table = get_table(store_id, table_num)
     available_games = get_available_games_during(store_id, day, start_time, end_time)
     unavailable_games = get_unavailable_games_during(
@@ -355,7 +354,7 @@ def select_games(store_id, table_num):
             game["avg_duration"] is None or game["avg_duration"] > max_avg_duration
         ):
             return False
-        if user_rating is not None and game["avg_rating"] < user_rating:
+        if user_rating is not None and (not game["avg_rating"] or game["avg_rating"] < user_rating):
             return False
         if complexity_rating is not None and game["complexity_rating"] != complexity_rating:
             return False
@@ -469,6 +468,8 @@ def confirm_booking(store_id, table_num):
 @bp.route("/store/<int:store_id>/game/<int:game_id>")
 def game_detail(store_id, game_id):
     store = get_store_by_id(store_id)
+    if store is None:
+        abort(404)
     game = get_game_detail(game_id)
     if game is None:
         abort(404)

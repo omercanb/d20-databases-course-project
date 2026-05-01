@@ -53,9 +53,9 @@ def test_get_reservation_count_increments(app):
             "id"
         ]
         store_id, table_num = _insert_store_and_table(db)
-        _insert_session(db, user_id, store_id, table_num, "2026-05-01", 9, 11)
+        _insert_session(db, user_id, store_id, table_num, "2099-01-01", 9, 11)
         assert get_reservation_count(user_id) == 1
-        _insert_session(db, user_id, store_id, table_num, "2026-05-02", 9, 11)
+        _insert_session(db, user_id, store_id, table_num, "2099-01-02", 9, 11)
         assert get_reservation_count(user_id) == 2
 
 
@@ -127,7 +127,7 @@ def test_booking_blocked_at_limit(app, client):
                 user_id,
                 store_id,
                 table_num,
-                f"2026-0{i + 1}-01",
+                f"2099-0{i + 1}-01",
                 9,
                 11,
             )

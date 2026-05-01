@@ -435,3 +435,27 @@ class TestSelectGamesRouteDetails:
             f"/store/{store_id}/table/1/select-games?day=2099-01-01&start_time=9&end_time=20"
         )
         assert b"150 min" in response.data
+
+
+# ---------------------------------------------------------------------------
+# Issue 6 – Auth guard for confirm-booking
+# ---------------------------------------------------------------------------
+
+class TestConfirmBookingAuthGuard:
+    """Unauthenticated requests to confirm-booking must be redirected to login."""
+
+    def _setup(self, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name="CB Auth Store", username="cb_auth_store")
+            _insert_table(db, store_id, table_num=1)
+            return store_id
+
+    def test_unauthenticated_post_redirects_to_login(self, client, app):
+        store_id = self._setup(app)
+        response = client.post(
+            f"/store/{store_id}/table/1/confirm-booking",
+            data={"day": "2099-01-01", "start_time": "9", "end_time": "20"},
+        )
+        assert response.status_code == 302
+        assert "/auth/login" in response.headers["Location"]

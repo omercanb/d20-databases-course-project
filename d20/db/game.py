@@ -98,6 +98,18 @@ def get_game_copies_by_game(game_id, store_id):
     )
 
 
+def get_latest_game_copy(game_id, store_id):
+    """Return the GameCopy row with the highest copy_num for a game at a store, or None."""
+    return (
+        get_db()
+        .execute(
+            "select copy_num from GameCopy where game_id = ? and store_id = ? order by copy_num desc limit 1",
+            (game_id, store_id),
+        )
+        .fetchone()
+    )
+
+
 def delete_game_copy(game_id, store_id, copy_num):
     db = get_db()
     db.execute(

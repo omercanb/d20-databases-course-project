@@ -472,6 +472,15 @@ class TestRateGameRoute:
         assert response.status_code == 200
         assert b"Rating submitted" in response.data
 
+        # Verify the GameRating row was actually persisted with the correct value
+        with app.app_context():
+            row = get_db().execute(
+                "select rating from GameRating where user_id = 1 and game_id = ?",
+                (game_id,),
+            ).fetchone()
+        assert row is not None
+        assert row["rating"] == 4
+
     def test_rating_zero_flashes_error(self, client, auth, app):
         store_id, game_id = self._setup(app)
         auth.login()
@@ -837,3 +846,31 @@ class TestSelectGamesRoute:
         )
         assert response.status_code == 200
         assert b"120 min" in response.data
+
+    def test_user_rating_filter_excludes_unrated_game(self, client, app):
+        """Games with avg_rating=0 (schema default, no ratings) must not appear
+        when a user_rating filter is applied."""
+        store_id, _ = self._setup(app)
+        with app.app_context():
+            db = get_db()
+            # Insert an additional game that has never been rated (avg_rating defaults to 0)
+            unrated_id = _insert_game(
+                db,
+                name="Unrated Game",
+                symbol="UR",
+                genre="Party",
+                min_players=2,
+                max_players=6,
+                complexity_rating=1.0,
+                avg_duration=30,
+                description="A game nobody has rated yet",
+            )
+            _insert_game_copy(db, unrated_id, store_id, copy_num=2)
+
+        self._login(client)
+        response = client.get(
+            f"/store/{store_id}/table/1/select-games"
+            "?day=2099-01-01&start_time=9&end_time=20&user_rating=4"
+        )
+        assert response.status_code == 200
+        assert b"Unrated Game" not in response.data

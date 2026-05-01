@@ -5,7 +5,7 @@ MAX_RESERVATIONS = 2
 
 def get_reservation_count(user_id):
     row = get_db().execute(
-        "select count(*) as cnt from Session where user_id = ? and (day > date('now') or (day = date('now') and end_time > strftime('%H', 'now', 'localtime')))",
+        "select count(*) as cnt from Session where user_id = ? and (day > date('now') or (day = date('now') and end_time > cast(strftime('%H', 'now', 'localtime') as integer)))",
         (user_id,)
     ).fetchone()
     return row["cnt"]
