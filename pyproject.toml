@@ -7,6 +7,8 @@ dependencies = [
     "plox",
     "Bootstrap-Flask",
     "pytest",
+    "psycopg2-binary",
+    "python-dotenv",
 ]
 
 [build-system]
@@ -14,7 +16,7 @@ requires = ["flit_core<4"]
 build-backend = "flit_core.buildapi"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["test"]
 
 [tool.coverage.run]
 branch = true

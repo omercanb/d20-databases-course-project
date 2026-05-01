@@ -1,5 +1,8 @@
 import os
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import plox
 from flask import Flask, render_template
 from flask_bootstrap import Bootstrap5
@@ -13,7 +16,7 @@ def create_app(test_config=None):
     bootstrap = Bootstrap5(app)
     app.config.from_mapping(
         SECRET_KEY="dev",
-        DATABASE=os.path.join(app.instance_path, "d20.sqlite"),
+        DATABASE_URL=os.environ.get("DATABASE_URL", "postgresql://localhost/d20"),
     )
 
     if test_config is None:

@@ -80,7 +80,8 @@ def create_order(
     cursor = db.execute(
         """insert into Orders
            (participant_id, game_id, game_symbol, order_type, side, price, initial_quantity, filled_quantity, status, created_at, script_id)
-           values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+           RETURNING id""",
         (
             participant_id,
             game_id,
@@ -96,7 +97,7 @@ def create_order(
         ),
     )
     db.commit()
-    order_id = cursor.lastrowid
+    order_id = cursor.fetchone()["id"]
     num_fills, error = try_match_order(order_id)
     return order_id, num_fills, error
 
@@ -229,7 +230,7 @@ def try_match_order(order_id):
 
 def get_order(order_id):
     """Get an order by ID."""
-    return get_db().execute("select * from Orders where id = ?", (order_id,)).fetchone()
+    return get_db().execute("select * from Orders where id = %s", (order_id,)).fetchone()
 
 
 def get_orders_by_participant(participant_id):
@@ -237,7 +238,7 @@ def get_orders_by_participant(participant_id):
     return (
         get_db()
         .execute(
-            "select * from Orders where participant_id = ? order by created_at desc",
+            "select * from Orders where participant_id = %s order by created_at desc",
             (participant_id,),
         )
         .fetchall()
@@ -250,7 +251,7 @@ def get_orders_by_script(script_id):
     return (
         get_db()
         .execute(
-            "select * from Orders where script_id = ? order by created_at desc",
+            "select * from Orders where script_id = %s order by created_at desc",
             (script_id,),
         )
         .fetchall()
@@ -261,7 +262,7 @@ def get_active_orders_by_participant(participant_id):
     return (
         get_db()
         .execute(
-            "select * from Orders where participant_id = ? and status in ('OPEN', 'PARTIAL') order by created_at desc",
+            "select * from Orders where participant_id = %s and status in ('OPEN', 'PARTIAL') order by created_at desc",
             (participant_id,),
         )
         .fetchall()
@@ -272,7 +273,7 @@ def get_inactive_orders_by_participant(participant_id):
     return (
         get_db()
         .execute(
-            "select * from Orders where participant_id = ? and status not in ('OPEN', 'PARTIAL') order by created_at desc",
+            "select * from Orders where participant_id = %s and status not in ('OPEN', 'PARTIAL') order by created_at desc",
             (participant_id,),
         )
         .fetchall()
@@ -284,7 +285,7 @@ def get_orders_by_participant_and_game(participant_id, game_id):
     return (
         get_db()
         .execute(
-            "select * from Orders where participant_id = ? and game_id = ? order by created_at desc",
+            "select * from Orders where participant_id = %s and game_id = %s order by created_at desc",
             (participant_id, game_id),
         )
         .fetchall()
@@ -297,7 +298,7 @@ def get_active_orders(participant_id=None):
         return (
             get_db()
             .execute(
-                "select * from Orders where participant_id = ? and status in ('OPEN', 'PARTIAL') order by created_at asc",
+                "select * from Orders where participant_id = %s and status in ('OPEN', 'PARTIAL') order by created_at asc",
                 (participant_id,),
             )
             .fetchall()
@@ -318,7 +319,7 @@ def get_buy_orders(game_id, participant_id=None):
         return (
             get_db()
             .execute(
-                "select * from Orders where game_id = ? and side = 'BUY' and status in ('OPEN', 'PARTIAL') and participant_id = ? order by price desc, created_at asc",
+                "select * from Orders where game_id = %s and side = 'BUY' and status in ('OPEN', 'PARTIAL') and participant_id = %s order by price desc, created_at asc",
                 (game_id, participant_id),
             )
             .fetchall()
@@ -327,7 +328,7 @@ def get_buy_orders(game_id, participant_id=None):
         return (
             get_db()
             .execute(
-                "select * from Orders where game_id = ? and side = 'BUY' and status in ('OPEN', 'PARTIAL') order by price desc, created_at asc",
+                "select * from Orders where game_id = %s and side = 'BUY' and status in ('OPEN', 'PARTIAL') order by price desc, created_at asc",
                 (game_id,),
             )
             .fetchall()
@@ -340,7 +341,7 @@ def get_sell_orders(game_id, participant_id=None):
         return (
             get_db()
             .execute(
-                "select * from Orders where game_id = ? and side = 'SELL' and status in ('OPEN', 'PARTIAL') and participant_id = ? order by price asc, created_at asc",
+                "select * from Orders where game_id = %s and side = 'SELL' and status in ('OPEN', 'PARTIAL') and participant_id = %s order by price asc, created_at asc",
                 (game_id, participant_id),
             )
             .fetchall()
@@ -349,7 +350,7 @@ def get_sell_orders(game_id, participant_id=None):
         return (
             get_db()
             .execute(
-                "select * from Orders where game_id = ? and side = 'SELL' and status in ('OPEN', 'PARTIAL') order by price asc, created_at asc",
+                "select * from Orders where game_id = %s and side = 'SELL' and status in ('OPEN', 'PARTIAL') order by price asc, created_at asc",
                 (game_id,),
             )
             .fetchall()
@@ -361,7 +362,7 @@ def get_orders_by_status(status):
     return (
         get_db()
         .execute(
-            "select * from Orders where status = ? order by created_at desc", (status,)
+            "select * from Orders where status = %s order by created_at desc", (status,)
         )
         .fetchall()
     )
@@ -370,7 +371,7 @@ def get_orders_by_status(status):
 def update_order_status(order_id, status):
     """Update order status."""
     db = get_db()
-    db.execute("update Orders set status = ? where id = ?", (status, order_id))
+    db.execute("update Orders set status = %s where id = %s", (status, order_id))
     db.commit()
 
 
@@ -397,7 +398,7 @@ def add_fills(order_id, quantity_to_add):
 
     db = get_db()
     db.execute(
-        "update Orders set filled_quantity = ?, status = ? where id = ?",
+        "update Orders set filled_quantity = %s, status = %s where id = %s",
         (new_filled_quantity, new_status, order_id),
     )
     db.commit()
@@ -426,7 +427,7 @@ def cancel_order(order_id):
         decrement_reserved_quantity(participant_id, game_id, remaining_quantity)
         increment_available_quantity(participant_id, game_id, remaining_quantity)
 
-    db.execute("update Orders set status = 'CANCELLED' where id = ?", (order_id,))
+    db.execute("update Orders set status = 'CANCELLED' where id = %s", (order_id,))
     db.commit()
 
 
@@ -434,5 +435,5 @@ def cancel_order(order_id):
 #     assert false
 #     """Delete an order."""
 #     db = get_db()
-#     db.execute("delete from Orders where id = ?", (order_id,))
+#     db.execute("delete from Orders where id = %s", (order_id,))
 #     db.commit()

@@ -82,7 +82,7 @@ def stores():
     search = request.args.get("search", "")
 
     stores = db.execute(
-        "select * from Store where name like ?", (f"%{search}%",)
+        "select * from Store where name like %s", (f"%{search}%",)
     ).fetchall()
 
     return render_template("stores/stores.html", stores=stores, search=search)
@@ -282,13 +282,12 @@ def store(store_id):
 
 @bp.route("/store/<int:store_id>/book")
 def book_session(store_id):
-    start_time = request.args.get("start_time")
-    end_time = request.args.get("end_time")
-    day = request.args.get("day")
-    if not start_time:
-        start_time = 9
-        end_time = 20
-        day = str(date.today())
+    start_time = request.args.get("start_time", 9, type=int)
+    end_time = request.args.get("end_time", 20, type=int)
+    day = request.args.get("day") or str(date.today())
+    if start_time is None or end_time is None or end_time <= start_time:
+        flash("End time must be later than start time.")
+        start_time, end_time = 9, 20
     tables = get_available_tables(store_id, day, start_time, end_time)
     unvailable_tables = get_unavailable_tables(store_id, day, start_time, end_time)
     store = get_store_by_id(store_id)
@@ -314,6 +313,9 @@ def select_games(store_id, table_num):
     day = request.args.get("day", str(date.today()))
     start_time = request.args.get("start_time", 9, type=int)
     end_time = request.args.get("end_time", 20, type=int)
+    if start_time is None or end_time is None or end_time <= start_time:
+        flash("End time must be later than start time.")
+        return redirect(url_for("stores.book_session", store_id=store_id, day=day))
     search = request.args.get("search") or None
     genre = request.args.get("genre") or None
     min_players = request.args.get("min_players", type=int)
@@ -403,6 +405,19 @@ def confirm_booking(store_id, table_num):
     start_time = request.form.get("start_time", type=int)
     end_time = request.form.get("end_time", type=int)
     selected_games = request.form.getlist("selected_games")
+
+    if start_time is None or end_time is None or end_time <= start_time:
+        flash("End time must be later than start time.")
+        return redirect(
+            url_for(
+                "stores.select_games",
+                store_id=store_id,
+                table_num=table_num,
+                day=day,
+                start_time=9,
+                end_time=20,
+            )
+        )
 
     if not selected_games:
         flash("Please select at least one game.")
