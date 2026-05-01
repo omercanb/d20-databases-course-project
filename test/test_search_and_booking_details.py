@@ -151,11 +151,11 @@ class TestGetGamesFilteredSearch:
 
 
 # ---------------------------------------------------------------------------
-# Feature 1: Text search – game_library route (?search= query param)
+# Feature 1: Text search – store route (?search= query param)
 # ---------------------------------------------------------------------------
 
 class TestGameLibraryRouteSearch:
-    """Route-level tests for GET /store/<id>/games?search=..."""
+    """Route-level tests for GET /store/<id>?search=..."""
 
     def _setup(self, app):
         with app.app_context():
@@ -181,18 +181,18 @@ class TestGameLibraryRouteSearch:
 
     def test_search_param_returns_200(self, client, app):
         store_id, _, _ = self._setup(app)
-        response = client.get(f"/store/{store_id}/games?search=Pandemic")
+        response = client.get(f"/store/{store_id}?search=Pandemic")
         assert response.status_code == 200
 
     def test_search_param_filters_results_to_matching_game(self, client, app):
         store_id, _, _ = self._setup(app)
-        response = client.get(f"/store/{store_id}/games?search=Pandemic")
+        response = client.get(f"/store/{store_id}?search=Pandemic")
         assert b"Pandemic Legacy" in response.data
         assert b"Ticket to Ride" not in response.data
 
     def test_search_param_no_match_shows_neither_game(self, client, app):
         store_id, _, _ = self._setup(app)
-        response = client.get(f"/store/{store_id}/games?search=xyzzy_no_match")
+        response = client.get(f"/store/{store_id}?search=xyzzy_no_match")
         assert response.status_code == 200
         assert b"Pandemic Legacy" not in response.data
         assert b"Ticket to Ride" not in response.data
@@ -200,7 +200,7 @@ class TestGameLibraryRouteSearch:
     def test_empty_search_param_treated_as_no_filter(self, client, app):
         """Route converts empty string to None, so all games are returned."""
         store_id, _, _ = self._setup(app)
-        response = client.get(f"/store/{store_id}/games?search=")
+        response = client.get(f"/store/{store_id}?search=")
         assert response.status_code == 200
         assert b"Pandemic Legacy" in response.data
         assert b"Ticket to Ride" in response.data
@@ -208,7 +208,7 @@ class TestGameLibraryRouteSearch:
     def test_search_by_description_keyword_via_route(self, client, app):
         store_id, _, _ = self._setup(app)
         # 'continents' appears only in Ticket to Ride's description
-        response = client.get(f"/store/{store_id}/games?search=continents")
+        response = client.get(f"/store/{store_id}?search=continents")
         assert response.status_code == 200
         assert b"Ticket to Ride" in response.data
         assert b"Pandemic Legacy" not in response.data

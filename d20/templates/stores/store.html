@@ -9,38 +9,216 @@
         <div class="mb-4">
             <a href="{{ url_for("stores.book_session", store_id=store['id']) }}"
                class="btn btn-primary btn-lg">Book Session</a>
-            <a href="{{ url_for("stores.game_library", store_id=store['id']) }}"
-               class="btn btn-outline-primary btn-lg ms-2">Game Library</a>
         </div>
-        <section class="card-section">
-            <h2 class="card-section-title">Tables</h2>
-            <div class="card-grid card-grid-3col">
-                {% for table in tables %}
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h5 class="card-title">Table {{ table['table_num'] }}</h5>
-                            <p class="card-text text-muted">Capacity: {{ table['capacity'] }} seats</p>
-                        </div>
+
+        <ul class="nav nav-tabs mb-4" id="storeTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active"
+                        id="game-library-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#game-library"
+                        type="button"
+                        role="tab"
+                        aria-controls="game-library"
+                        aria-selected="true">
+                    Game Library
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link"
+                        id="tables-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#tables"
+                        type="button"
+                        role="tab"
+                        aria-controls="tables"
+                        aria-selected="false">
+                    Tables
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="storeTabsContent">
+            <div class="tab-pane fade show active"
+                 id="game-library"
+                 role="tabpanel"
+                 aria-labelledby="game-library-tab">
+                <form method="get" class="row g-3 mb-4 p-3 border rounded bg-light">
+                    <div class="col-md-12 col-lg-3">
+                        <label for="search" class="form-label">Search</label>
+                        <input type="text" name="search" id="search" class="form-control"
+                               placeholder="Search by name or description"
+                               value="{{ search or '' }}">
                     </div>
-                {% endfor %}
-            </div>
-        </section>
-        <section class="card-section">
-            <h2 class="card-section-title">Available Games</h2>
-            {% if games %}
-                <div class="card-grid card-grid-3col">
-                    {% for game in games %}
-                        <div class="card h-100 ">
-                            <div class="card-body">
-                                <h5 class="card-title">{{ game['name'] }}</h5>
-                                <p class="card-text text-muted">{{ game['copy_count'] }} {{ 'copy' if game['copy_count'] == 1 else 'copies' }}</p>
+                    <div class="col-md-2">
+                        <label for="genre" class="form-label">Genre</label>
+                        <select name="genre" id="genre" class="form-select">
+                            <option value="">All Genres</option>
+                            {% for g_row in genres %}
+                                <option value="{{ g_row['genre'] }}"
+                                    {% if selected_genre == g_row['genre'] %}selected{% endif %}>
+                                    {{ g_row['genre'] }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="min_players" class="form-label">Min Players</label>
+                        <input type="number" name="min_players" id="min_players" class="form-control"
+                               min="1" value="{{ min_players if min_players is not none else '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="max_players" class="form-label">Max Players</label>
+                        <input type="number" name="max_players" id="max_players" class="form-control"
+                               min="1" value="{{ max_players if max_players is not none else '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="max_avg_duration" class="form-label">Max Duration (min)</label>
+                        <input type="number" name="max_avg_duration" id="max_avg_duration" class="form-control"
+                               min="1" value="{{ max_avg_duration if max_avg_duration is not none else '' }}">
+                    </div>
+                    <div class="col-12 border-top pt-3">
+                        <button class="btn btn-link p-0 text-decoration-none"
+                                type="button"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#advancedFilters"
+                                aria-expanded="false"
+                                aria-controls="advancedFilters">
+                            Advanced Filters &#9662;
+                        </button>
+                    </div>
+                    <div class="collapse col-12" id="advancedFilters">
+                        <div class="row g-3">
+                            <div class="col-md-2">
+                                <label for="user_rating" class="form-label">Rating</label>
+                                <input type="number" name="user_rating" id="user_rating" class="form-control"
+                                       min="0" max="5" step="1"
+                                       value="{{ user_rating if user_rating is not none else '' }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label for="complexity_rating" class="form-label">Complexity</label>
+                                <input type="number" name="complexity_rating" id="complexity_rating" class="form-control"
+                                       min="0" max="5" step="1"
+                                       value="{{ complexity_rating if complexity_rating is not none else '' }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label for="strategy_rating" class="form-label">Strategy</label>
+                                <input type="number" name="strategy_rating" id="strategy_rating" class="form-control"
+                                       min="0" max="5" step="1"
+                                       value="{{ strategy_rating if strategy_rating is not none else '' }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label for="luck_rating" class="form-label">Luck</label>
+                                <input type="number" name="luck_rating" id="luck_rating" class="form-control"
+                                       min="0" max="5" step="1"
+                                       value="{{ luck_rating if luck_rating is not none else '' }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label for="interaction_rating" class="form-label">Interaction</label>
+                                <input type="number" name="interaction_rating" id="interaction_rating" class="form-control"
+                                       min="0" max="5" step="1"
+                                       value="{{ interaction_rating if interaction_rating is not none else '' }}">
                             </div>
                         </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <p class="text-muted">No games available at this store.</p>
-            {% endif %}
-        </section>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <div class="form-check mb-2">
+                            <input type="checkbox" name="available_only" id="available_only" class="form-check-input"
+                                   value="1" {% if available_only %}checked{% endif %}>
+                            <label for="available_only" class="form-check-label">Available Only</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary">Filter</button>
+                        <a href="{{ url_for('stores.store', store_id=store['id']) }}" class="btn btn-outline-secondary ms-2">Clear</a>
+                    </div>
+                </form>
+
+                {% if games %}
+                    <div class="card-grid card-grid-3col">
+                        {% for game in games %}
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title">
+                                        <a href="{{ url_for('stores.game_detail', store_id=store['id'], game_id=game['id']) }}"
+                                           class="text-decoration-none">{{ game['name'] }}</a>
+                                    </h5>
+                                    {% if game['genre'] %}
+                                        <span class="badge bg-secondary mb-2">{{ game['genre'] }}</span>
+                                    {% endif %}
+                                    <div class="card-text">
+                                        {% if game['min_players'] and game['max_players'] %}
+                                            <p class="mb-1">
+                                                <small class="text-muted">Players: {{ game['min_players'] }}&ndash;{{ game['max_players'] }}</small>
+                                            </p>
+                                        {% endif %}
+                                        {% if game['avg_duration'] %}
+                                            <p class="mb-1">
+                                                <small class="text-muted">Duration: {{ game['avg_duration'] }} min</small>
+                                            </p>
+                                        {% endif %}
+                                        {% if game['avg_rating'] %}
+                                            <p class="mb-1">
+                                                <small class="text-muted">Rating: {{ "%.1f"|format(game['avg_rating']) }}/5</small>
+                                            </p>
+                                        {% else %}
+                                            <p class="mb-1">
+                                                <small class="text-muted">Rating: -</small>
+                                            </p>
+                                        {% endif %}
+                                        {% if game['complexity_rating'] %}
+                                            <p class="mb-1">
+                                                <small class="text-muted">Complexity: {{ game['complexity_rating'] }}/5</small>
+                                            </p>
+                                        {% endif %}
+                                        {% if game['strategy_rating'] %}
+                                            <p class="mb-1">
+                                                <small class="text-muted">Strategy: {{ game['strategy_rating'] }}/5</small>
+                                            </p>
+                                        {% endif %}
+                                        {% if game['luck_rating'] %}
+                                            <p class="mb-1">
+                                                <small class="text-muted">Luck: {{ game['luck_rating'] }}/5</small>
+                                            </p>
+                                        {% endif %}
+                                        {% if game['interaction_rating'] %}
+                                            <p class="mb-1">
+                                                <small class="text-muted">Interaction: {{ game['interaction_rating'] }}/5</small>
+                                            </p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">No games found matching your filters.</p>
+                {% endif %}
+            </div>
+
+            <div class="tab-pane fade"
+                 id="tables"
+                 role="tabpanel"
+                 aria-labelledby="tables-tab">
+                <section class="card-section">
+                    <div class="card-grid card-grid-3col">
+                        {% for table in tables %}
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title">Table {{ table['table_num'] }}</h5>
+                                    <p class="card-text text-muted">Capacity: {{ table['capacity'] }} seats</p>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </section>
+            </div>
+        </div>
     </div>
+    <script>
+        const advancedFilters = document.getElementById('advancedFilters');
+        const advancedFiltersButton = document.querySelector('[data-bs-target="#advancedFilters"]');
+        advancedFilters.addEventListener('show.bs.collapse', () => advancedFiltersButton.innerHTML = 'Advanced Filters &#9652;');
+        advancedFilters.addEventListener('hide.bs.collapse', () => advancedFiltersButton.innerHTML = 'Advanced Filters &#9662;');
+    </script>
 {% endblock %}

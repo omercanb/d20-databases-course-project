@@ -221,10 +221,68 @@ def cancel_store_session(session_id):
 
 @bp.route("/store/<int:store_id>")
 def store(store_id):
+    genre = request.args.get("genre") or None
+    min_players = request.args.get("min_players", type=int)
+    max_players = request.args.get("max_players", type=int)
+    user_rating = request.args.get("user_rating", type=int)
+    complexity_rating = request.args.get("complexity_rating", type=int)
+    strategy_rating = request.args.get("strategy_rating", type=int)
+    luck_rating = request.args.get("luck_rating", type=int)
+    interaction_rating = request.args.get("interaction_rating", type=int)
+    max_avg_duration = request.args.get("max_avg_duration", type=int)
+    available_only = request.args.get("available_only") == "1"
+    search = request.args.get("search") or None
+
+    errors = []
+    if min_players is not None and min_players < 1:
+        errors.append("Minimum players must be at least 1.")
+        min_players = None
+    if (
+        min_players is not None
+        and max_players is not None
+        and max_players < min_players
+    ):
+        errors.append("Maximum players must be >= minimum players.")
+        max_players = None
+
+    for err in errors:
+        flash(err)
+
     store = get_store_by_id(store_id)
     tables = get_tables(store_id)
-    games = get_available_games_with_counts(store_id)
-    return render_template("stores/store.html", store=store, tables=tables, games=games)
+    games = get_games_filtered(
+        store_id,
+        genre=genre,
+        min_players=min_players,
+        max_players=max_players,
+        user_rating=user_rating,
+        complexity_rating=complexity_rating,
+        strategy_rating=strategy_rating,
+        luck_rating=luck_rating,
+        interaction_rating=interaction_rating,
+        max_avg_duration=max_avg_duration,
+        available_only=available_only,
+        search=search,
+    )
+    genres = get_store_genres(store_id)
+    return render_template(
+        "stores/store.html",
+        store=store,
+        tables=tables,
+        games=games,
+        genres=genres,
+        selected_genre=genre,
+        min_players=min_players,
+        max_players=max_players,
+        user_rating=user_rating,
+        complexity_rating=complexity_rating,
+        strategy_rating=strategy_rating,
+        luck_rating=luck_rating,
+        interaction_rating=interaction_rating,
+        max_avg_duration=max_avg_duration,
+        available_only=available_only,
+        search=search,
+    )
 
 
 @bp.route("/store/<int:store_id>/book")
@@ -406,72 +464,6 @@ def confirm_booking(store_id, table_num):
                 end_time=end_time,
             )
         )
-
-
-@bp.route("/store/<int:store_id>/games")
-def game_library(store_id):
-    genre = request.args.get("genre") or None
-    min_players = request.args.get("min_players", type=int)
-    max_players = request.args.get("max_players", type=int)
-    user_rating = request.args.get("user_rating", type=int)
-    complexity_rating = request.args.get("complexity_rating", type=int)
-    strategy_rating = request.args.get("strategy_rating", type=int)
-    luck_rating = request.args.get("luck_rating", type=int)
-    interaction_rating = request.args.get("interaction_rating", type=int)
-    max_avg_duration = request.args.get("max_avg_duration", type=int)
-    available_only = request.args.get("available_only") == "1"
-    search = request.args.get("search") or None
-
-    errors = []
-    if min_players is not None and min_players < 1:
-        errors.append("Minimum players must be at least 1.")
-        min_players = None
-    if (
-        min_players is not None
-        and max_players is not None
-        and max_players < min_players
-    ):
-        errors.append("Maximum players must be >= minimum players.")
-        max_players = None
-
-    for err in errors:
-        flash(err)
-
-    games = get_games_filtered(
-        store_id,
-        genre=genre,
-        min_players=min_players,
-        max_players=max_players,
-        user_rating=user_rating,
-        complexity_rating=complexity_rating,
-        strategy_rating=strategy_rating,
-        luck_rating=luck_rating,
-        interaction_rating=interaction_rating,
-        max_avg_duration=max_avg_duration,
-        available_only=available_only,
-        search=search,
-    )
-
-    store = get_store_by_id(store_id)
-    genres = get_store_genres(store_id)
-
-    return render_template(
-        "stores/game_library.html",
-        store=store,
-        games=games,
-        genres=genres,
-        selected_genre=genre,
-        min_players=min_players,
-        max_players=max_players,
-        user_rating=user_rating,
-        complexity_rating=complexity_rating,
-        strategy_rating=strategy_rating,
-        luck_rating=luck_rating,
-        interaction_rating=interaction_rating,
-        max_avg_duration=max_avg_duration,
-        available_only=available_only,
-        search=search,
-    )
 
 
 @bp.route("/store/<int:store_id>/game/<int:game_id>")

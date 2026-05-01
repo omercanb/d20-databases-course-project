@@ -322,7 +322,7 @@ class TestRateGame:
 
 
 # ---------------------------------------------------------------------------
-# Route tests – GET /store/<id>/games
+# Route tests – GET /store/<id>
 # ---------------------------------------------------------------------------
 
 class TestGameLibraryRoute:
@@ -339,30 +339,30 @@ class TestGameLibraryRoute:
 
     def test_200_with_no_filters(self, client, app):
         store_id, _ = self._setup_store_and_game(app)
-        response = client.get(f"/store/{store_id}/games")
+        response = client.get(f"/store/{store_id}")
         assert response.status_code == 200
 
     def test_genre_filter_param_returns_200(self, client, app):
         store_id, _ = self._setup_store_and_game(app)
-        response = client.get(f"/store/{store_id}/games?genre=Deck-Building")
+        response = client.get(f"/store/{store_id}?genre=Deck-Building")
         assert response.status_code == 200
         assert b"Dominion" in response.data
 
     def test_genre_filter_no_match_returns_empty(self, client, app):
         store_id, _ = self._setup_store_and_game(app)
-        response = client.get(f"/store/{store_id}/games?genre=Trivia")
+        response = client.get(f"/store/{store_id}?genre=Trivia")
         assert response.status_code == 200
         assert b"Dominion" not in response.data
 
     def test_complexity_rating_filter_via_route(self, client, app):
         store_id, _ = self._setup_store_and_game(app)
-        response = client.get(f"/store/{store_id}/games?complexity_rating=2.0")
+        response = client.get(f"/store/{store_id}?complexity_rating=2.0")
         assert response.status_code == 200
         assert b"Dominion" in response.data
 
     def test_invalid_min_players_flashes_error(self, client, app):
         store_id, _ = self._setup_store_and_game(app)
-        response = client.get(f"/store/{store_id}/games?min_players=0")
+        response = client.get(f"/store/{store_id}?min_players=0")
         assert response.status_code == 200
         assert b"Minimum players" in response.data
 
@@ -576,7 +576,7 @@ class TestGetGamesFilteredSearch:
     def test_search_empty_string_treated_as_none_by_route(self, app, client):
         """The route converts empty string to None, so all games are returned."""
         store_id, game1_id, game2_id = self._setup(app)
-        response = client.get(f"/store/{store_id}/games?search=")
+        response = client.get(f"/store/{store_id}?search=")
         assert response.status_code == 200
         assert b"Dragon Quest" in response.data
         assert b"Chess" in response.data
@@ -596,7 +596,7 @@ class TestGetGamesFilteredSearch:
 
     def test_search_route_returns_matching_game(self, app, client):
         store_id, game1_id, game2_id = self._setup(app)
-        response = client.get(f"/store/{store_id}/games?search=Chess")
+        response = client.get(f"/store/{store_id}?search=Chess")
         assert response.status_code == 200
         assert b"Chess" in response.data
         assert b"Dragon Quest" not in response.data
