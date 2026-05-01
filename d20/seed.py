@@ -1,5 +1,5 @@
 import random
-from datetime import date
+from datetime import date, timedelta
 
 import click
 
@@ -126,7 +126,8 @@ def seed_session(user_ids, store_ids, store_to_game_copy):
     user1 = user_ids[0]
     store1 = store_ids[0]
     games_used = [game_id for game_id, copy_num in store_to_game_copy[store1][:1]]
-    create_session(user1, store1, 1, str(date.today()), 10, 15, games_used)
+    future_day = str(date.today() + timedelta(days=1))
+    create_session(user1, store1, 1, future_day, 10, 15, games_used)
 
 
 def seed_orders(user_ids, game_ids):

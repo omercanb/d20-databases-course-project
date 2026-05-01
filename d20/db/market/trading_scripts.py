@@ -14,18 +14,18 @@ def create_script(owner_id, name, code):
     """
     db = get_db()
     cursor = db.execute(
-        "insert into TradingScript (name, code, owner_id) values (?, ?, ?)",
+        "insert into TradingScript (name, code, owner_id) values (%s, %s, %s) RETURNING id",
         (name, code, owner_id),
     )
     db.commit()
-    return cursor.lastrowid
+    return cursor.fetchone()["id"]
 
 
 def get_script(script_id):
     """Get a script by ID."""
     return (
         get_db()
-        .execute("select * from TradingScript where id = ?", (script_id,))
+        .execute("select * from TradingScript where id = %s", (script_id,))
         .fetchone()
     )
 
@@ -35,7 +35,7 @@ def get_scripts_by_owner(owner_id):
     return (
         get_db()
         .execute(
-            "select * from TradingScript where owner_id = ? order by name",
+            "select * from TradingScript where owner_id = %s order by name",
             (owner_id,),
         )
         .fetchall()
@@ -52,7 +52,7 @@ def update_script(script_id, name, code):
     """
     db = get_db()
     db.execute(
-        "update TradingScript set name = ?, code = ? where id = ?",
+        "update TradingScript set name = %s, code = %s where id = %s",
         (name, code, script_id),
     )
     db.commit()
@@ -61,5 +61,5 @@ def update_script(script_id, name, code):
 def delete_script(script_id):
     """Delete a script by ID."""
     db = get_db()
-    db.execute("delete from TradingScript where id = ?", (script_id,))
+    db.execute("delete from TradingScript where id = %s", (script_id,))
     db.commit()

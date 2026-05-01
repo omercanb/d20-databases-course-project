@@ -1,16 +1,11 @@
 from d20.db import get_db
+from decimal import Decimal
 
 
 def create_market_participant(
     customer_id=None, store_id=None, available_cash=0.0, reserved_cash=0.0
 ):
     """Create a new market participant (either customer or store).
-
-    Args:
-        customer_id: ID of customer (mutually exclusive with store_id)
-        store_id: ID of store (mutually exclusive with customer_id)
-        available_cash: Initial available cash
-        reserved_cash: Initial reserved cash
 
     Returns:
         The ID of the newly created market participant
@@ -22,19 +17,19 @@ def create_market_participant(
 
     db = get_db()
     cursor = db.execute(
-        "insert into MarketPariticipant (customer_id, store_id, availiable_cash, reserved_cash) values (?, ?, ?, ?)",
+        "INSERT INTO MarketPariticipant (customer_id, store_id, availiable_cash, reserved_cash)"
+        " VALUES (%s, %s, %s, %s) RETURNING id",
         (customer_id, store_id, available_cash, reserved_cash),
     )
     db.commit()
-    return cursor.lastrowid
+    return cursor.fetchone()["id"]
 
 
-# TODO I'm sure I will use some of the below commented out functions, but these were generated with claude so I want to make sure we're only keeping the ones we will actually use to not bloat. So I will add as needed
 def get_market_participant(participant_id):
     """Get a market participant by ID."""
     return (
         get_db()
-        .execute("select * from MarketPariticipant where id = ?", (participant_id,))
+        .execute("SELECT * FROM MarketPariticipant WHERE id = %s", (participant_id,))
         .fetchone()
     )
 
@@ -44,7 +39,7 @@ def get_market_participant_by_customer(customer_id):
     return (
         get_db()
         .execute(
-            "select * from MarketPariticipant where customer_id = ?", (customer_id,)
+            "SELECT * FROM MarketPariticipant WHERE customer_id = %s", (customer_id,)
         )
         .fetchone()
     )
@@ -54,43 +49,35 @@ def get_market_participant_by_store(store_id):
     """Get a market participant by store ID."""
     return (
         get_db()
-        .execute("select * from MarketPariticipant where store_id = ?", (store_id,))
+        .execute("SELECT * FROM MarketPariticipant WHERE store_id = %s", (store_id,))
         .fetchone()
     )
 
 
 def increment_available_cash(participant_id, amount):
-    """Increase available cash for a participant.
-
-    Args:
-        participant_id: Market participant ID
-        amount: Amount to add to available_cash
-    """
+    """Increase available cash for a participant."""
     participant = get_market_participant(participant_id)
     if not participant:
         raise ValueError(f"Participant {participant_id} not found")
 
+    amount = Decimal(str(amount))
     new_available = participant["availiable_cash"] + amount
 
     db = get_db()
     db.execute(
-        "update MarketPariticipant set availiable_cash = ? where id = ?",
+        "UPDATE MarketPariticipant SET availiable_cash = %s WHERE id = %s",
         (new_available, participant_id),
     )
     db.commit()
 
 
 def decrement_available_cash(participant_id, amount):
-    """Decrease available cash for a participant.
-
-    Args:
-        participant_id: Market participant ID
-        amount: Amount to subtract from available_cash
-    """
+    """Decrease available cash for a participant."""
     participant = get_market_participant(participant_id)
     if not participant:
         raise ValueError(f"Participant {participant_id} not found")
 
+    amount = Decimal(str(amount))
     new_available = participant["availiable_cash"] - amount
     if new_available < 0:
         raise ValueError(
@@ -99,44 +86,36 @@ def decrement_available_cash(participant_id, amount):
 
     db = get_db()
     db.execute(
-        "update MarketPariticipant set availiable_cash = ? where id = ?",
+        "UPDATE MarketPariticipant SET availiable_cash = %s WHERE id = %s",
         (new_available, participant_id),
     )
     db.commit()
 
 
 def increment_reserved_cash(participant_id, amount):
-    """Increase reserved cash for a participant.
-
-    Args:
-        participant_id: Market participant ID
-        amount: Amount to add to reserved_cash
-    """
+    """Increase reserved cash for a participant."""
     participant = get_market_participant(participant_id)
     if not participant:
         raise ValueError(f"Participant {participant_id} not found")
 
+    amount = Decimal(str(amount))
     new_reserved = participant["reserved_cash"] + amount
 
     db = get_db()
     db.execute(
-        "update MarketPariticipant set reserved_cash = ? where id = ?",
+        "UPDATE MarketPariticipant SET reserved_cash = %s WHERE id = %s",
         (new_reserved, participant_id),
     )
     db.commit()
 
 
 def decrement_reserved_cash(participant_id, amount):
-    """Decrease reserved cash for a participant.
-
-    Args:
-        participant_id: Market participant ID
-        amount: Amount to subtract from reserved_cash
-    """
+    """Decrease reserved cash for a participant."""
     participant = get_market_participant(participant_id)
     if not participant:
         raise ValueError(f"Participant {participant_id} not found")
 
+    amount = Decimal(str(amount))
     new_reserved = participant["reserved_cash"] - amount
     if new_reserved < 0:
         raise ValueError(
@@ -145,7 +124,7 @@ def decrement_reserved_cash(participant_id, amount):
 
     db = get_db()
     db.execute(
-        "update MarketPariticipant set reserved_cash = ? where id = ?",
+        "UPDATE MarketPariticipant SET reserved_cash = %s WHERE id = %s",
         (new_reserved, participant_id),
     )
     db.commit()
@@ -154,5 +133,5 @@ def decrement_reserved_cash(participant_id, amount):
 def delete_market_participant(participant_id):
     """Delete a market participant."""
     db = get_db()
-    db.execute("delete from MarketPariticipant where id = ?", (participant_id,))
+    db.execute("DELETE FROM MarketPariticipant WHERE id = %s", (participant_id,))
     db.commit()

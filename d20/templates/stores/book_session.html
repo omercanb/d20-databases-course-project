@@ -20,7 +20,6 @@
                            class="form-control mb-4"
                            min="{{ today }}"
                            value="{{ day }}" />
-                    <input type="hidden" name="day" id="day" />
                     <input type="hidden" name="start_time" id="start_time" />
                     <input type="hidden" name="end_time" id="end_time" />
                     <div id="time-slider"></div>
@@ -72,6 +71,7 @@
       start: [{{start_time}}, {{end_time}}], // default 9am to 5pm
     connect: true, // fills the bar between the two handles
     step: 1,
+    margin: 1,
     range: { min: 0, max: 23 },
   });
 

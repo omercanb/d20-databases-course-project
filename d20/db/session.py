@@ -1,3 +1,5 @@
+from datetime import date
+
 from d20.db import get_db
 
 MAX_RESERVATIONS = 2
@@ -5,7 +7,8 @@ MAX_RESERVATIONS = 2
 
 def get_reservation_count(user_id):
     row = get_db().execute(
-        "select count(*) as cnt from Session where user_id = ? and (day > date('now') or (day = date('now') and end_time > cast(strftime('%H', 'now', 'localtime') as integer)))",
+        "SELECT COUNT(*) AS cnt FROM Session WHERE user_id = %s"
+        " AND (day::date + (end_time || ' hours')::interval) > NOW()",
         (user_id,)
     ).fetchone()
     return row["cnt"]
@@ -14,16 +17,27 @@ def get_reservation_count(user_id):
 def create_session(
     user_id, store_id, table_num, day, start_time, end_time, game_ids=None
 ):
+    if end_time <= start_time:
+        raise ValueError("End time must be later than start time.")
+
     db = get_db()
+    session_day = date.fromisoformat(day.strip())
+    is_future = db.execute(
+        "SELECT (%s::date + (%s || ' hours')::interval) > NOW() AS is_future",
+        (session_day.isoformat(), end_time),
+    ).fetchone()["is_future"]
+    if not is_future:
+        raise ValueError("Cannot book a session in the past.")
+
     occupied_table = db.execute(
         """
-        select 1 from Session
-        where store_id = ?
-        and table_num = ?
-        and day = ?
-        and start_time < ?
-        and end_time > ?
-        limit 1
+        SELECT 1 FROM Session
+        WHERE store_id = %s
+        AND table_num = %s
+        AND day = %s
+        AND start_time < %s
+        AND end_time > %s
+        LIMIT 1
         """,
         (store_id, table_num, day, end_time, start_time),
     ).fetchone()
@@ -35,23 +49,23 @@ def create_session(
         for game_id in game_ids:
             copy = db.execute(
                 """
-                select copy_num from GameCopy
-                where game_id = ?
-                and store_id = ?
-                and is_available = 1
-                and not exists (
-                    select 1
-                    from SessionGameCopy
-                    join Session on (SessionGameCopy.session_id = Session.id)
-                    where SessionGameCopy.game_id = GameCopy.game_id
-                    and SessionGameCopy.store_id = GameCopy.store_id
-                    and SessionGameCopy.copy_num = GameCopy.copy_num
-                    and Session.day = ?
-                    and Session.start_time < ?
-                    and Session.end_time > ?
+                SELECT copy_num FROM GameCopy
+                WHERE game_id = %s
+                AND store_id = %s
+                AND is_available = TRUE
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM SessionGameCopy
+                    JOIN Session ON (SessionGameCopy.session_id = Session.id)
+                    WHERE SessionGameCopy.game_id = GameCopy.game_id
+                    AND SessionGameCopy.store_id = GameCopy.store_id
+                    AND SessionGameCopy.copy_num = GameCopy.copy_num
+                    AND Session.day = %s
+                    AND Session.start_time < %s
+                    AND Session.end_time > %s
                 )
-                order by copy_num
-                limit 1
+                ORDER BY copy_num
+                LIMIT 1
                 """,
                 (game_id, store_id, day, end_time, start_time),
             ).fetchone()
@@ -63,16 +77,16 @@ def create_session(
             game_copies.append((game_id, copy["copy_num"]))
 
     cursor = db.execute(
-        "insert into Session (user_id, store_id, table_num, day, start_time, end_time)"
-        " values (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)"
+        " VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
         (user_id, store_id, table_num, day, start_time, end_time),
     )
-    session_id = cursor.lastrowid
+    session_id = cursor.fetchone()["id"]
 
     for game_id, copy_num in game_copies:
         db.execute(
-            "insert into SessionGameCopy (session_id, game_id, store_id, copy_num)"
-            " values (?, ?, ?, ?)",
+            "INSERT INTO SessionGameCopy (session_id, game_id, store_id, copy_num)"
+            " VALUES (%s, %s, %s, %s)",
             (session_id, game_id, store_id, copy_num),
         )
 
@@ -82,7 +96,7 @@ def create_session(
 
 def get_session(session_id):
     return (
-        get_db().execute("select * from Session where id = ?", (session_id,)).fetchone()
+        get_db().execute("SELECT * FROM Session WHERE id = %s", (session_id,)).fetchone()
     )
 
 
@@ -91,10 +105,10 @@ def get_session_games(session_id):
         get_db()
         .execute(
             """
-            select SessionGameCopy.*, Game.name
-            from SessionGameCopy
-            join Game on (SessionGameCopy.game_id = Game.id)
-            where SessionGameCopy.session_id = ?
+            SELECT SessionGameCopy.*, Game.name
+            FROM SessionGameCopy
+            JOIN Game ON (SessionGameCopy.game_id = Game.id)
+            WHERE SessionGameCopy.session_id = %s
             """,
             (session_id,),
         )
@@ -105,7 +119,7 @@ def get_session_games(session_id):
 def get_sessions_by_user(user_id):
     return (
         get_db()
-        .execute("select * from Session where user_id = ?", (user_id,))
+        .execute("SELECT * FROM Session WHERE user_id = %s", (user_id,))
         .fetchall()
     )
 
@@ -115,11 +129,11 @@ def get_sessions_with_store_by_user(user_id):
         get_db()
         .execute(
             """
-            select Session.*, Store.name as store_name
-            from Session
-            join Store on (Session.store_id = Store.id)
-            where Session.user_id = ?
-            order by Session.day desc, Session.start_time desc
+            SELECT Session.*, Store.name AS store_name
+            FROM Session
+            JOIN Store ON (Session.store_id = Store.id)
+            WHERE Session.user_id = %s
+            ORDER BY Session.day DESC, Session.start_time DESC
             """,
             (user_id,),
         )
@@ -130,7 +144,7 @@ def get_sessions_with_store_by_user(user_id):
 def get_sessions_by_store(store_id):
     return (
         get_db()
-        .execute("select * from Session where store_id = ?", (store_id,))
+        .execute("SELECT * FROM Session WHERE store_id = %s", (store_id,))
         .fetchall()
     )
 
@@ -140,12 +154,12 @@ def get_upcoming_sessions_with_user_by_store(store_id, today):
         get_db()
         .execute(
             """
-            select Session.*, User.username
-            from Session
-            join User on (Session.user_id = User.id)
-            where Session.store_id = ?
-            and Session.day >= ?
-            order by Session.day asc, Session.start_time asc
+            SELECT Session.*, "User".username
+            FROM Session
+            JOIN "User" ON (Session.user_id = "User".id)
+            WHERE Session.store_id = %s
+            AND Session.day >= %s
+            ORDER BY Session.day ASC, Session.start_time ASC
             """,
             (store_id, today),
         )
@@ -156,7 +170,7 @@ def get_upcoming_sessions_with_user_by_store(store_id, today):
 def update_session(session_id, day, start_time, end_time):
     db = get_db()
     db.execute(
-        "update Session set day = ?, start_time = ?, end_time = ? where id = ?",
+        "UPDATE Session SET day = %s, start_time = %s, end_time = %s WHERE id = %s",
         (day, start_time, end_time, session_id),
     )
     db.commit()
@@ -164,7 +178,8 @@ def update_session(session_id, day, start_time, end_time):
 
 def delete_session(session_id):
     db = get_db()
-    db.execute("delete from Session where id = ?", (session_id,))
+    db.execute("DELETE FROM SessionGameCopy WHERE session_id = %s", (session_id,))
+    db.execute("DELETE FROM Session WHERE id = %s", (session_id,))
     db.commit()
 
 
@@ -173,16 +188,16 @@ def get_available_tables(store_id, day, start_time, end_time):
         get_db()
         .execute(
             """
-        select * from "Table"
-        where store_id = ?
-        and (store_id, table_num) not in (
-            select store_id, table_num from Session
-            where store_id = ?
-            and day = ?
-            and start_time < ?
-            and end_time > ?
-        )
-        """,
+            SELECT * FROM "Table"
+            WHERE store_id = %s
+            AND (store_id, table_num) NOT IN (
+                SELECT store_id, table_num FROM Session
+                WHERE store_id = %s
+                AND day = %s
+                AND start_time < %s
+                AND end_time > %s
+            )
+            """,
             (store_id, store_id, day, end_time, start_time),
         )
         .fetchall()
@@ -194,16 +209,16 @@ def get_unavailable_tables(store_id, day, start_time, end_time):
         get_db()
         .execute(
             """
-        select * from "Table"
-        where store_id = ?
-        and (store_id, table_num) in (
-            select store_id, table_num from Session
-            where store_id = ?
-            and day = ?
-            and start_time < ?
-            and end_time > ?
-        )
-        """,
+            SELECT * FROM "Table"
+            WHERE store_id = %s
+            AND (store_id, table_num) IN (
+                SELECT store_id, table_num FROM Session
+                WHERE store_id = %s
+                AND day = %s
+                AND start_time < %s
+                AND end_time > %s
+            )
+            """,
             (store_id, store_id, day, end_time, start_time),
         )
         .fetchall()

@@ -16,11 +16,11 @@ from d20.db.game import (
 
 def _insert_store(db, name="Search Store", username="searchstore_sb"):
     db.execute(
-        "insert into Store (username, password, name) values (?, 'x', ?)",
+        "INSERT INTO Store (username, password, name) VALUES (%s, 'x', %s)",
         (username, name),
     )
     db.commit()
-    return db.execute("select id from Store where name = ?", (name,)).fetchone()["id"]
+    return db.execute("SELECT id FROM Store WHERE name = %s", (name,)).fetchone()["id"]
 
 
 def _insert_game(
@@ -36,19 +36,19 @@ def _insert_game(
 ):
     db.execute(
         """
-        insert into Game (name, symbol, genre, min_players, max_players,
+        INSERT INTO Game (name, symbol, genre, min_players, max_players,
                           complexity_rating, avg_duration, description)
-        values (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (name, symbol, genre, min_players, max_players, complexity_rating, avg_duration, description),
     )
     db.commit()
-    return db.execute("select id from Game where name = ?", (name,)).fetchone()["id"]
+    return db.execute("SELECT id FROM Game WHERE name = %s", (name,)).fetchone()["id"]
 
 
 def _insert_game_copy(db, game_id, store_id, copy_num=1, condition="good"):
     db.execute(
-        "insert into GameCopy (game_id, store_id, copy_num, condition) values (?, ?, ?, ?)",
+        "INSERT INTO GameCopy (game_id, store_id, copy_num, condition) VALUES (%s, %s, %s, %s)",
         (game_id, store_id, copy_num, condition),
     )
     db.commit()
@@ -56,7 +56,7 @@ def _insert_game_copy(db, game_id, store_id, copy_num=1, condition="good"):
 
 def _insert_table(db, store_id, table_num=1, capacity=4):
     db.execute(
-        "insert into 'Table' (store_id, table_num, capacity) values (?, ?, ?)",
+        'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, %s, %s)',
         (store_id, table_num, capacity),
     )
     db.commit()
@@ -299,29 +299,25 @@ class TestGetUnavailableGamesDuringColumns:
 
             # Book the single copy during our test window so it becomes unavailable
             db.execute(
-                "insert into User (username, password) values ('unavail_user_sb', 'x')"
+                "INSERT INTO \"User\" (username, password) VALUES ('unavail_user_sb', 'x')"
             )
             db.commit()
             user_id = db.execute(
-                "select id from User where username = 'unavail_user_sb'"
+                "SELECT id FROM \"User\" WHERE username = 'unavail_user_sb'"
             ).fetchone()["id"]
             db.execute(
-                """
-                insert into Session (user_id, store_id, table_num, day, start_time, end_time)
-                values (?, ?, 1, '2099-06-01', 9, 20)
-                """,
+                "INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)"
+                " VALUES (%s, %s, 1, '2099-06-01', 9, 20)",
                 (user_id, store_id),
             )
             db.commit()
             session_id = db.execute(
-                "select id from Session where user_id = ? and store_id = ?",
+                "SELECT id FROM Session WHERE user_id = %s AND store_id = %s",
                 (user_id, store_id),
             ).fetchone()["id"]
             db.execute(
-                """
-                insert into SessionGameCopy (session_id, game_id, store_id, copy_num)
-                values (?, ?, ?, 1)
-                """,
+                "INSERT INTO SessionGameCopy (session_id, game_id, store_id, copy_num)"
+                " VALUES (%s, %s, %s, 1)",
                 (session_id, game_id, store_id),
             )
             db.commit()

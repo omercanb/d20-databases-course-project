@@ -24,11 +24,11 @@ from d20.db.session import create_session
 
 def _insert_store(db, name="Test Store", username="storeuser", password="x"):
     db.execute(
-        "insert into Store (username, password, name) values (?, ?, ?)",
+        "INSERT INTO Store (username, password, name) VALUES (%s, %s, %s)",
         (username, password, name),
     )
     db.commit()
-    return db.execute("select id from Store where name = ?", (name,)).fetchone()["id"]
+    return db.execute("SELECT id FROM Store WHERE name = %s", (name,)).fetchone()["id"]
 
 
 def _insert_game(
@@ -44,19 +44,19 @@ def _insert_game(
 ):
     db.execute(
         """
-        insert into Game (name, symbol, genre, min_players, max_players,
+        INSERT INTO Game (name, symbol, genre, min_players, max_players,
                           complexity_rating, avg_duration, description)
-        values (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (name, symbol, genre, min_players, max_players, complexity_rating, avg_duration, description),
     )
     db.commit()
-    return db.execute("select id from Game where name = ?", (name,)).fetchone()["id"]
+    return db.execute("SELECT id FROM Game WHERE name = %s", (name,)).fetchone()["id"]
 
 
 def _insert_game_copy(db, game_id, store_id, copy_num=1, condition="good"):
     db.execute(
-        "insert into GameCopy (game_id, store_id, copy_num, condition) values (?, ?, ?, ?)",
+        "INSERT INTO GameCopy (game_id, store_id, copy_num, condition) VALUES (%s, %s, %s, %s)",
         (game_id, store_id, copy_num, condition),
     )
     db.commit()
@@ -420,13 +420,13 @@ class TestSimilarGames:
                 """
             )
             target_id = db.execute(
-                "select id from Game where name = 'Target'"
+                "SELECT id FROM Game WHERE name = %s", ("Target",)
             ).fetchone()["id"]
             closest_id = db.execute(
-                "select id from Game where name = 'Closest'"
+                "SELECT id FROM Game WHERE name = %s", ("Closest",)
             ).fetchone()["id"]
             farther_id = db.execute(
-                "select id from Game where name = 'Farther'"
+                "SELECT id FROM Game WHERE name = %s", ("Farther",)
             ).fetchone()["id"]
             _insert_game_copy(db, target_id, store_id)
             _insert_game_copy(db, closest_id, store_id)
@@ -475,7 +475,7 @@ class TestRateGameRoute:
         # Verify the GameRating row was actually persisted with the correct value
         with app.app_context():
             row = get_db().execute(
-                "select rating from GameRating where user_id = 1 and game_id = ?",
+                "SELECT rating FROM GameRating WHERE user_id = 1 AND game_id = %s",
                 (game_id,),
             ).fetchone()
         assert row is not None
@@ -698,13 +698,13 @@ class TestCreateSessionAvailability:
             game_id = _insert_game(db, name="Table Check Game", symbol="TCG")
             _insert_game_copy(db, game_id, store_id)
             db.execute(
-                "insert into 'Table' (store_id, table_num, capacity) values (?, 1, 4)",
+                'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
                 (store_id,),
             )
             db.execute(
                 """
-                insert into Session (user_id, store_id, table_num, day, start_time, end_time)
-                values (1, ?, 1, '2099-01-01', 9, 20)
+                INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
+                VALUES (1, %s, 1, '2099-01-01', 9, 20)
                 """,
                 (store_id,),
             )
@@ -723,7 +723,7 @@ class TestCreateSessionAvailability:
             game_id = _insert_game(db, name="No Copy Game", symbol="NCG")
             _insert_game_copy(db, game_id, store_id, condition="missing_pieces")
             db.execute(
-                "insert into 'Table' (store_id, table_num, capacity) values (?, 1, 4)",
+                'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
                 (store_id,),
             )
             db.commit()
@@ -742,26 +742,22 @@ class TestCreateSessionAvailability:
             _insert_game_copy(db, game_id, store_id, copy_num=1)
             _insert_game_copy(db, game_id, store_id, copy_num=2)
             db.execute(
-                "insert into 'Table' (store_id, table_num, capacity) values (?, 1, 4)",
+                'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
                 (store_id,),
             )
             db.execute(
-                "insert into 'Table' (store_id, table_num, capacity) values (?, 2, 4)",
+                'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 2, 4)',
                 (store_id,),
             )
-            db.execute(
-                """
-                insert into Session (user_id, store_id, table_num, day, start_time, end_time)
-                values (1, ?, 1, '2099-01-01', 9, 20)
-                """,
+            cur = db.execute(
+                "INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)"
+                " VALUES (1, %s, 1, '2099-01-01', 9, 20) RETURNING id",
                 (store_id,),
             )
-            session_id = db.execute("select last_insert_rowid()").fetchone()[0]
+            session_id = cur.fetchone()["id"]
             db.execute(
-                """
-                insert into SessionGameCopy (session_id, game_id, store_id, copy_num)
-                values (?, ?, ?, 1)
-                """,
+                "INSERT INTO SessionGameCopy (session_id, game_id, store_id, copy_num)"
+                " VALUES (%s, %s, %s, 1)",
                 (session_id, game_id, store_id),
             )
             db.commit()
@@ -770,7 +766,7 @@ class TestCreateSessionAvailability:
                 1, store_id, 2, "2099-01-01", 10, 12, [game_id]
             )
             copy = db.execute(
-                "select copy_num from SessionGameCopy where session_id = ?",
+                "SELECT copy_num FROM SessionGameCopy WHERE session_id = %s",
                 (new_session_id,),
             ).fetchone()
 
@@ -802,7 +798,7 @@ class TestSelectGamesRoute:
             _insert_game_copy(db, game_id, store_id, copy_num=1)
             # Insert a table
             db.execute(
-                "insert into 'Table' (store_id, table_num, capacity) values (?, 1, 6)",
+                'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 6)',
                 (store_id,),
             )
             db.commit()

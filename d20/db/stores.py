@@ -7,12 +7,11 @@ from d20.db.market.market_participant import create_market_participant
 def create_store(username, name, password):
     db = get_db()
     cursor = db.execute(
-        f"insert into Store (username, name, password) values (?, ?, ?)",
+        "INSERT INTO Store (username, name, password) VALUES (%s, %s, %s) RETURNING id",
         (username, name, generate_password_hash(password)),
     )
     db.commit()
-    # We also need to create a market participant entity for the dynamic pricing part
-    store_id = cursor.lastrowid  # returns the new id
+    store_id = cursor.fetchone()["id"]
     create_market_participant(store_id=store_id)
     return store_id
 
@@ -20,24 +19,28 @@ def create_store(username, name, password):
 def get_store(username):
     return (
         get_db()
-        .execute("SELECT * FROM store WHERE username = ?", (username,))
+        .execute("SELECT * FROM store WHERE username = %s", (username,))
         .fetchone()
     )
 
 
 def get_store_by_id(store_id):
-    return get_db().execute("SELECT * FROM store WHERE id = ?", (store_id,)).fetchone()
+    return (
+        get_db()
+        .execute("SELECT * FROM store WHERE id = %s", (store_id,))
+        .fetchone()
+    )
 
 
 # Table Functions
 def create_table(store_id, capacity):
     db = get_db()
     next_num = db.execute(
-        'select coalesce(max(table_num), 0) + 1 from "Table" where store_id = ?',
+        'SELECT COALESCE(MAX(table_num), 0) + 1 AS next_num FROM "Table" WHERE store_id = %s',
         (store_id,),
-    ).fetchone()[0]
+    ).fetchone()["next_num"]
     db.execute(
-        'insert into "Table" (store_id, table_num, capacity) values (?, ?, ?)',
+        'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, %s, %s)',
         (store_id, next_num, capacity),
     )
     db.commit()
@@ -47,7 +50,7 @@ def create_table(store_id, capacity):
 def get_tables(store_id):
     return (
         get_db()
-        .execute('select * from "Table" where store_id = ?', (store_id,))
+        .execute('SELECT * FROM "Table" WHERE store_id = %s', (store_id,))
         .fetchall()
     )
 
@@ -56,7 +59,7 @@ def get_table(store_id, table_num):
     return (
         get_db()
         .execute(
-            'select * from "Table" where store_id = ? and table_num = ?',
+            'SELECT * FROM "Table" WHERE store_id = %s AND table_num = %s',
             (store_id, table_num),
         )
         .fetchone()
@@ -66,7 +69,7 @@ def get_table(store_id, table_num):
 def delete_table(store_id, table_num):
     db = get_db()
     db.execute(
-        'delete from "Table" where store_id = ? and table_num = ?',
+        'DELETE FROM "Table" WHERE store_id = %s AND table_num = %s',
         (store_id, table_num),
     )
     db.commit()
@@ -75,7 +78,7 @@ def delete_table(store_id, table_num):
 def update_table(store_id, table_num, capacity):
     db = get_db()
     db.execute(
-        'update "Table" set capacity = ? where store_id = ? and table_num = ?',
+        'UPDATE "Table" SET capacity = %s WHERE store_id = %s AND table_num = %s',
         (capacity, store_id, table_num),
     )
     db.commit()

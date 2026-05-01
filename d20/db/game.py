@@ -8,26 +8,26 @@ def create_game(name, symbol, genre=None, min_players=None, max_players=None,
                 interaction_rating=None):
     db = get_db()
     cursor = db.execute(
-        "insert into Game (name, publisher, symbol, genre, min_players, max_players,"
+        "INSERT INTO Game (name, publisher, symbol, genre, min_players, max_players,"
         " avg_duration, complexity_rating, strategy_rating, luck_rating, interaction_rating, description)"
-        " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
         (name, publisher, symbol, genre, min_players, max_players,
          avg_duration, complexity_rating, strategy_rating, luck_rating, interaction_rating, description),
     )
     db.commit()
-    return cursor.lastrowid
+    return cursor.fetchone()["id"]
 
 
 def get_games():
-    return get_db().execute("select * from Game").fetchall()
+    return get_db().execute("SELECT * FROM Game").fetchall()
 
 
 def get_game(game_id):
-    return get_db().execute("select * from Game where id = ?", (game_id,)).fetchone()
+    return get_db().execute("SELECT * FROM Game WHERE id = %s", (game_id,)).fetchone()
 
 
 def get_game_by_name(name):
-    return get_db().execute("select * from Game where name = ?", (name,)).fetchone()
+    return get_db().execute("SELECT * FROM Game WHERE name = %s", (name,)).fetchone()
 
 
 def get_game_id_by_symbol(symbol):
@@ -44,12 +44,12 @@ class InvalidSymbolError(Exception):
 
 
 def get_game_by_symbol(symbol):
-    return get_db().execute("select * from Game where symbol = ?", (symbol,)).fetchone()
+    return get_db().execute("SELECT * FROM Game WHERE symbol = %s", (symbol,)).fetchone()
 
 
 def delete_game(game_id):
     db = get_db()
-    db.execute("delete from Game where id = ?", (game_id,))
+    db.execute("DELETE FROM Game WHERE id = %s", (game_id,))
     db.commit()
 
 
@@ -57,11 +57,11 @@ def delete_game(game_id):
 def create_game_copy(game_id, store_id):
     db = get_db()
     next_num = db.execute(
-        "select coalesce(max(copy_num), 0) + 1 from GameCopy where game_id = ? and store_id = ?",
+        "SELECT COALESCE(MAX(copy_num), 0) + 1 AS next_num FROM GameCopy WHERE game_id = %s AND store_id = %s",
         (game_id, store_id),
-    ).fetchone()[0]
+    ).fetchone()["next_num"]
     db.execute(
-        "insert into GameCopy (game_id, store_id, copy_num) values (?, ?, ?)",
+        "INSERT INTO GameCopy (game_id, store_id, copy_num) VALUES (%s, %s, %s)",
         (game_id, store_id, next_num),
     )
     db.commit()
@@ -72,7 +72,7 @@ def get_game_copies(store_id):
     return (
         get_db()
         .execute(
-            "select * from GameCopy join Game on (game_id = id) where store_id = ?",
+            "SELECT * FROM GameCopy JOIN Game ON (game_id = id) WHERE store_id = %s",
             (store_id,),
         )
         .fetchall()
@@ -82,8 +82,8 @@ def get_game_copies(store_id):
 def get_game_copy_count(store_id):
     return (
         get_db()
-        .execute("select count(*) from GameCopy where store_id = ?", (store_id,))
-        .fetchone()[0]
+        .execute("SELECT COUNT(*) AS cnt FROM GameCopy WHERE store_id = %s", (store_id,))
+        .fetchone()["cnt"]
     )
 
 
@@ -91,7 +91,7 @@ def get_game_copies_by_game(game_id, store_id):
     return (
         get_db()
         .execute(
-            "select * from GameCopy where game_id = ? and store_id = ?",
+            "SELECT * FROM GameCopy WHERE game_id = %s AND store_id = %s",
             (game_id, store_id),
         )
         .fetchall()
@@ -103,7 +103,7 @@ def get_latest_game_copy(game_id, store_id):
     return (
         get_db()
         .execute(
-            "select copy_num from GameCopy where game_id = ? and store_id = ? order by copy_num desc limit 1",
+            "SELECT copy_num FROM GameCopy WHERE game_id = %s AND store_id = %s ORDER BY copy_num DESC LIMIT 1",
             (game_id, store_id),
         )
         .fetchone()
@@ -113,7 +113,7 @@ def get_latest_game_copy(game_id, store_id):
 def delete_game_copy(game_id, store_id, copy_num):
     db = get_db()
     db.execute(
-        "delete from GameCopy where game_id = ? and store_id = ? and copy_num = ?",
+        "DELETE FROM GameCopy WHERE game_id = %s AND store_id = %s AND copy_num = %s",
         (game_id, store_id, copy_num),
     )
     db.commit()
@@ -125,30 +125,44 @@ def get_available_games_during(store_id, day, start_time, end_time):
         get_db()
         .execute(
             """
-            select Game.*,
-                   count(GameCopy.copy_num) as total_copies,
-                   coalesce(sum(
-                       case when GameCopy.is_available = 1
-                            and not exists (
-                                select 1
-                                from SessionGameCopy
-                                join Session on (SessionGameCopy.session_id = Session.id)
-                                where SessionGameCopy.game_id = GameCopy.game_id
-                                and SessionGameCopy.store_id = GameCopy.store_id
-                                and SessionGameCopy.copy_num = GameCopy.copy_num
-                                and Session.day = ?
-                                and Session.start_time < ?
-                                and Session.end_time > ?
+            SELECT Game.*,
+                   COUNT(GameCopy.copy_num) AS total_copies,
+                   COALESCE(SUM(
+                       CASE WHEN GameCopy.is_available = TRUE
+                            AND NOT EXISTS (
+                                SELECT 1
+                                FROM SessionGameCopy
+                                JOIN Session ON (SessionGameCopy.session_id = Session.id)
+                                WHERE SessionGameCopy.game_id = GameCopy.game_id
+                                AND SessionGameCopy.store_id = GameCopy.store_id
+                                AND SessionGameCopy.copy_num = GameCopy.copy_num
+                                AND Session.day = %s
+                                AND Session.start_time < %s
+                                AND Session.end_time > %s
                             )
-                       then 1 else 0 end
-                   ), 0) as available_copies
-            from Game
-            join GameCopy on (Game.id = GameCopy.game_id and GameCopy.store_id = ?)
-            group by Game.id
-            having available_copies > 0
-            order by Game.name
+                       THEN 1 ELSE 0 END
+                   ), 0) AS available_copies
+            FROM Game
+            JOIN GameCopy ON (Game.id = GameCopy.game_id AND GameCopy.store_id = %s)
+            GROUP BY Game.id
+            HAVING COALESCE(SUM(
+                       CASE WHEN GameCopy.is_available = TRUE
+                            AND NOT EXISTS (
+                                SELECT 1
+                                FROM SessionGameCopy
+                                JOIN Session ON (SessionGameCopy.session_id = Session.id)
+                                WHERE SessionGameCopy.game_id = GameCopy.game_id
+                                AND SessionGameCopy.store_id = GameCopy.store_id
+                                AND SessionGameCopy.copy_num = GameCopy.copy_num
+                                AND Session.day = %s
+                                AND Session.start_time < %s
+                                AND Session.end_time > %s
+                            )
+                       THEN 1 ELSE 0 END
+                   ), 0) > 0
+            ORDER BY Game.name
             """,
-            (day, end_time, start_time, store_id),
+            (day, end_time, start_time, store_id, day, end_time, start_time),
         )
         .fetchall()
     )
@@ -160,30 +174,44 @@ def get_unavailable_games_during(store_id, day, start_time, end_time):
         get_db()
         .execute(
             """
-            select Game.*,
-                   count(GameCopy.copy_num) as total_copies,
-                   coalesce(sum(
-                       case when GameCopy.is_available = 1
-                            and not exists (
-                                select 1
-                                from SessionGameCopy
-                                join Session on (SessionGameCopy.session_id = Session.id)
-                                where SessionGameCopy.game_id = GameCopy.game_id
-                                and SessionGameCopy.store_id = GameCopy.store_id
-                                and SessionGameCopy.copy_num = GameCopy.copy_num
-                                and Session.day = ?
-                                and Session.start_time < ?
-                                and Session.end_time > ?
+            SELECT Game.*,
+                   COUNT(GameCopy.copy_num) AS total_copies,
+                   COALESCE(SUM(
+                       CASE WHEN GameCopy.is_available = TRUE
+                            AND NOT EXISTS (
+                                SELECT 1
+                                FROM SessionGameCopy
+                                JOIN Session ON (SessionGameCopy.session_id = Session.id)
+                                WHERE SessionGameCopy.game_id = GameCopy.game_id
+                                AND SessionGameCopy.store_id = GameCopy.store_id
+                                AND SessionGameCopy.copy_num = GameCopy.copy_num
+                                AND Session.day = %s
+                                AND Session.start_time < %s
+                                AND Session.end_time > %s
                             )
-                       then 1 else 0 end
-                   ), 0) as available_copies
-            from Game
-            join GameCopy on (Game.id = GameCopy.game_id and GameCopy.store_id = ?)
-            group by Game.id
-            having available_copies = 0
-            order by Game.name
+                       THEN 1 ELSE 0 END
+                   ), 0) AS available_copies
+            FROM Game
+            JOIN GameCopy ON (Game.id = GameCopy.game_id AND GameCopy.store_id = %s)
+            GROUP BY Game.id
+            HAVING COALESCE(SUM(
+                       CASE WHEN GameCopy.is_available = TRUE
+                            AND NOT EXISTS (
+                                SELECT 1
+                                FROM SessionGameCopy
+                                JOIN Session ON (SessionGameCopy.session_id = Session.id)
+                                WHERE SessionGameCopy.game_id = GameCopy.game_id
+                                AND SessionGameCopy.store_id = GameCopy.store_id
+                                AND SessionGameCopy.copy_num = GameCopy.copy_num
+                                AND Session.day = %s
+                                AND Session.start_time < %s
+                                AND Session.end_time > %s
+                            )
+                       THEN 1 ELSE 0 END
+                   ), 0) = 0
+            ORDER BY Game.name
             """,
-            (day, end_time, start_time, store_id),
+            (day, end_time, start_time, store_id, day, end_time, start_time),
         )
         .fetchall()
     )
@@ -194,11 +222,11 @@ def get_available_games_with_counts(store_id):
         get_db()
         .execute(
             """
-            select Game.id, Game.name, count(*) as copy_count
-            from Game
-            join GameCopy on (Game.id = GameCopy.game_id)
-            where GameCopy.store_id = ?
-            group by Game.id, Game.name
+            SELECT Game.id, Game.name, COUNT(*) AS copy_count
+            FROM Game
+            JOIN GameCopy ON (Game.id = GameCopy.game_id)
+            WHERE GameCopy.store_id = %s
+            GROUP BY Game.id, Game.name
             """,
             (store_id,),
         )
@@ -210,8 +238,8 @@ def get_available_games_with_counts(store_id):
 def report_damage(session_id, game_id, store_id, copy_num, description):
     db = get_db()
     db.execute(
-        "insert into GameDamage (session_id, game_id, store_id, copy_num, description)"
-        " values (?, ?, ?, ?, ?)",
+        "INSERT INTO GameDamage (session_id, game_id, store_id, copy_num, description)"
+        " VALUES (%s, %s, %s, %s, %s)",
         (session_id, game_id, store_id, copy_num, description),
     )
     db.commit()
@@ -221,7 +249,7 @@ def get_damage_report(session_id, game_id, store_id, copy_num):
     return (
         get_db()
         .execute(
-            "select * from GameDamage where session_id = ? and game_id = ? and store_id = ? and copy_num = ?",
+            "SELECT * FROM GameDamage WHERE session_id = %s AND game_id = %s AND store_id = %s AND copy_num = %s",
             (session_id, game_id, store_id, copy_num),
         )
         .fetchone()
@@ -233,10 +261,10 @@ def get_damage_reports_by_session(session_id):
         get_db()
         .execute(
             """
-            select GameDamage.*, Game.name
-            from GameDamage
-            join Game on (GameDamage.game_id = Game.id)
-            where GameDamage.session_id = ?
+            SELECT GameDamage.*, Game.name
+            FROM GameDamage
+            JOIN Game ON (GameDamage.game_id = Game.id)
+            WHERE GameDamage.session_id = %s
             """,
             (session_id,),
         )
@@ -248,7 +276,7 @@ def get_damage_reports_by_game_copy(game_id, store_id, copy_num):
     return (
         get_db()
         .execute(
-            "select * from GameDamage where game_id = ? and store_id = ? and copy_num = ?",
+            "SELECT * FROM GameDamage WHERE game_id = %s AND store_id = %s AND copy_num = %s",
             (game_id, store_id, copy_num),
         )
         .fetchall()
@@ -258,7 +286,7 @@ def get_damage_reports_by_game_copy(game_id, store_id, copy_num):
 def delete_damage_report(session_id, game_id, store_id, copy_num):
     db = get_db()
     db.execute(
-        "delete from GameDamage where session_id = ? and game_id = ? and store_id = ? and copy_num = ?",
+        "DELETE FROM GameDamage WHERE session_id = %s AND game_id = %s AND store_id = %s AND copy_num = %s",
         (session_id, game_id, store_id, copy_num),
     )
     db.commit()
@@ -272,61 +300,61 @@ def get_games_filtered(store_id, genre=None, min_players=None, max_players=None,
                        available_only=False, search=None):
     """Get games at a store with optional filters."""
     query = """
-        select distinct Game.*
-        from Game
-        join GameCopy on (Game.id = GameCopy.game_id and GameCopy.store_id = ?)
-        where 1=1
+        SELECT DISTINCT Game.*
+        FROM Game
+        JOIN GameCopy ON (Game.id = GameCopy.game_id AND GameCopy.store_id = %s)
+        WHERE 1=1
     """
     params = [store_id]
 
     if genre is not None:
-        query += " and Game.genre = ?"
+        query += " AND Game.genre = %s"
         params.append(genre)
     if min_players is not None:
-        query += " and Game.min_players >= ?"
+        query += " AND Game.min_players >= %s"
         params.append(min_players)
     if max_players is not None:
-        query += " and Game.max_players <= ?"
+        query += " AND Game.max_players <= %s"
         params.append(max_players)
     if user_rating is not None:
-        query += " and Game.avg_rating >= ?"
+        query += " AND Game.avg_rating >= %s"
         params.append(user_rating)
     if complexity_rating is not None:
-        query += " and Game.complexity_rating = ?"
+        query += " AND Game.complexity_rating = %s"
         params.append(complexity_rating)
     if strategy_rating is not None:
-        query += " and Game.strategy_rating = ?"
+        query += " AND Game.strategy_rating = %s"
         params.append(strategy_rating)
     if luck_rating is not None:
-        query += " and Game.luck_rating = ?"
+        query += " AND Game.luck_rating = %s"
         params.append(luck_rating)
     if interaction_rating is not None:
-        query += " and Game.interaction_rating = ?"
+        query += " AND Game.interaction_rating = %s"
         params.append(interaction_rating)
     if max_avg_duration is not None:
-        query += " and Game.avg_duration <= ?"
+        query += " AND Game.avg_duration <= %s"
         params.append(max_avg_duration)
     if available_only:
         query += """
-            and Game.id in (
-                select GameCopy.game_id
-                from GameCopy
-                where GameCopy.store_id = ?
-                and GameCopy.is_available = 1
-                group by GameCopy.game_id
+            AND Game.id IN (
+                SELECT GameCopy.game_id
+                FROM GameCopy
+                WHERE GameCopy.store_id = %s
+                AND GameCopy.is_available = TRUE
+                GROUP BY GameCopy.game_id
             )
         """
         params.append(store_id)
     if search is not None:
-        query += " and (Game.name like ? or Game.description like ?)"
+        query += " AND (Game.name ILIKE %s OR Game.description ILIKE %s)"
         params.extend([f"%{search}%", f"%{search}%"])
 
-    query += " order by Game.name"
+    query += " ORDER BY Game.name"
     return get_db().execute(query, params).fetchall()
 
 
 def get_game_detail(game_id):
-    return get_db().execute("select * from Game where id = ?", (game_id,)).fetchone()
+    return get_db().execute("SELECT * FROM Game WHERE id = %s", (game_id,)).fetchone()
 
 
 def _rating_similarity(game, other, column, weight):
@@ -388,13 +416,13 @@ def _similarity_score(game, other):
 
 def refresh_game_similarities():
     db = get_db()
-    games = db.execute("select * from Game").fetchall()
-    db.execute("delete from GameSimilarity")
+    games = db.execute("SELECT * FROM Game").fetchall()
+    db.execute("DELETE FROM GameSimilarity")
     for game in games:
         for other in games:
             if game["id"] != other["id"]:
                 db.execute(
-                    "insert into GameSimilarity (id1, id2, score) values (?, ?, ?)",
+                    "INSERT INTO GameSimilarity (id1, id2, score) VALUES (%s, %s, %s)",
                     (game["id"], other["id"], _similarity_score(game, other)),
                 )
     db.commit()
@@ -405,13 +433,13 @@ def get_similar_games(game_id, store_id, limit=3):
         get_db()
         .execute(
             """
-            select distinct Game.*, GameSimilarity.score as similarity_score
-            from GameSimilarity
-            join Game on (GameSimilarity.id2 = Game.id)
-            join GameCopy on (Game.id = GameCopy.game_id and GameCopy.store_id = ?)
-            where GameSimilarity.id1 = ?
-            order by GameSimilarity.score desc, Game.name
-            limit ?
+            SELECT DISTINCT Game.*, GameSimilarity.score AS similarity_score
+            FROM GameSimilarity
+            JOIN Game ON (GameSimilarity.id2 = Game.id)
+            JOIN GameCopy ON (Game.id = GameCopy.game_id AND GameCopy.store_id = %s)
+            WHERE GameSimilarity.id1 = %s
+            ORDER BY GameSimilarity.score DESC, Game.name
+            LIMIT %s
             """,
             (store_id, game_id, limit),
         )
@@ -422,11 +450,11 @@ def get_similar_games(game_id, store_id, limit=3):
 def get_store_genres(store_id):
     return get_db().execute(
         """
-        select distinct Game.genre
-        from Game
-        join GameCopy on (Game.id = GameCopy.game_id and GameCopy.store_id = ?)
-        where Game.genre is not null
-        order by Game.genre
+        SELECT DISTINCT Game.genre
+        FROM Game
+        JOIN GameCopy ON (Game.id = GameCopy.game_id AND GameCopy.store_id = %s)
+        WHERE Game.genre IS NOT NULL
+        ORDER BY Game.genre
         """,
         (store_id,),
     ).fetchall()
@@ -437,7 +465,7 @@ def get_game_copies_with_condition(game_id, store_id):
     return (
         get_db()
         .execute(
-            "select * from GameCopy where game_id = ? and store_id = ?",
+            "SELECT * FROM GameCopy WHERE game_id = %s AND store_id = %s",
             (game_id, store_id),
         )
         .fetchall()
@@ -445,14 +473,15 @@ def get_game_copies_with_condition(game_id, store_id):
 
 
 def rate_game(user_id, game_id, rating, comment=None):
-    """Insert or replace a rating, then recompute avg_rating on the Game row."""
+    """Insert or update a rating, then recompute avg_rating on the Game row."""
     db = get_db()
     db.execute(
-        "insert or replace into GameRating (user_id, game_id, rating, comment) values (?, ?, ?, ?)",
+        "INSERT INTO GameRating (user_id, game_id, rating, comment) VALUES (%s, %s, %s, %s)"
+        " ON CONFLICT (user_id, game_id) DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment",
         (user_id, game_id, rating, comment),
     )
     db.execute(
-        "update Game set avg_rating = (select avg(rating) from GameRating where game_id = ?) where id = ?",
+        "UPDATE Game SET avg_rating = (SELECT AVG(rating) FROM GameRating WHERE game_id = %s) WHERE id = %s",
         (game_id, game_id),
     )
     db.commit()
@@ -463,7 +492,7 @@ def get_user_rating(user_id, game_id):
     return (
         get_db()
         .execute(
-            "select * from GameRating where user_id = ? and game_id = ?",
+            "SELECT * FROM GameRating WHERE user_id = %s AND game_id = %s",
             (user_id, game_id),
         )
         .fetchone()
@@ -476,11 +505,11 @@ def get_game_ratings(game_id):
         get_db()
         .execute(
             """
-            select GameRating.*, User.username
-            from GameRating
-            join User on (GameRating.user_id = User.id)
-            where GameRating.game_id = ?
-            order by User.username
+            SELECT GameRating.*, "User".username
+            FROM GameRating
+            JOIN "User" ON (GameRating.user_id = "User".id)
+            WHERE GameRating.game_id = %s
+            ORDER BY "User".username
             """,
             (game_id,),
         )

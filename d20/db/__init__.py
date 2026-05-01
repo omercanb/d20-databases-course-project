@@ -1,23 +1,38 @@
-import sqlite3
-from datetime import datetime
+import psycopg2
+import psycopg2.extras
 
 import click
 from flask import current_app, g
 
 
+class DBConnection:
+    """Small adapter so existing app code can keep calling db.execute(...)."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql, params=None):
+        cur = self._conn.cursor()
+        cur.execute(sql, params)
+        return cur
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(
-            current_app.config["DATABASE"], detect_types=sqlite3.PARSE_DECLTYPES
+        conn = psycopg2.connect(
+            current_app.config["DATABASE_URL"],
+            cursor_factory=psycopg2.extras.RealDictCursor,
         )
-        g.db.row_factory = sqlite3.Row
-
+        conn.autocommit = False
+        g.db = DBConnection(conn)
     return g.db
 
 
 def close_db(e=None):
     db = g.pop("db", None)
-
     if db is not None:
         db.close()
 
@@ -25,7 +40,10 @@ def close_db(e=None):
 def init_db():
     db = get_db()
     with current_app.open_resource("schema.sql") as f:
-        db.executescript(f.read().decode("utf8"))
+        sql = f.read().decode("utf8")
+    with db.cursor() as cur:
+        cur.execute(sql)
+    db.commit()
 
 
 @click.command("init-db")
@@ -33,9 +51,6 @@ def init_db_command():
     """Clear the existing data and create new tables."""
     init_db()
     click.echo("Initialized the database.")
-
-
-sqlite3.register_converter("timestamp", lambda v: datetime.fromisoformat(v.decode()))
 
 
 def init_app(app):

@@ -9,10 +9,9 @@ def test_register(client, app):
     response = client.post("/auth/register", data={"username": "a", "password": "a"})
     assert response.headers["Location"] == "/auth/login"
     with app.app_context():
-        assert (
-            get_db().execute("select * from user where username = 'a'").fetchone()
-            is not None
-        )
+        with get_db().cursor() as cur:
+            cur.execute('SELECT * FROM "User" WHERE username = %s', ("a",))
+            assert cur.fetchone() is not None
 
 
 @pytest.mark.parametrize(
@@ -59,3 +58,53 @@ def test_logout(client, auth):
     with client:
         auth.logout()
         assert "user_id" not in session
+
+
+def test_cancel_session_with_game_copies(client, auth, app):
+    auth.login()
+
+    with app.app_context():
+        db = get_db()
+        db.execute(
+            "INSERT INTO Store (username, password, name) VALUES (%s, %s, %s)",
+            ("cancel_store_u", "x", "Cancel Store"),
+        )
+        store_id = db.execute(
+            "SELECT id FROM Store WHERE username = %s", ("cancel_store_u",)
+        ).fetchone()["id"]
+
+        db.execute(
+            'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, %s, %s)',
+            (store_id, 1, 4),
+        )
+        db.execute(
+            "INSERT INTO GameCopy (game_id, store_id, copy_num) VALUES (%s, %s, %s)",
+            (1, store_id, 1),
+        )
+        cursor = db.execute(
+            "INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)"
+            " VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (1, store_id, 1, "2099-01-01", 10, 12),
+        )
+        session_id = cursor.fetchone()["id"]
+        db.execute(
+            "INSERT INTO SessionGameCopy (session_id, game_id, store_id, copy_num)"
+            " VALUES (%s, %s, %s, %s)",
+            (session_id, 1, store_id, 1),
+        )
+        db.commit()
+
+    response = client.post(f"/auth/session/{session_id}/cancel")
+    assert response.status_code == 302
+
+    with app.app_context():
+        db = get_db()
+        session_row = db.execute(
+            "SELECT id FROM Session WHERE id = %s", (session_id,)
+        ).fetchone()
+        link_row = db.execute(
+            "SELECT session_id FROM SessionGameCopy WHERE session_id = %s", (session_id,)
+        ).fetchone()
+
+    assert session_row is None
+    assert link_row is None

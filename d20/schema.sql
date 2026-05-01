@@ -1,284 +1,235 @@
-drop table if exists User;
-drop table if exists Owner;
-drop table if exists Customer;
-drop table if exists Store;
-drop table if exists 'Table';
-drop table if exists GameRating;
-drop table if exists GameSimilarity;
-drop table if exists Game;
-drop table if exists GameCopy;
-drop table if exists Session;
-drop table if exists SessionGameCopy;
-drop table if exists GameDamage;
-drop table if exists MarketPariticipant;
-drop table if exists MarketParticipantInventory;
-drop table if exists Orders;
-drop table if exists MarketHistory;
-drop table if exists TradingScript;
-drop table if exists DynamicGamePrice;
-drop trigger if exists update_dynamic_price_after_session;
-drop trigger if exists set_game_copy_availability_after_insert;
-drop trigger if exists set_game_copy_availability_after_condition_update;
+DROP TABLE IF EXISTS GameDamage CASCADE;
+DROP TABLE IF EXISTS SessionGameCopy CASCADE;
+DROP TABLE IF EXISTS DynamicGamePrice CASCADE;
+DROP TABLE IF EXISTS Session CASCADE;
+DROP TABLE IF EXISTS GameRating CASCADE;
+DROP TABLE IF EXISTS GameCopy CASCADE;
+DROP TABLE IF EXISTS GameSimilarity CASCADE;
+DROP TABLE IF EXISTS Game CASCADE;
+DROP TABLE IF EXISTS "Table" CASCADE;
+DROP TABLE IF EXISTS TradingScript CASCADE;
+DROP TABLE IF EXISTS MarketHistory CASCADE;
+DROP TABLE IF EXISTS Orders CASCADE;
+DROP TABLE IF EXISTS MarketParticipantInventory CASCADE;
+DROP TABLE IF EXISTS MarketPariticipant CASCADE;
+DROP TABLE IF EXISTS Store CASCADE;
+DROP TABLE IF EXISTS "User" CASCADE;
 
--- CREATE TABLE post (
---   id INTEGER PRIMARY KEY AUTOINCREMENT,
---   author_id INTEGER NOT NULL,
---   created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
---   title TEXT NOT NULL,
---   body TEXT NOT NULL,
---   FOREIGN KEY (author_id) REFERENCES user (id)
--- );
---
+DROP FUNCTION IF EXISTS fn_set_game_copy_availability() CASCADE;
+DROP FUNCTION IF EXISTS fn_update_dynamic_price_after_session() CASCADE;
 
-create table User (
-    id       integer primary key autoincrement,
-    username      text not null unique,
-    -- password is the password hash actually
-    password text not null
-    -- created_at    timestamp default current_timestamp
+CREATE TABLE "User" (
+    id       SERIAL PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL
 );
 
-create table Store (
-    id            integer primary key autoincrement,
-    username      text not null unique,
-    password text not null,
-    name text not null unique
-    -- address       text,
-    -- phone_number  text,
-    -- opening_hour  text,
-    -- closing_hour  text,
-    -- location      text
+CREATE TABLE Store (
+    id       SERIAL PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    name     TEXT NOT NULL UNIQUE
 );
 
-create table 'Table' (
-    store_id integer not null,
-    table_num integer not null,
-    capacity integer,
-    foreign key (store_id) references Store(id),
-    primary key (store_id, table_num)
+CREATE TABLE "Table" (
+    store_id  INTEGER NOT NULL,
+    table_num INTEGER NOT NULL,
+    capacity  INTEGER,
+    FOREIGN KEY (store_id) REFERENCES Store(id),
+    PRIMARY KEY (store_id, table_num)
 );
 
-create table Game (
-    id integer primary key autoincrement,
-    name text not null unique,
-    publisher text,
-    symbol text not null unique,
-    genre text,
-    min_players integer,
-    max_players integer,
-    avg_duration integer,
-    complexity_rating integer,
-    strategy_rating integer,
-    luck_rating integer,
-    interaction_rating integer,
-    description text,
-    avg_rating real default 0,
-    base_price decimal(10, 2) default 10.00
+CREATE TABLE Game (
+    id                  SERIAL PRIMARY KEY,
+    name                TEXT NOT NULL UNIQUE,
+    publisher           TEXT,
+    symbol              TEXT NOT NULL UNIQUE,
+    genre               TEXT,
+    min_players         INTEGER,
+    max_players         INTEGER,
+    avg_duration        INTEGER,
+    complexity_rating   INTEGER,
+    strategy_rating     INTEGER,
+    luck_rating         INTEGER,
+    interaction_rating  INTEGER,
+    description         TEXT,
+    avg_rating          DOUBLE PRECISION DEFAULT 0,
+    base_price          NUMERIC(10, 2) DEFAULT 10.00
 );
 
-create table GameSimilarity (
-    id1 integer not null,
-    id2 integer not null,
-    score real not null,
-    foreign key (id1) references Game(id),
-    foreign key (id2) references Game(id),
-    primary key (id1, id2)
+CREATE TABLE GameSimilarity (
+    id1   INTEGER NOT NULL,
+    id2   INTEGER NOT NULL,
+    score DOUBLE PRECISION NOT NULL,
+    FOREIGN KEY (id1) REFERENCES Game(id),
+    FOREIGN KEY (id2) REFERENCES Game(id),
+    PRIMARY KEY (id1, id2)
 );
 
-create table GameCopy (
-    game_id integer not null,
-    store_id integer not null,
-    copy_num integer not null,
-    condition text not null default 'good' check(condition in ('good', 'minor_wear', 'damaged', 'missing_pieces')),
-    is_available integer not null default 1 check(is_available in (0, 1)),
-    foreign key (game_id) references Game(id),
-    foreign key (store_id) references Store(id),
-    primary key (game_id, store_id, copy_num)
+CREATE TABLE GameCopy (
+    game_id      INTEGER NOT NULL,
+    store_id     INTEGER NOT NULL,
+    copy_num     INTEGER NOT NULL,
+    condition    TEXT NOT NULL DEFAULT 'good'
+                 CHECK (condition IN ('good', 'minor_wear', 'damaged', 'missing_pieces')),
+    is_available BOOLEAN NOT NULL DEFAULT TRUE,
+    FOREIGN KEY (game_id)  REFERENCES Game(id),
+    FOREIGN KEY (store_id) REFERENCES Store(id),
+    PRIMARY KEY (game_id, store_id, copy_num)
 );
 
-create trigger set_game_copy_availability_after_insert
-after insert on GameCopy
-begin
-    update GameCopy
-    set is_available = case
-        when NEW.condition in ('damaged', 'missing_pieces') then 0
-        else 1
-    end
-    where game_id = NEW.game_id
-    and store_id = NEW.store_id
-    and copy_num = NEW.copy_num;
-end;
+CREATE OR REPLACE FUNCTION fn_set_game_copy_availability()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE GameCopy
+    SET is_available = CASE
+        WHEN NEW.condition IN ('damaged', 'missing_pieces') THEN FALSE
+        ELSE TRUE
+    END
+    WHERE game_id  = NEW.game_id
+      AND store_id = NEW.store_id
+      AND copy_num = NEW.copy_num;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-create trigger set_game_copy_availability_after_condition_update
-after update of condition on GameCopy
-begin
-    update GameCopy
-    set is_available = case
-        when NEW.condition in ('damaged', 'missing_pieces') then 0
-        else 1
-    end
-    where game_id = NEW.game_id
-    and store_id = NEW.store_id
-    and copy_num = NEW.copy_num;
-end;
+CREATE TRIGGER set_game_copy_availability_after_insert
+AFTER INSERT ON GameCopy
+FOR EACH ROW EXECUTE FUNCTION fn_set_game_copy_availability();
 
-create table GameRating (
-    user_id integer not null,
-    game_id integer not null,
-    rating integer not null check(rating between 1 and 5),
-    comment text,
-    primary key (user_id, game_id),
-    foreign key (user_id) references User(id),
-    foreign key (game_id) references Game(id)
+CREATE TRIGGER set_game_copy_availability_after_condition_update
+AFTER UPDATE OF condition ON GameCopy
+FOR EACH ROW EXECUTE FUNCTION fn_set_game_copy_availability();
+
+CREATE TABLE GameRating (
+    user_id INTEGER NOT NULL,
+    game_id INTEGER NOT NULL,
+    rating  INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    comment TEXT,
+    PRIMARY KEY (user_id, game_id),
+    FOREIGN KEY (user_id) REFERENCES "User"(id),
+    FOREIGN KEY (game_id) REFERENCES Game(id)
 );
 
-create table Session (
-    id integer primary key autoincrement,
-    user_id integer not null,
-    store_id integer not null,
-    table_num integer not null,
-    day text not null,
-    start_time integer not null,
-    end_time integer not null,
-    foreign key (store_id, table_num) references 'Table'(store_id, table_num),
-    foreign key (user_id) references User(id)
+CREATE TABLE Session (
+    id         SERIAL PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    store_id   INTEGER NOT NULL,
+    table_num  INTEGER NOT NULL,
+    day        TEXT NOT NULL,
+    start_time INTEGER NOT NULL,
+    end_time   INTEGER NOT NULL,
+    FOREIGN KEY (store_id, table_num) REFERENCES "Table"(store_id, table_num),
+    FOREIGN KEY (user_id) REFERENCES "User"(id)
 );
 
-create table SessionGameCopy (
-    session_id integer not null,
-    game_id integer not null,
-    store_id integer not null,
-    copy_num integer not null,
-    foreign key (session_id) references Session(id),
-    foreign key (game_id, store_id, copy_num) references GameCopy(game_id, store_id, copy_num),
-    primary key (session_id, game_id, store_id, copy_num)
+CREATE TABLE SessionGameCopy (
+    session_id INTEGER NOT NULL,
+    game_id    INTEGER NOT NULL,
+    store_id   INTEGER NOT NULL,
+    copy_num   INTEGER NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES Session(id),
+    FOREIGN KEY (game_id, store_id, copy_num) REFERENCES GameCopy(game_id, store_id, copy_num),
+    PRIMARY KEY (session_id, game_id, store_id, copy_num)
 );
 
-create table DynamicGamePrice (
-    game_id integer not null,
-    time timestamp default current_timestamp,
-    price decimal(10, 2) not null,
-    foreign key (game_id) references Game(id)
+CREATE TABLE DynamicGamePrice (
+    game_id INTEGER NOT NULL,
+    time    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    price   NUMERIC(10, 2) NOT NULL,
+    FOREIGN KEY (game_id) REFERENCES Game(id)
 );
 
-create trigger update_dynamic_price_after_session
-after insert on SessionGameCopy
-begin
-    insert into DynamicGamePrice (game_id, price)
-    select 
+CREATE OR REPLACE FUNCTION fn_update_dynamic_price_after_session()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO DynamicGamePrice (game_id, price)
+    SELECT
         NEW.game_id,
-        (select base_price from Game where id = NEW.game_id) * 
-        -- Popularity - 5% price increase per total plays
+        (SELECT base_price FROM Game WHERE id = NEW.game_id) *
         (1.0 + (
-            select count(*) from SessionGameCopy 
-            where game_id = NEW.game_id
+            SELECT COUNT(*) FROM SessionGameCopy WHERE game_id = NEW.game_id
         ) * 0.05) *
-        -- Scarcity - less copies = higher price
         (1.0 + (
-            1.0 / MAX(1, (select count(*) from GameCopy where game_id = NEW.game_id))
+            1.0 / GREATEST(1, (SELECT COUNT(*) FROM GameCopy WHERE game_id = NEW.game_id))
         ) * 0.5) *
-        -- Quality - average rating above 3 higher price and below 3 lower price
         (1.0 + (
-            COALESCE((select avg(rating) from GameRating where game_id = NEW.game_id), 3.0) - 3.0
+            COALESCE((SELECT AVG(rating) FROM GameRating WHERE game_id = NEW.game_id), 3.0) - 3.0
         ) * 0.1);
-end;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-create table GameDamage (
-    session_id integer not null,
-    game_id integer not null,
-    store_id integer not null,
-    copy_num integer not null,
-    description text,
-    foreign key (session_id) references Session(id),
-    foreign key (game_id, store_id, copy_num) references GameCopy(game_id, store_id, copy_num),
-    primary key (session_id, game_id, store_id, copy_num)
+CREATE TRIGGER update_dynamic_price_after_session
+AFTER INSERT ON SessionGameCopy
+FOR EACH ROW EXECUTE FUNCTION fn_update_dynamic_price_after_session();
+
+CREATE TABLE GameDamage (
+    session_id  INTEGER NOT NULL,
+    game_id     INTEGER NOT NULL,
+    store_id    INTEGER NOT NULL,
+    copy_num    INTEGER NOT NULL,
+    description TEXT,
+    FOREIGN KEY (session_id) REFERENCES Session(id),
+    FOREIGN KEY (game_id, store_id, copy_num) REFERENCES GameCopy(game_id, store_id, copy_num),
+    PRIMARY KEY (session_id, game_id, store_id, copy_num)
 );
 
--- create table tier (
---     tier_id   integer primary key autoincrement,
---     tier_name text not null
--- );
-
--- Dynamic Price and Market Related Tables
--- The table for a 'user' in terms of the market portion of this program
--- Reserved cash is the cash the user has set aside in buy orders, so it could happen at any moment and be removed from the account
-create table MarketPariticipant (
-    id integer primary key autoincrement,
-    -- Either customer id or store id is set
-    customer_id integer,
-    store_id integer,
-    availiable_cash decimal(10, 2),
-    reserved_cash decimal(10, 2),
-    -- The below is like an xor operator checking that either customer id or store id is set
-    check((customer_id is not null and store_id is null) or (customer_id is null and store_id is not null))
+CREATE TABLE MarketPariticipant (
+    id              SERIAL PRIMARY KEY,
+    customer_id     INTEGER,
+    store_id        INTEGER,
+    availiable_cash NUMERIC(10, 2),
+    reserved_cash   NUMERIC(10, 2),
+    CHECK ((customer_id IS NOT NULL AND store_id IS NULL) OR (customer_id IS NULL AND store_id IS NOT NULL))
 );
 
--- A many to many relation about the games that a market participant owns and has set aside to be used in the market
--- Logically this should be kept separate from the game copies table as that is a store specific thing, and it wouldn't make sense for 
--- stores to directly trade out of their own inventory if they hadn't set it aside.
--- This table also includes the inventory that is reserved: this means the user put out an order to sell this item, so it could be bought at any time
--- Unlike the game copy table, multiple game copies are stored in a single row, because we assume that different copies of the same game are identical
-create table MarketParticipantInventory (
-    participant_id integer not null,
-    game_id integer not null,
-    available_quantity integer not null,
-    reserved_quantity integer not null,
-    foreign key (participant_id) references MarketParticipant(id),
-    foreign key (game_id) references Game(id),
-    primary key (participant_id, game_id)
+CREATE TABLE MarketParticipantInventory (
+    participant_id     INTEGER NOT NULL,
+    game_id            INTEGER NOT NULL,
+    available_quantity INTEGER NOT NULL,
+    reserved_quantity  INTEGER NOT NULL,
+    FOREIGN KEY (participant_id) REFERENCES MarketPariticipant(id),
+    FOREIGN KEY (game_id) REFERENCES Game(id),
+    PRIMARY KEY (participant_id, game_id)
 );
 
--- The order book
--- Contains trades that are waiting to happen
--- These consist of limit order (either buy or sell orders that are waiting to happen at a specified price)
--- A fill of an order means that a trade happened in the requested price range
--- A BUY order means the trade is waiting for a SELL order with an equal or lower price (Eq. BUY @ 10; SELL @ 5 is a match, SELL @ 12 is not)
--- The same is true for a SELL order in the opposite direction
--- Additionally a trade that happened is called a fill, and fills can be partial, so a trade could be SELL 5 CATAN @ 10 and only 2 could have been bought
-create table Orders (
-    id integer primary key,
-    participant_id integer not null,
-    game_id integer not null,
-    game_symbol text not null,
-    order_type text check (order_type in ('LIMIT', 'MARKET')) not null,
-    side text check (side in ('BUY', 'SELL')) not null,
-    -- The constraint on price is because market orders should have no price (they execute at a specific price and that is in the history)
-    -- And the price for a limit order can't be negative 
-    price decimal(10, 2) check((order_type = 'LIMIT' and price > 0) or (order_type = 'MARKET' and price is null)),
-    initial_quantity integer not null,
-    filled_quantity integer not null,
-    status text check (status in ('OPEN', 'PARTIAL', 'COMPLETED', 'CANCELLED')),
-    created_at text not null, 
-    script_id integer default null,
-    foreign key (script_id) references TradingScript(id)
-);
- -- TODO create index on status for faster queries for open and partial
-
--- The history table
--- This needs to have every filled out trade
--- One buying and one selling trade is needed as we match them
--- The execution price is specified to determine which of the two prices the trade happened at
--- The quantity is also needed and an executed at
-create table MarketHistory (
-    buy_order_id integer not null,
-    sell_order_id integer not null,
-    buyer_id integer not null,
-    seller_id integer not null,
-    game_symbol text not null,
-    execution_price decimal(10, 2) not null,
-    quantity integer not null,
-    executed_at text not null,
-    primary key (buy_order_id, sell_order_id),
-    foreign key (buy_order_id) references Orders(id),
-    foreign key (sell_order_id) references Orders(id),
-    foreign key (buyer_id) references MarketPariticipant(id),
-    foreign key (seller_id) references MarketPariticipant(id)
+CREATE TABLE TradingScript (
+    id       SERIAL PRIMARY KEY,
+    name     TEXT NOT NULL,
+    code     TEXT NOT NULL,
+    owner_id INTEGER NOT NULL,
+    FOREIGN KEY (owner_id) REFERENCES MarketPariticipant(id)
 );
 
-create table TradingScript(
-    id integer primary key,
-    name text not null,
-    code text not null,
-    owner_id integer not null,
-    foreign key (owner_id) references MarketPariticipant(id)
+CREATE TABLE Orders (
+    id               SERIAL PRIMARY KEY,
+    participant_id   INTEGER NOT NULL,
+    game_id          INTEGER NOT NULL,
+    game_symbol      TEXT NOT NULL,
+    order_type       TEXT NOT NULL CHECK (order_type IN ('LIMIT', 'MARKET')),
+    side             TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
+    price            NUMERIC(10, 2) CHECK ((order_type = 'LIMIT' AND price > 0) OR (order_type = 'MARKET' AND price IS NULL)),
+    initial_quantity INTEGER NOT NULL,
+    filled_quantity  INTEGER NOT NULL,
+    status           TEXT CHECK (status IN ('OPEN', 'PARTIAL', 'COMPLETED', 'CANCELLED')),
+    created_at       TEXT NOT NULL,
+    script_id        INTEGER DEFAULT NULL,
+    FOREIGN KEY (script_id) REFERENCES TradingScript(id)
+);
+
+CREATE TABLE MarketHistory (
+    buy_order_id    INTEGER NOT NULL,
+    sell_order_id   INTEGER NOT NULL,
+    buyer_id        INTEGER NOT NULL,
+    seller_id       INTEGER NOT NULL,
+    game_symbol     TEXT NOT NULL,
+    execution_price NUMERIC(10, 2) NOT NULL,
+    quantity        INTEGER NOT NULL,
+    executed_at     TEXT NOT NULL,
+    PRIMARY KEY (buy_order_id, sell_order_id),
+    FOREIGN KEY (buy_order_id)  REFERENCES Orders(id),
+    FOREIGN KEY (sell_order_id) REFERENCES Orders(id),
+    FOREIGN KEY (buyer_id)      REFERENCES MarketPariticipant(id),
+    FOREIGN KEY (seller_id)     REFERENCES MarketPariticipant(id)
 );
