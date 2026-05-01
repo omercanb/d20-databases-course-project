@@ -13,6 +13,7 @@ from d20.db.game import (
     get_user_rating,
     rate_game,
 )
+from d20.db.session import create_session
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +159,15 @@ class TestGetGamesFiltered:
         names = [g["name"] for g in games]
         assert "Chess" in names
         assert "Catan" in names
+
+    def test_available_only_filter_excludes_unusable_copies(self, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db)
+            game_id = _insert_game(db, name="Broken Game", symbol="BG")
+            _insert_game_copy(db, game_id, store_id, condition="damaged")
+            games = get_games_filtered(store_id, available_only=True)
+        assert games == []
 
     def test_combined_filters(self, app):
         store_id, game1_id, game2_id = self._setup(app)
@@ -608,6 +618,104 @@ class TestAvailableGamesDuringColumns:
             games = get_available_games_during(store_id, "2099-01-01", 9, 20)
         assert games[0]["total_copies"] == 1
         assert games[0]["available_copies"] == 1
+
+    def test_damaged_copy_is_not_available_during(self, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name="DamagedStore", username="damagedstore")
+            game_id = _insert_game(db, name="Damaged Game", symbol="DG")
+            _insert_game_copy(db, game_id, store_id, condition="damaged")
+            available = get_available_games_during(store_id, "2099-01-01", 9, 20)
+            unavailable = get_unavailable_games_during(store_id, "2099-01-01", 9, 20)
+        assert available == []
+        assert unavailable[0]["name"] == "Damaged Game"
+
+
+class TestCreateSessionAvailability:
+    def test_occupied_table_raises_error(self, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name="OccupiedStore", username="occupiedstore")
+            game_id = _insert_game(db, name="Table Check Game", symbol="TCG")
+            _insert_game_copy(db, game_id, store_id)
+            db.execute(
+                "insert into 'Table' (store_id, table_num, capacity) values (?, 1, 4)",
+                (store_id,),
+            )
+            db.execute(
+                """
+                insert into Session (user_id, store_id, table_num, day, start_time, end_time)
+                values (1, ?, 1, '2099-01-01', 9, 20)
+                """,
+                (store_id,),
+            )
+            db.commit()
+
+            with pytest.raises(
+                ValueError,
+                match="The table you selected is occupied at the selected time slot.",
+            ):
+                create_session(1, store_id, 1, "2099-01-01", 10, 12, [game_id])
+
+    def test_no_available_game_copy_raises_error(self, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name="NoCopyStore", username="nocopystore")
+            game_id = _insert_game(db, name="No Copy Game", symbol="NCG")
+            _insert_game_copy(db, game_id, store_id, condition="missing_pieces")
+            db.execute(
+                "insert into 'Table' (store_id, table_num, capacity) values (?, 1, 4)",
+                (store_id,),
+            )
+            db.commit()
+
+            with pytest.raises(
+                ValueError,
+                match="The game you selected has no available copies at the selected time slot.",
+            ):
+                create_session(1, store_id, 1, "2099-01-01", 10, 12, [game_id])
+
+    def test_uses_available_copy_not_first_copy(self, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name="BookingStore", username="bookingstore")
+            game_id = _insert_game(db, name="Reservable", symbol="RV")
+            _insert_game_copy(db, game_id, store_id, copy_num=1)
+            _insert_game_copy(db, game_id, store_id, copy_num=2)
+            db.execute(
+                "insert into 'Table' (store_id, table_num, capacity) values (?, 1, 4)",
+                (store_id,),
+            )
+            db.execute(
+                "insert into 'Table' (store_id, table_num, capacity) values (?, 2, 4)",
+                (store_id,),
+            )
+            db.execute(
+                """
+                insert into Session (user_id, store_id, table_num, day, start_time, end_time)
+                values (1, ?, 1, '2099-01-01', 9, 20)
+                """,
+                (store_id,),
+            )
+            session_id = db.execute("select last_insert_rowid()").fetchone()[0]
+            db.execute(
+                """
+                insert into SessionGameCopy (session_id, game_id, store_id, copy_num)
+                values (?, ?, ?, 1)
+                """,
+                (session_id, game_id, store_id),
+            )
+            db.commit()
+
+            new_session_id = create_session(
+                1, store_id, 2, "2099-01-01", 10, 12, [game_id]
+            )
+            copy = db.execute(
+                "select copy_num from SessionGameCopy where session_id = ?",
+                (new_session_id,),
+            ).fetchone()
+
+        assert copy["copy_num"] == 2
 
 
 # ---------------------------------------------------------------------------

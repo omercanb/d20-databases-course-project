@@ -16,6 +16,8 @@ drop table if exists MarketHistory;
 drop table if exists TradingScript;
 drop table if exists DynamicGamePrice;
 drop trigger if exists update_dynamic_price_after_session;
+drop trigger if exists set_game_copy_availability_after_insert;
+drop trigger if exists set_game_copy_availability_after_condition_update;
 
 -- CREATE TABLE post (
 --   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,10 +80,37 @@ create table GameCopy (
     store_id integer not null,
     copy_num integer not null,
     condition text not null default 'good' check(condition in ('good', 'minor_wear', 'damaged', 'missing_pieces')),
+    is_available integer not null default 1 check(is_available in (0, 1)),
     foreign key (game_id) references Game(id),
     foreign key (store_id) references Store(id),
     primary key (game_id, store_id, copy_num)
 );
+
+create trigger set_game_copy_availability_after_insert
+after insert on GameCopy
+begin
+    update GameCopy
+    set is_available = case
+        when NEW.condition in ('damaged', 'missing_pieces') then 0
+        else 1
+    end
+    where game_id = NEW.game_id
+    and store_id = NEW.store_id
+    and copy_num = NEW.copy_num;
+end;
+
+create trigger set_game_copy_availability_after_condition_update
+after update of condition on GameCopy
+begin
+    update GameCopy
+    set is_available = case
+        when NEW.condition in ('damaged', 'missing_pieces') then 0
+        else 1
+    end
+    where game_id = NEW.game_id
+    and store_id = NEW.store_id
+    and copy_num = NEW.copy_num;
+end;
 
 create table GameRating (
     user_id integer not null,

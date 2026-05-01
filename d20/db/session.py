@@ -15,6 +15,53 @@ def create_session(
     user_id, store_id, table_num, day, start_time, end_time, game_ids=None
 ):
     db = get_db()
+    occupied_table = db.execute(
+        """
+        select 1 from Session
+        where store_id = ?
+        and table_num = ?
+        and day = ?
+        and start_time < ?
+        and end_time > ?
+        limit 1
+        """,
+        (store_id, table_num, day, end_time, start_time),
+    ).fetchone()
+    if occupied_table:
+        raise ValueError("The table you selected is occupied at the selected time slot.")
+
+    game_copies = []
+    if game_ids:
+        for game_id in game_ids:
+            copy = db.execute(
+                """
+                select copy_num from GameCopy
+                where game_id = ?
+                and store_id = ?
+                and is_available = 1
+                and not exists (
+                    select 1
+                    from SessionGameCopy
+                    join Session on (SessionGameCopy.session_id = Session.id)
+                    where SessionGameCopy.game_id = GameCopy.game_id
+                    and SessionGameCopy.store_id = GameCopy.store_id
+                    and SessionGameCopy.copy_num = GameCopy.copy_num
+                    and Session.day = ?
+                    and Session.start_time < ?
+                    and Session.end_time > ?
+                )
+                order by copy_num
+                limit 1
+                """,
+                (game_id, store_id, day, end_time, start_time),
+            ).fetchone()
+
+            if not copy:
+                raise ValueError(
+                    "The game you selected has no available copies at the selected time slot."
+                )
+            game_copies.append((game_id, copy["copy_num"]))
+
     cursor = db.execute(
         "insert into Session (user_id, store_id, table_num, day, start_time, end_time)"
         " values (?, ?, ?, ?, ?, ?)",
@@ -22,20 +69,12 @@ def create_session(
     )
     session_id = cursor.lastrowid
 
-    if game_ids:
-        for game_id in game_ids:
-            # Get the first available copy of this game at this store
-            copy = db.execute(
-                "select copy_num from GameCopy where game_id = ? and store_id = ? limit 1",
-                (game_id, store_id),
-            ).fetchone()
-
-            if copy:
-                db.execute(
-                    "insert into SessionGameCopy (session_id, game_id, store_id, copy_num)"
-                    " values (?, ?, ?, ?)",
-                    (session_id, game_id, store_id, copy["copy_num"]),
-                )
+    for game_id, copy_num in game_copies:
+        db.execute(
+            "insert into SessionGameCopy (session_id, game_id, store_id, copy_num)"
+            " values (?, ?, ?, ?)",
+            (session_id, game_id, store_id, copy_num),
+        )
 
     db.commit()
     return session_id

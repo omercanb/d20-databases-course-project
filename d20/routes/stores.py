@@ -381,6 +381,18 @@ def confirm_booking(store_id, table_num):
             f"Session booked! Table {table_num} from {start_time}:00 to {end_time}:00"
         )
         return redirect(url_for("index"))
+    except ValueError as e:
+        flash(str(e))
+        return redirect(
+            url_for(
+                "stores.select_games",
+                store_id=store_id,
+                table_num=table_num,
+                day=day,
+                start_time=start_time,
+                end_time=end_time,
+            )
+        )
     except Exception as e:
         flash(f"Error booking session: {str(e)}")
         return redirect(

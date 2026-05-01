@@ -115,19 +115,23 @@ def get_available_games_during(store_id, day, start_time, end_time):
             """
             select Game.*,
                    count(GameCopy.copy_num) as total_copies,
-                   (count(GameCopy.copy_num) - coalesce(sum(
-                       case when SessionGameCopy.session_id is not null
-                            and Session.day = ?
-                            and Session.start_time < ?
-                            and Session.end_time > ?
+                   coalesce(sum(
+                       case when GameCopy.is_available = 1
+                            and not exists (
+                                select 1
+                                from SessionGameCopy
+                                join Session on (SessionGameCopy.session_id = Session.id)
+                                where SessionGameCopy.game_id = GameCopy.game_id
+                                and SessionGameCopy.store_id = GameCopy.store_id
+                                and SessionGameCopy.copy_num = GameCopy.copy_num
+                                and Session.day = ?
+                                and Session.start_time < ?
+                                and Session.end_time > ?
+                            )
                        then 1 else 0 end
-                   ), 0)) as available_copies
+                   ), 0) as available_copies
             from Game
             join GameCopy on (Game.id = GameCopy.game_id and GameCopy.store_id = ?)
-            left join SessionGameCopy on (GameCopy.game_id = SessionGameCopy.game_id
-                                         and GameCopy.store_id = SessionGameCopy.store_id
-                                         and GameCopy.copy_num = SessionGameCopy.copy_num)
-            left join Session on (SessionGameCopy.session_id = Session.id)
             group by Game.id
             having available_copies > 0
             order by Game.name
@@ -146,19 +150,23 @@ def get_unavailable_games_during(store_id, day, start_time, end_time):
             """
             select Game.*,
                    count(GameCopy.copy_num) as total_copies,
-                   (count(GameCopy.copy_num) - coalesce(sum(
-                       case when SessionGameCopy.session_id is not null
-                            and Session.day = ?
-                            and Session.start_time < ?
-                            and Session.end_time > ?
+                   coalesce(sum(
+                       case when GameCopy.is_available = 1
+                            and not exists (
+                                select 1
+                                from SessionGameCopy
+                                join Session on (SessionGameCopy.session_id = Session.id)
+                                where SessionGameCopy.game_id = GameCopy.game_id
+                                and SessionGameCopy.store_id = GameCopy.store_id
+                                and SessionGameCopy.copy_num = GameCopy.copy_num
+                                and Session.day = ?
+                                and Session.start_time < ?
+                                and Session.end_time > ?
+                            )
                        then 1 else 0 end
-                   ), 0)) as available_copies
+                   ), 0) as available_copies
             from Game
             join GameCopy on (Game.id = GameCopy.game_id and GameCopy.store_id = ?)
-            left join SessionGameCopy on (GameCopy.game_id = SessionGameCopy.game_id
-                                         and GameCopy.store_id = SessionGameCopy.store_id
-                                         and GameCopy.copy_num = SessionGameCopy.copy_num)
-            left join Session on (SessionGameCopy.session_id = Session.id)
             group by Game.id
             having available_copies = 0
             order by Game.name
@@ -291,17 +299,9 @@ def get_games_filtered(store_id, genre=None, min_players=None, max_players=None,
             and Game.id in (
                 select GameCopy.game_id
                 from GameCopy
-                left join SessionGameCopy on (
-                    GameCopy.game_id = SessionGameCopy.game_id
-                    and GameCopy.store_id = SessionGameCopy.store_id
-                    and GameCopy.copy_num = SessionGameCopy.copy_num
-                )
-                left join Session on (SessionGameCopy.session_id = Session.id)
                 where GameCopy.store_id = ?
+                and GameCopy.is_available = 1
                 group by GameCopy.game_id
-                having count(GameCopy.copy_num) - coalesce(sum(
-                    case when SessionGameCopy.session_id is not null then 1 else 0 end
-                ), 0) > 0
             )
         """
         params.append(store_id)
