@@ -258,6 +258,16 @@ def select_games(store_id, table_num):
     day = request.args.get("day", str(date.today()))
     start_time = request.args.get("start_time", 9, type=int)
     end_time = request.args.get("end_time", 20, type=int)
+    search = request.args.get("search") or None
+    genre = request.args.get("genre") or None
+    min_players = request.args.get("min_players", type=int)
+    max_players = request.args.get("max_players", type=int)
+    max_avg_duration = request.args.get("max_avg_duration", type=int)
+    user_rating = request.args.get("user_rating", type=int)
+    complexity_rating = request.args.get("complexity_rating", type=int)
+    strategy_rating = request.args.get("strategy_rating", type=int)
+    luck_rating = request.args.get("luck_rating", type=int)
+    interaction_rating = request.args.get("interaction_rating", type=int)
 
     store = get_store_by_id(store_id)
     table = get_table(store_id, table_num)
@@ -265,6 +275,41 @@ def select_games(store_id, table_num):
     unavailable_games = get_unavailable_games_during(
         store_id, day, start_time, end_time
     )
+    genres = get_store_genres(store_id)
+
+    def matches_filters(game):
+        if search:
+            text = f"{game['name']} {game['description'] or ''}".lower()
+            if search.lower() not in text:
+                return False
+        if genre is not None and game["genre"] != genre:
+            return False
+        if min_players is not None and (
+            game["min_players"] is None or game["min_players"] < min_players
+        ):
+            return False
+        if max_players is not None and (
+            game["max_players"] is None or game["max_players"] > max_players
+        ):
+            return False
+        if max_avg_duration is not None and (
+            game["avg_duration"] is None or game["avg_duration"] > max_avg_duration
+        ):
+            return False
+        if user_rating is not None and game["avg_rating"] < user_rating:
+            return False
+        if complexity_rating is not None and game["complexity_rating"] != complexity_rating:
+            return False
+        if strategy_rating is not None and game["strategy_rating"] != strategy_rating:
+            return False
+        if luck_rating is not None and game["luck_rating"] != luck_rating:
+            return False
+        if interaction_rating is not None and game["interaction_rating"] != interaction_rating:
+            return False
+        return True
+
+    available_games = [game for game in available_games if matches_filters(game)]
+    unavailable_games = [game for game in unavailable_games if matches_filters(game)]
 
     return render_template(
         "stores/select_games.html",
@@ -272,9 +317,20 @@ def select_games(store_id, table_num):
         table=table,
         available_games=available_games,
         unavailable_games=unavailable_games,
+        genres=genres,
         day=day,
         start_time=start_time,
         end_time=end_time,
+        search=search,
+        selected_genre=genre,
+        min_players=min_players,
+        max_players=max_players,
+        max_avg_duration=max_avg_duration,
+        user_rating=user_rating,
+        complexity_rating=complexity_rating,
+        strategy_rating=strategy_rating,
+        luck_rating=luck_rating,
+        interaction_rating=interaction_rating,
     )
 
 
@@ -344,6 +400,7 @@ def game_library(store_id):
     genre = request.args.get("genre") or None
     min_players = request.args.get("min_players", type=int)
     max_players = request.args.get("max_players", type=int)
+    user_rating = request.args.get("user_rating", type=int)
     complexity_rating = request.args.get("complexity_rating", type=int)
     strategy_rating = request.args.get("strategy_rating", type=int)
     luck_rating = request.args.get("luck_rating", type=int)
@@ -372,6 +429,7 @@ def game_library(store_id):
         genre=genre,
         min_players=min_players,
         max_players=max_players,
+        user_rating=user_rating,
         complexity_rating=complexity_rating,
         strategy_rating=strategy_rating,
         luck_rating=luck_rating,
@@ -392,6 +450,7 @@ def game_library(store_id):
         selected_genre=genre,
         min_players=min_players,
         max_players=max_players,
+        user_rating=user_rating,
         complexity_rating=complexity_rating,
         strategy_rating=strategy_rating,
         luck_rating=luck_rating,

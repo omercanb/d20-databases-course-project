@@ -10,6 +10,85 @@
             <div class="col-md-8">
                 <h2>{{ store['name'] }}</h2>
                 <p class="text-muted">Booking Table {{ table['table_num'] }} from {{ start_time }}:00 to {{ end_time }}:00</p>
+                <form method="get" class="row g-2 mb-3 p-2 border rounded bg-light">
+                    <input type="hidden" name="day" value="{{ day }}" />
+                    <input type="hidden" name="start_time" value="{{ start_time }}" />
+                    <input type="hidden" name="end_time" value="{{ end_time }}" />
+                    <div class="col-6 col-md-3">
+                        <input type="text" name="search" class="form-control form-control-sm"
+                               placeholder="Search" value="{{ search or '' }}">
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <select name="genre" class="form-select form-select-sm">
+                            <option value="">Genre</option>
+                            {% for g_row in genres %}
+                                <option value="{{ g_row['genre'] }}"
+                                    {% if selected_genre == g_row['genre'] %}selected{% endif %}>
+                                    {{ g_row['genre'] }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-4 col-md-2">
+                        <input type="number" name="min_players" class="form-control form-control-sm"
+                               min="1" placeholder="Min Players"
+                               value="{{ min_players if min_players is not none else '' }}">
+                    </div>
+                    <div class="col-4 col-md-2">
+                        <input type="number" name="max_players" class="form-control form-control-sm"
+                               min="1" placeholder="Max Players"
+                               value="{{ max_players if max_players is not none else '' }}">
+                    </div>
+                    <div class="col-4 col-md-2">
+                        <input type="number" name="max_avg_duration" class="form-control form-control-sm"
+                               min="1" placeholder="Duration"
+                               value="{{ max_avg_duration if max_avg_duration is not none else '' }}">
+                    </div>
+                    <div class="col-12 border-top pt-2">
+                        <button class="btn btn-link btn-sm p-0 text-decoration-none"
+                                type="button"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#reservationAdvancedFilters"
+                                aria-expanded="false"
+                                aria-controls="reservationAdvancedFilters">
+                            Advanced Filters ▾
+                        </button>
+                    </div>
+                    <div class="collapse col-12" id="reservationAdvancedFilters">
+                        <div class="row g-2">
+                            <div class="col-3 col-md-2">
+                                <input type="number" name="user_rating" class="form-control form-control-sm"
+                                       min="0" max="5" step="1" placeholder="Rating"
+                                       value="{{ user_rating if user_rating is not none else '' }}">
+                            </div>
+                            <div class="col-3 col-md-2">
+                                <input type="number" name="complexity_rating" class="form-control form-control-sm"
+                                       min="0" max="5" step="1" placeholder="Complexity"
+                                       value="{{ complexity_rating if complexity_rating is not none else '' }}">
+                            </div>
+                            <div class="col-3 col-md-2">
+                                <input type="number" name="strategy_rating" class="form-control form-control-sm"
+                                       min="0" max="5" step="1" placeholder="Strategy"
+                                       value="{{ strategy_rating if strategy_rating is not none else '' }}">
+                            </div>
+                            <div class="col-3 col-md-2">
+                                <input type="number" name="luck_rating" class="form-control form-control-sm"
+                                       min="0" max="5" step="1" placeholder="Luck"
+                                       value="{{ luck_rating if luck_rating is not none else '' }}">
+                            </div>
+                            <div class="col-3 col-md-2">
+                                <input type="number" name="interaction_rating" class="form-control form-control-sm"
+                                       min="0" max="5" step="1" placeholder="Interaction"
+                                       value="{{ interaction_rating if interaction_rating is not none else '' }}">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+                        <a href="{{ url_for('stores.select_games', store_id=store['id'], table_num=table['table_num'], day=day, start_time=start_time, end_time=end_time) }}"
+                           class="btn btn-outline-secondary btn-sm ms-1">Clear</a>
+                    </div>
+                </form>
                 <form method="post"
                       action="{{ url_for('stores.confirm_booking', store_id=store['id'], table_num=table['table_num']) }}">
                     <input type="hidden" name="day" value="{{ day }}" />
@@ -32,11 +111,14 @@
                                                 <p class="card-text text-muted">
                                                     {{ game['available_copies'] }} of {{ game['total_copies'] }} available
                                                 </p>
-                                                {% if game['genre'] %}<small class="text-muted d-block">{{ game['genre'] }}</small>{% endif %}
+                                                {% if game['genre'] %}<span class="badge bg-secondary mb-2">{{ game['genre'] }}</span>{% endif %}
+                                                {% if game['min_players'] and game['max_players'] %}<small class="text-muted d-block">Players: {{ game['min_players'] }}–{{ game['max_players'] }}</small>{% endif %}
+                                                {% if game['avg_duration'] %}<small class="text-muted d-block">Duration: {{ game['avg_duration'] }} min</small>{% endif %}
+                                                {% if game['avg_rating'] %}<small class="text-muted d-block">Rating: {{ "%.1f"|format(game['avg_rating']) }}/5</small>{% else %}<small class="text-muted d-block">Rating: -</small>{% endif %}
                                                 {% if game['complexity_rating'] %}<small class="text-muted d-block">Complexity: {{ game['complexity_rating'] }}/5</small>{% endif %}
-                                                {% if game['min_players'] and game['max_players'] %}<small class="text-muted d-block">{{ game['min_players'] }}–{{ game['max_players'] }} players</small>{% endif %}
-                                                {% if game['avg_duration'] %}<small class="text-muted d-block">~{{ game['avg_duration'] }} min</small>{% endif %}
-                                                {% if game['avg_rating'] %}<small class="text-muted d-block">★ {{ "%.1f"|format(game['avg_rating']) }}/5</small>{% endif %}
+                                                {% if game['strategy_rating'] %}<small class="text-muted d-block">Strategy: {{ game['strategy_rating'] }}/5</small>{% endif %}
+                                                {% if game['luck_rating'] %}<small class="text-muted d-block">Luck: {{ game['luck_rating'] }}/5</small>{% endif %}
+                                                {% if game['interaction_rating'] %}<small class="text-muted d-block">Interaction: {{ game['interaction_rating'] }}/5</small>{% endif %}
                                             </span>
                                         </div>
                                     </div>
@@ -54,11 +136,14 @@
                                     <div class="card-body">
                                         <h5 class="card-title text-muted">{{ game['name'] }}</h5>
                                         <p class="card-text text-muted">All {{ game['total_copies'] }} copies booked</p>
-                                        {% if game['genre'] %}<small class="text-muted d-block">{{ game['genre'] }}</small>{% endif %}
+                                        {% if game['genre'] %}<span class="badge bg-secondary mb-2">{{ game['genre'] }}</span>{% endif %}
+                                        {% if game['min_players'] and game['max_players'] %}<small class="text-muted d-block">Players: {{ game['min_players'] }}–{{ game['max_players'] }}</small>{% endif %}
+                                        {% if game['avg_duration'] %}<small class="text-muted d-block">Duration: {{ game['avg_duration'] }} min</small>{% endif %}
+                                        {% if game['avg_rating'] %}<small class="text-muted d-block">Rating: {{ "%.1f"|format(game['avg_rating']) }}/5</small>{% else %}<small class="text-muted d-block">Rating: -</small>{% endif %}
                                         {% if game['complexity_rating'] %}<small class="text-muted d-block">Complexity: {{ game['complexity_rating'] }}/5</small>{% endif %}
-                                        {% if game['min_players'] and game['max_players'] %}<small class="text-muted d-block">{{ game['min_players'] }}–{{ game['max_players'] }} players</small>{% endif %}
-                                        {% if game['avg_duration'] %}<small class="text-muted d-block">~{{ game['avg_duration'] }} min</small>{% endif %}
-                                        {% if game['avg_rating'] %}<small class="text-muted d-block">★ {{ "%.1f"|format(game['avg_rating']) }}/5</small>{% endif %}
+                                        {% if game['strategy_rating'] %}<small class="text-muted d-block">Strategy: {{ game['strategy_rating'] }}/5</small>{% endif %}
+                                        {% if game['luck_rating'] %}<small class="text-muted d-block">Luck: {{ game['luck_rating'] }}/5</small>{% endif %}
+                                        {% if game['interaction_rating'] %}<small class="text-muted d-block">Interaction: {{ game['interaction_rating'] }}/5</small>{% endif %}
                                     </div>
                                 </div>
                             {% endfor %}
@@ -97,4 +182,10 @@
             </div>
         </div>
     </div>
+    <script>
+        const reservationAdvancedFilters = document.getElementById('reservationAdvancedFilters');
+        const reservationAdvancedFiltersButton = document.querySelector('[data-bs-target="#reservationAdvancedFilters"]');
+        reservationAdvancedFilters.addEventListener('show.bs.collapse', () => reservationAdvancedFiltersButton.textContent = 'Advanced Filters ▴');
+        reservationAdvancedFilters.addEventListener('hide.bs.collapse', () => reservationAdvancedFiltersButton.textContent = 'Advanced Filters ▾');
+    </script>
 {% endblock %}

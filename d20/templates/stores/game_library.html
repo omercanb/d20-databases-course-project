@@ -5,6 +5,8 @@
 {% endblock %}
 {% block content %}
     <div class="container">
+        <a href="{{ url_for('stores.store', store_id=store['id']) }}" class="btn btn-outline-secondary mb-4">&larr; Back to Store</a>
+
         <form method="get" class="row g-3 mb-4 p-3 border rounded bg-light">
             <div class="col-md-12 col-lg-3">
                 <label for="search" class="form-label">Search</label>
@@ -35,33 +37,53 @@
                        min="1" value="{{ max_players if max_players is not none else '' }}">
             </div>
             <div class="col-md-2">
-                <label for="complexity_rating" class="form-label">Complexity</label>
-                <input type="number" name="complexity_rating" id="complexity_rating" class="form-control"
-                       min="0" max="5" step="1"
-                       value="{{ complexity_rating if complexity_rating is not none else '' }}">
-            </div>
-            <div class="col-md-2">
-                <label for="strategy_rating" class="form-label">Strategy</label>
-                <input type="number" name="strategy_rating" id="strategy_rating" class="form-control"
-                       min="0" max="5" step="1"
-                       value="{{ strategy_rating if strategy_rating is not none else '' }}">
-            </div>
-            <div class="col-md-2">
-                <label for="luck_rating" class="form-label">Luck</label>
-                <input type="number" name="luck_rating" id="luck_rating" class="form-control"
-                       min="0" max="5" step="1"
-                       value="{{ luck_rating if luck_rating is not none else '' }}">
-            </div>
-            <div class="col-md-2">
-                <label for="interaction_rating" class="form-label">Interaction</label>
-                <input type="number" name="interaction_rating" id="interaction_rating" class="form-control"
-                       min="0" max="5" step="1"
-                       value="{{ interaction_rating if interaction_rating is not none else '' }}">
-            </div>
-            <div class="col-md-2">
                 <label for="max_avg_duration" class="form-label">Max Duration (min)</label>
                 <input type="number" name="max_avg_duration" id="max_avg_duration" class="form-control"
                        min="1" value="{{ max_avg_duration if max_avg_duration is not none else '' }}">
+            </div>
+            <div class="col-12 border-top pt-3">
+                <button class="btn btn-link p-0 text-decoration-none"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#advancedFilters"
+                        aria-expanded="false"
+                        aria-controls="advancedFilters">
+                    Advanced Filters ▾
+                </button>
+            </div>
+            <div class="collapse col-12" id="advancedFilters">
+                <div class="row g-3">
+                    <div class="col-md-2">
+                        <label for="user_rating" class="form-label">Rating</label>
+                        <input type="number" name="user_rating" id="user_rating" class="form-control"
+                               min="0" max="5" step="1"
+                               value="{{ user_rating if user_rating is not none else '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="complexity_rating" class="form-label">Complexity</label>
+                        <input type="number" name="complexity_rating" id="complexity_rating" class="form-control"
+                               min="0" max="5" step="1"
+                               value="{{ complexity_rating if complexity_rating is not none else '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="strategy_rating" class="form-label">Strategy</label>
+                        <input type="number" name="strategy_rating" id="strategy_rating" class="form-control"
+                               min="0" max="5" step="1"
+                               value="{{ strategy_rating if strategy_rating is not none else '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="luck_rating" class="form-label">Luck</label>
+                        <input type="number" name="luck_rating" id="luck_rating" class="form-control"
+                               min="0" max="5" step="1"
+                               value="{{ luck_rating if luck_rating is not none else '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="interaction_rating" class="form-label">Interaction</label>
+                        <input type="number" name="interaction_rating" id="interaction_rating" class="form-control"
+                               min="0" max="5" step="1"
+                               value="{{ interaction_rating if interaction_rating is not none else '' }}">
+                    </div>
+                </div>
             </div>
             <div class="col-md-2 d-flex align-items-end">
                 <div class="form-check mb-2">
@@ -141,4 +163,10 @@
             <p class="text-muted">No games found matching your filters.</p>
         {% endif %}
     </div>
+    <script>
+        const advancedFilters = document.getElementById('advancedFilters');
+        const advancedFiltersButton = document.querySelector('[data-bs-target="#advancedFilters"]');
+        advancedFilters.addEventListener('show.bs.collapse', () => advancedFiltersButton.textContent = 'Advanced Filters ▴');
+        advancedFilters.addEventListener('hide.bs.collapse', () => advancedFiltersButton.textContent = 'Advanced Filters ▾');
+    </script>
 {% endblock %}
