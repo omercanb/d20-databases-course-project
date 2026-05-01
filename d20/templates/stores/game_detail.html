@@ -25,22 +25,82 @@
                                 <li><strong>Players:</strong> {{ game['min_players'] }}–{{ game['max_players'] }}</li>
                             {% endif %}
                             {% if game['avg_duration'] %}
-                                <li><strong>Avg Duration:</strong> {{ game['avg_duration'] }} minutes</li>
-                            {% endif %}
-                            {% if game['complexity_rating'] %}
-                                <li><strong>Complexity:</strong> {{ game['complexity_rating'] }} / 5</li>
-                            {% endif %}
-                            {% if game['strategy_rating'] %}
-                                <li><strong>Strategy:</strong> {{ game['strategy_rating'] }} / 5</li>
-                            {% endif %}
-                            {% if game['luck_rating'] %}
-                                <li><strong>Luck:</strong> {{ game['luck_rating'] }} / 5</li>
-                            {% endif %}
-                            {% if game['interaction_rating'] %}
-                                <li><strong>Interaction:</strong> {{ game['interaction_rating'] }} / 5</li>
+                                <li><strong>Average Duration:</strong> {{ game['avg_duration'] }} minutes</li>
                             {% endif %}
                             {% if game['avg_rating'] %}
-                                <li><strong>Avg Rating:</strong> {{ "%.1f"|format(game['avg_rating']) }} / 5</li>
+                                <li class="mb-2">
+                                    <strong>Average User Rating:</strong>
+                                    <span class="text-warning">★ {{ "%.1f"|format(game['avg_rating']) }} / 5</span>
+                                </li>
+                            {% else %}
+                                <li class="mb-2">
+                                    <strong>Average User Rating:</strong>
+                                    <span class="text-muted">- Be the first one to rate it!</span>
+                                </li>
+                            {% endif %}
+                            {% if game['complexity_rating'] %}
+                                <li class="mb-2">
+                                    <div class="d-flex justify-content-between">
+                                        <strong>Complexity:</strong>
+                                        <span>{{ game['complexity_rating'] }} / 5</span>
+                                    </div>
+                                    <div class="progress" style="height: 8px;">
+                                        <div class="progress-bar"
+                                             role="progressbar"
+                                             style="width: {{ (game['complexity_rating'] / 5 * 100)|round }}%; background-color: #8b1e2d;"
+                                             aria-valuenow="{{ game['complexity_rating'] }}"
+                                             aria-valuemin="0"
+                                             aria-valuemax="5"></div>
+                                    </div>
+                                </li>
+                            {% endif %}
+                            {% if game['strategy_rating'] %}
+                                <li class="mb-2">
+                                    <div class="d-flex justify-content-between">
+                                        <strong>Strategy:</strong>
+                                        <span>{{ game['strategy_rating'] }} / 5</span>
+                                    </div>
+                                    <div class="progress" style="height: 8px;">
+                                        <div class="progress-bar"
+                                             role="progressbar"
+                                             style="width: {{ (game['strategy_rating'] / 5 * 100)|round }}%; background-color: #1f4e79;"
+                                             aria-valuenow="{{ game['strategy_rating'] }}"
+                                             aria-valuemin="0"
+                                             aria-valuemax="5"></div>
+                                    </div>
+                                </li>
+                            {% endif %}
+                            {% if game['luck_rating'] %}
+                                <li class="mb-2">
+                                    <div class="d-flex justify-content-between">
+                                        <strong>Luck:</strong>
+                                        <span>{{ game['luck_rating'] }} / 5</span>
+                                    </div>
+                                    <div class="progress" style="height: 8px;">
+                                        <div class="progress-bar"
+                                             role="progressbar"
+                                             style="width: {{ (game['luck_rating'] / 5 * 100)|round }}%; background-color: #2e7d32;"
+                                             aria-valuenow="{{ game['luck_rating'] }}"
+                                             aria-valuemin="0"
+                                             aria-valuemax="5"></div>
+                                    </div>
+                                </li>
+                            {% endif %}
+                            {% if game['interaction_rating'] %}
+                                <li class="mb-2">
+                                    <div class="d-flex justify-content-between">
+                                        <strong>Interaction:</strong>
+                                        <span>{{ game['interaction_rating'] }} / 5</span>
+                                    </div>
+                                    <div class="progress" style="height: 8px;">
+                                        <div class="progress-bar"
+                                             role="progressbar"
+                                             style="width: {{ (game['interaction_rating'] / 5 * 100)|round }}%; background-color: #7b3f98;"
+                                             aria-valuenow="{{ game['interaction_rating'] }}"
+                                             aria-valuemin="0"
+                                             aria-valuemax="5"></div>
+                                    </div>
+                                </li>
                             {% endif %}
                         </ul>
                     </div>
@@ -112,6 +172,29 @@
                 </table>
             {% else %}
                 <p class="text-muted">No copies of this game at this store.</p>
+            {% endif %}
+        </section>
+
+        <section class="mb-4">
+            <h2>Reviews</h2>
+            {% if ratings %}
+                <div class="list-group">
+                    {% for rating in ratings %}
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between">
+                                <strong>{{ rating['username'] }}</strong>
+                                <span class="text-warning">★ {{ rating['rating'] }} / 5</span>
+                            </div>
+                            {% if rating['comment'] %}
+                                <p class="mb-0 mt-2">{{ rating['comment'] }}</p>
+                            {% else %}
+                                <p class="mb-0 mt-2 text-muted">No comment.</p>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted">No ratings yet.</p>
             {% endif %}
         </section>
     </div>

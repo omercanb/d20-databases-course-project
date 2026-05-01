@@ -363,3 +363,21 @@ def get_user_rating(user_id, game_id):
         )
         .fetchone()
     )
+
+
+def get_game_ratings(game_id):
+    """Return all user ratings for a game."""
+    return (
+        get_db()
+        .execute(
+            """
+            select GameRating.*, User.username
+            from GameRating
+            join User on (GameRating.user_id = User.id)
+            where GameRating.game_id = ?
+            order by User.username
+            """,
+            (game_id,),
+        )
+        .fetchall()
+    )

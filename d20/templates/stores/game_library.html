@@ -89,16 +89,6 @@
                                 <span class="badge bg-secondary mb-2">{{ game['genre'] }}</span>
                             {% endif %}
                             <div class="card-text">
-                                {% if game['complexity_rating'] %}
-                                    <p class="mb-1">
-                                        <small class="text-muted">Complexity: {{ game['complexity_rating'] }}/5</small>
-                                    </p>
-                                {% endif %}
-                                {% if game['avg_rating'] %}
-                                    <p class="mb-1">
-                                        <small class="text-muted">Rating: {{ "%.1f"|format(game['avg_rating']) }}/5</small>
-                                    </p>
-                                {% endif %}
                                 {% if game['min_players'] and game['max_players'] %}
                                     <p class="mb-1">
                                         <small class="text-muted">Players: {{ game['min_players'] }}–{{ game['max_players'] }}</small>
@@ -106,7 +96,21 @@
                                 {% endif %}
                                 {% if game['avg_duration'] %}
                                     <p class="mb-1">
-                                        <small class="text-muted">~{{ game['avg_duration'] }} min</small>
+                                        <small class="text-muted">Duration: {{ game['avg_duration'] }} min</small>
+                                    </p>
+                                {% endif %}
+                                {% if game['avg_rating'] %}
+                                    <p class="mb-1">
+                                        <small class="text-muted">Rating: {{ "%.1f"|format(game['avg_rating']) }}/5</small>
+                                    </p>
+                                {% else %}
+                                    <p class="mb-1">
+                                        <small class="text-muted">Rating: -</small>
+                                    </p>
+                                {% endif %}
+                                {% if game['complexity_rating'] %}
+                                    <p class="mb-1">
+                                        <small class="text-muted">Complexity: {{ game['complexity_rating'] }}/5</small>
                                     </p>
                                 {% endif %}
                                 {% if game['strategy_rating'] %}
