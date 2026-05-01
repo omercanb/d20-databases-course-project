@@ -197,5 +197,65 @@
                 <p class="text-muted">No ratings yet.</p>
             {% endif %}
         </section>
+
+        <section class="mb-4">
+            <h2>Similar Games from the Store</h2>
+            {% if similar_games %}
+                <div class="card-grid card-grid-3col">
+                    {% for similar_game in similar_games %}
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <a href="{{ url_for('stores.game_detail', store_id=store['id'], game_id=similar_game['id']) }}"
+                                       class="text-decoration-none">{{ similar_game['name'] }}</a>
+                                    {% if similar_game['avg_rating'] %}
+                                        <span class="text-warning ms-2">&#9733; {{ "%.1f"|format(similar_game['avg_rating']) }} / 5</span>
+                                    {% else %}
+                                        <span class="text-warning ms-2">&#9733; -</span>
+                                    {% endif %}
+                                </h5>
+                                {% if similar_game['genre'] %}
+                                    <span class="badge bg-secondary mb-2">{{ similar_game['genre'] }}</span>
+                                {% endif %}
+                                <div class="card-text">
+                                    {% if similar_game['min_players'] and similar_game['max_players'] %}
+                                        <p class="mb-1">
+                                            <small class="text-muted">Players: {{ similar_game['min_players'] }}&ndash;{{ similar_game['max_players'] }}</small>
+                                        </p>
+                                    {% endif %}
+                                    {% if similar_game['avg_duration'] %}
+                                        <p class="mb-1">
+                                            <small class="text-muted">Duration: {{ similar_game['avg_duration'] }} min</small>
+                                        </p>
+                                    {% endif %}
+                                    {% if similar_game['complexity_rating'] %}
+                                        <p class="mb-1">
+                                            <small class="text-muted">Complexity: {{ similar_game['complexity_rating'] }}/5</small>
+                                        </p>
+                                    {% endif %}
+                                    {% if similar_game['strategy_rating'] %}
+                                        <p class="mb-1">
+                                            <small class="text-muted">Strategy: {{ similar_game['strategy_rating'] }}/5</small>
+                                        </p>
+                                    {% endif %}
+                                    {% if similar_game['luck_rating'] %}
+                                        <p class="mb-1">
+                                            <small class="text-muted">Luck: {{ similar_game['luck_rating'] }}/5</small>
+                                        </p>
+                                    {% endif %}
+                                    {% if similar_game['interaction_rating'] %}
+                                        <p class="mb-1">
+                                            <small class="text-muted">Interaction: {{ similar_game['interaction_rating'] }}/5</small>
+                                        </p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted">No similar games found.</p>
+            {% endif %}
+        </section>
     </div>
 {% endblock %}

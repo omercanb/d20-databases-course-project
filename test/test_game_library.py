@@ -8,10 +8,12 @@ from d20.db.game import (
     get_game_copies_with_condition,
     get_game_detail,
     get_games_filtered,
+    get_similar_games,
     get_store_genres,
     get_unavailable_games_during,
     get_user_rating,
     rate_game,
+    refresh_game_similarities,
 )
 from d20.db.session import create_session
 
@@ -388,6 +390,54 @@ class TestGameDetailRoute:
         store_id, _ = self._setup(app)
         response = client.get(f"/store/{store_id}/game/99999")
         assert response.status_code == 404
+
+    def test_shows_similar_games(self, client, app):
+        store_id, game_id = self._setup(app)
+        with app.app_context():
+            db = get_db()
+            similar_id = _insert_game(db, name="Pandemic Legacy", symbol="PL", genre="Coop")
+            _insert_game_copy(db, similar_id, store_id)
+            refresh_game_similarities()
+        response = client.get(f"/store/{store_id}/game/{game_id}")
+        assert b"Similar Games" in response.data
+        assert b"Pandemic Legacy" in response.data
+
+
+class TestSimilarGames:
+    def test_returns_games_ranked_by_similarity_score(self, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name="Similar Store", username="similarstore")
+            db.execute(
+                """
+                insert into Game (name, symbol, genre, min_players, max_players,
+                                  avg_duration, complexity_rating, strategy_rating,
+                                  luck_rating, interaction_rating)
+                values
+                    ('Target', 'TGT', 'Strategy', 2, 4, 60, 3, 4, 2, 5),
+                    ('Closest', 'CLS', 'Strategy', 2, 4, 60, 3, 4, 2, 5),
+                    ('Farther', 'FAR', 'Party', 5, 8, 120, 1, 1, 5, 2)
+                """
+            )
+            target_id = db.execute(
+                "select id from Game where name = 'Target'"
+            ).fetchone()["id"]
+            closest_id = db.execute(
+                "select id from Game where name = 'Closest'"
+            ).fetchone()["id"]
+            farther_id = db.execute(
+                "select id from Game where name = 'Farther'"
+            ).fetchone()["id"]
+            _insert_game_copy(db, target_id, store_id)
+            _insert_game_copy(db, closest_id, store_id)
+            _insert_game_copy(db, farther_id, store_id)
+            refresh_game_similarities()
+
+            games = get_similar_games(target_id, store_id)
+
+        assert games[0]["name"] == "Closest"
+        assert games[0]["similarity_score"] == 100
+        assert games[1]["name"] == "Farther"
 
 
 # ---------------------------------------------------------------------------

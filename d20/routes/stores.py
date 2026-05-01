@@ -24,6 +24,7 @@ from d20.db.game import (
     get_game_ratings,
     get_games,
     get_games_filtered,
+    get_similar_games,
     get_store_genres,
     get_unavailable_games_during,
     get_user_rating,
@@ -481,6 +482,7 @@ def game_detail(store_id, game_id):
         abort(404)
     copies = get_game_copies_with_condition(game_id, store_id)
     ratings = get_game_ratings(game_id)
+    similar_games = get_similar_games(game_id, store_id)
     user_rating = None
     if g.user:
         user_rating = get_user_rating(g.user["id"], game_id)
@@ -490,6 +492,7 @@ def game_detail(store_id, game_id):
         game=game,
         copies=copies,
         ratings=ratings,
+        similar_games=similar_games,
         user_rating=user_rating,
     )
 

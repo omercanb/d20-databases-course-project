@@ -4,6 +4,7 @@ drop table if exists Customer;
 drop table if exists Store;
 drop table if exists 'Table';
 drop table if exists GameRating;
+drop table if exists GameSimilarity;
 drop table if exists Game;
 drop table if exists GameCopy;
 drop table if exists Session;
@@ -73,6 +74,15 @@ create table Game (
     description text,
     avg_rating real default 0,
     base_price decimal(10, 2) default 10.00
+);
+
+create table GameSimilarity (
+    id1 integer not null,
+    id2 integer not null,
+    score real not null,
+    foreign key (id1) references Game(id),
+    foreign key (id2) references Game(id),
+    primary key (id1, id2)
 );
 
 create table GameCopy (

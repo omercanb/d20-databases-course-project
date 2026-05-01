@@ -3,7 +3,7 @@ from datetime import date
 
 import click
 
-from d20.db.game import create_game, create_game_copy
+from d20.db.game import create_game, create_game_copy, rate_game, refresh_game_similarities
 from d20.db.market.market_participant import (
     get_market_participant,
     get_market_participant_by_customer,
@@ -109,6 +109,19 @@ def seed_game_copies(store_ids, game_ids):
     return store_to_game_copy
 
 
+def seed_ratings(user_ids, game_ids):
+    reviews = [
+        (user_ids[0], game_ids[0], 5, "Chaotic in the best way."),
+        (user_ids[1], game_ids[0], 4, "Great for a longer game night."),
+        (user_ids[0], game_ids[1], 4, "Gets everyone talking fast."),
+        (user_ids[1], game_ids[1], 5, "Really fun with a big group."),
+        (user_ids[0], game_ids[2], 3, "Light and quick party filler."),
+        (user_ids[1], game_ids[2], 4, "Easy to teach and funny."),
+    ]
+    for user_id, game_id, rating, comment in reviews:
+        rate_game(user_id, game_id, rating, comment)
+
+
 def seed_session(user_ids, store_ids, store_to_game_copy):
     user1 = user_ids[0]
     store1 = store_ids[0]
@@ -137,6 +150,8 @@ def seed_the_universe():
     user_ids = seed_users()
     store_ids = seed_stores()
     game_ids = seed_games()
+    seed_ratings(user_ids, game_ids)
+    refresh_game_similarities()
     store_to_game_copy = seed_game_copies(store_ids, game_ids)
     seed_session(user_ids, store_ids, store_to_game_copy)
     seed_orders(user_ids, game_ids)

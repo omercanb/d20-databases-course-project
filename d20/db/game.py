@@ -317,6 +317,96 @@ def get_game_detail(game_id):
     return get_db().execute("select * from Game where id = ?", (game_id,)).fetchone()
 
 
+def _rating_similarity(game, other, column, weight):
+    if game[column] is None or other[column] is None:
+        return 0
+    diff = abs(game[column] - other[column])
+    if diff >= 4:
+        return 0
+    return weight * (1 - (diff * 0.25))
+
+
+def _duration_similarity(game, other):
+    if game["avg_duration"] is None or other["avg_duration"] is None:
+        return 0
+    diff = abs(game["avg_duration"] - other["avg_duration"])
+    if diff <= 15:
+        return 10
+    if diff <= 30:
+        return 7.5
+    if diff <= 60:
+        return 5
+    if diff <= 90:
+        return 2.5
+    return 0
+
+
+def _player_similarity(game, other):
+    if (
+        game["min_players"] is None
+        or game["max_players"] is None
+        or other["min_players"] is None
+        or other["max_players"] is None
+    ):
+        return 0
+
+    overlap = min(game["max_players"], other["max_players"]) - max(
+        game["min_players"], other["min_players"]
+    ) + 1
+    if overlap <= 0:
+        return 0
+
+    game_range = game["max_players"] - game["min_players"] + 1
+    other_range = other["max_players"] - other["min_players"] + 1
+    return 20 * (overlap / max(game_range, other_range))
+
+
+def _similarity_score(game, other):
+    score = 0
+    if game["genre"] is not None and game["genre"] == other["genre"]:
+        score += 35
+    score += _player_similarity(game, other)
+    score += _rating_similarity(game, other, "complexity_rating", 10)
+    score += _rating_similarity(game, other, "strategy_rating", 10)
+    score += _rating_similarity(game, other, "interaction_rating", 10)
+    score += _rating_similarity(game, other, "luck_rating", 5)
+    score += _duration_similarity(game, other)
+    return round(score, 2)
+
+
+def refresh_game_similarities():
+    db = get_db()
+    games = db.execute("select * from Game").fetchall()
+    db.execute("delete from GameSimilarity")
+    for game in games:
+        for other in games:
+            if game["id"] != other["id"]:
+                db.execute(
+                    "insert into GameSimilarity (id1, id2, score) values (?, ?, ?)",
+                    (game["id"], other["id"], _similarity_score(game, other)),
+                )
+    db.commit()
+
+
+def get_similar_games(game_id, store_id, limit=3):
+    return (
+        get_db()
+        .execute(
+            """
+            select distinct Game.*, GameSimilarity.score as similarity_score
+            from GameSimilarity
+            join Game on (GameSimilarity.id2 = Game.id)
+            join GameCopy on (Game.id = GameCopy.game_id and GameCopy.store_id = ?)
+            where GameSimilarity.id1 = ?
+            order by GameSimilarity.score desc, Game.name
+            limit ?
+            """,
+            (store_id, game_id, limit),
+        )
+        .fetchall()
+    )
+
+
 def get_store_genres(store_id):
     return get_db().execute(
         """
