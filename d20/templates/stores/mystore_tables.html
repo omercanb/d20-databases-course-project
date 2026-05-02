@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block header %}
+    <h1>{% block title %}{{ g.store['name'] }} - Tables{% endblock %}</h1>
+{% endblock %}
+{% block content %}
+    {% set active_tab = 'tables' %}
+    {% include 'stores/_mystore_nav.html' %}
+
+    <section class="card-section">
+        <h2 class="card-section-title">Tables</h2>
+        {% if tables %}
+            <div class="card-grid card-grid-3col">
+                {% for table in tables %}
+                    <div class="card h-100 store-card">
+                        <div class="card-body">
+                            <h5 class="card-title">Table {{ table['table_num'] }}</h5>
+                            <p class="card-text text-muted">Capacity: {{ table['capacity'] }} seats</p>
+                            <form method="post"
+                                  action="{{ url_for('stores.update_table_route', table_num=table['table_num']) }}"
+                                  style="display: inline;">
+                                <input type="number"
+                                       name="capacity"
+                                       value="{{ table['capacity'] }}"
+                                       min="1"
+                                       class="form-control form-control-sm mb-2"
+                                       placeholder="Capacity">
+                                <button type="submit" class="btn btn-sm btn-warning me-2">Save</button>
+                            </form>
+                            <form method="post"
+                                  action="{{ url_for('stores.delete_table_route', table_num=table['table_num']) }}"
+                                  style="display: inline;">
+                                <button type="submit"
+                                        class="btn btn-sm btn-danger"
+                                        onclick="return confirm('Delete this table?')">
+                                    Delete
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted">No tables yet.</p>
+        {% endif %}
+
+        <div class="mt-4">
+            <h3>Add New Table</h3>
+            <form method="post" action="{{ url_for('stores.add_table') }}" class="d-flex gap-2 align-items-end">
+                <div style="flex: 1; max-width: 200px;">
+                    <label for="table-capacity" class="form-label">Capacity (seats)</label>
+                    <input type="number"
+                           id="table-capacity"
+                           name="capacity"
+                           min="1"
+                           required
+                           class="form-control">
+                </div>
+                <button type="submit" class="btn btn-primary">Add Table</button>
+            </form>
+        </div>
+    </section>
+{% endblock %}

@@ -1,0 +1,163 @@
+{% extends 'base.html' %} {% block header %}
+<h1>{% block title %}{{ g.store['name'] }} - My Store{% endblock %}</h1>
+{% endblock %} {% block content %} {% set active_tab = 'overview' %} {% include
+'stores/_mystore_nav.html' %}
+
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title">Tables</h5>
+        <p class="display-6 mb-1">{{ tables|length }}</p>
+        <a
+          href="{{ url_for('stores.my_store_tables') }}"
+          class="btn btn-outline-primary btn-sm"
+          >Manage Tables</a
+        >
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title">Games In Inventory</h5>
+        <p class="display-6 mb-1">{{ games|length }}</p>
+        <a
+          href="{{ url_for('stores.my_store_games') }}"
+          class="btn btn-outline-primary btn-sm"
+          >Manage Games</a
+        >
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title">Upcoming Sessions</h5>
+        <p class="display-6 mb-1">{{ upcoming_sessions|length }}</p>
+        <a
+          href="{{ url_for('stores.my_store_sessions') }}"
+          class="btn btn-outline-primary btn-sm"
+          >View Sessions</a
+        >
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-1">
+  <div class="col-lg-8">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title">Upcoming Reservations</h5>
+        <div style="position: relative; height: 220px">
+          <canvas id="reservationsByDayChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title">Operations Snapshot</h5>
+        <div style="position: relative; height: 220px">
+          <canvas id="opsSnapshotChart"></canvas>
+        </div>
+        <p class="small text-muted mt-3 mb-0">
+          Total copies in inventory: {{ total_copies }}
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  (function initMyStoreOverviewCharts() {
+      if (!window.Chart) {
+          return;
+      }
+
+      if (!window.__mystoreCharts) {
+          window.__mystoreCharts = {};
+      }
+
+      const reservationLabels = [{% for day, count in reservations_by_day|dictsort %}"{{ day }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+      const reservationCounts = [{% for day, count in reservations_by_day|dictsort %}{{ count }}{% if not loop.last %}, {% endif %}{% endfor %}];
+
+      const reservationsByDayCanvas = document.getElementById("reservationsByDayChart");
+      const opsSnapshotCanvas = document.getElementById("opsSnapshotChart");
+      if (!reservationsByDayCanvas || !opsSnapshotCanvas) {
+          return;
+      }
+
+      const existingReservations = Chart.getChart(reservationsByDayCanvas);
+      if (existingReservations) {
+          existingReservations.destroy();
+      }
+      const existingOps = Chart.getChart(opsSnapshotCanvas);
+      if (existingOps) {
+          existingOps.destroy();
+      }
+
+      window.__mystoreCharts.reservationsByDay = new Chart(reservationsByDayCanvas, {
+          type: "line",
+          data: {
+              labels: reservationLabels.length ? reservationLabels : ["No Upcoming Reservations"],
+              datasets: [{
+                  label: "Reservations",
+                  data: reservationCounts.length ? reservationCounts : [0],
+                  borderColor: "rgba(13, 110, 253, 1)",
+                  backgroundColor: "rgba(13, 110, 253, 0.2)",
+                  tension: 0.25,
+                  fill: true,
+                  pointRadius: 4
+              }]
+          },
+          options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+          }
+      });
+
+      window.__mystoreCharts.opsSnapshot = new Chart(opsSnapshotCanvas, {
+          type: "doughnut",
+          data: {
+              labels: ["Tables", "Game Titles", "Upcoming Sessions"],
+              datasets: [{
+                  data: [{{ tables|length }}, {{ games|length }}, {{ upcoming_sessions|length }}],
+                  backgroundColor: [
+                      "rgba(25, 135, 84, 0.75)",
+                      "rgba(255, 193, 7, 0.75)",
+                      "rgba(220, 53, 69, 0.75)"
+                  ],
+                  borderWidth: 1
+              }]
+          },
+          options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false
+          }
+      });
+
+      if (!window.__mystoreChartsCleanupBound) {
+          const cleanupCharts = function () {
+              if (window.__mystoreCharts?.reservationsByDay) {
+                  window.__mystoreCharts.reservationsByDay.destroy();
+                  window.__mystoreCharts.reservationsByDay = null;
+              }
+              if (window.__mystoreCharts?.opsSnapshot) {
+                  window.__mystoreCharts.opsSnapshot.destroy();
+                  window.__mystoreCharts.opsSnapshot = null;
+              }
+          };
+          window.addEventListener("beforeunload", cleanupCharts);
+          document.body.addEventListener("htmx:beforeSwap", cleanupCharts);
+          window.__mystoreChartsCleanupBound = true;
+      }
+  })();
+</script>
+{% endblock %}

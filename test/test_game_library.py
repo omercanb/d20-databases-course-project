@@ -462,6 +462,157 @@ class TestCreateStoreGameRoute:
         assert "/auth/loginstore" in response.headers["Location"]
 
 
+class TestMyStoreSplitViews:
+    def _setup_store_session(self, client, app, username="splitstore", name="Split Store"):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name=name, username=username)
+        with client.session_transaction() as sess:
+            sess["store_id"] = store_id
+        return store_id
+
+    def test_mystore_redirects_to_overview(self, client, app):
+        self._setup_store_session(client, app, username="split_overview", name="Split Overview")
+        response = client.get("/mystore")
+        assert response.status_code == 302
+        assert "/mystore/overview" in response.headers["Location"]
+
+    def test_mystore_overview_renders(self, client, app):
+        self._setup_store_session(client, app, username="split_ov_view", name="Split Ov View")
+        response = client.get("/mystore/overview")
+        assert response.status_code == 200
+        assert b"Overview" in response.data
+        assert b"Manage Tables" in response.data
+
+    def test_mystore_games_renders(self, client, app):
+        self._setup_store_session(client, app, username="split_games", name="Split Games")
+        response = client.get("/mystore/games")
+        assert response.status_code == 302
+        assert "/mystore/games/inventory" in response.headers["Location"]
+
+    def test_mystore_games_inventory_renders(self, client, app):
+        self._setup_store_session(client, app, username="split_games_inv", name="Split Games Inv")
+        response = client.get("/mystore/games/inventory")
+        assert response.status_code == 200
+        assert b"Add Game Copy" in response.data
+        assert b"Games In Inventory" in response.data
+
+    def test_mystore_games_library_renders(self, client, app):
+        self._setup_store_session(client, app, username="split_games_lib", name="Split Games Lib")
+        response = client.get("/mystore/games/library")
+        assert response.status_code == 200
+        assert b"Add New Game to Catalog" in response.data
+        assert b"Game Library" in response.data
+
+    def test_mystore_tables_renders(self, client, app):
+        self._setup_store_session(client, app, username="split_tables", name="Split Tables")
+        response = client.get("/mystore/tables")
+        assert response.status_code == 200
+        assert b"Add New Table" in response.data
+
+    def test_mystore_sessions_renders(self, client, app):
+        self._setup_store_session(client, app, username="split_sessions", name="Split Sessions")
+        response = client.get("/mystore/sessions")
+        assert response.status_code == 200
+        assert b"Upcoming Sessions" in response.data
+
+    def test_mystore_split_views_require_store_auth(self, client):
+        for path in (
+            "/mystore/overview",
+            "/mystore/games",
+            "/mystore/games/inventory",
+            "/mystore/games/library",
+            "/mystore/tables",
+            "/mystore/sessions",
+        ):
+            response = client.get(path)
+            assert response.status_code == 302
+            assert "/auth/loginstore" in response.headers["Location"]
+
+
+class TestAddGameCopyRoute:
+    def _setup_store_session(self, client, app, username="copyroute", name="Copy Route"):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name=name, username=username)
+        with client.session_transaction() as sess:
+            sess["store_id"] = store_id
+        return store_id
+
+    def test_add_multiple_copies_with_count(self, client, app):
+        store_id = self._setup_store_session(client, app, username="copy_multi", name="Copy Multi")
+        response = client.post(
+            "/mystore/game/add",
+            data={"game_id": "1", "copy_count": "3"},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"3 game copies added successfully." in response.data
+
+        with app.app_context():
+            row = get_db().execute(
+                "SELECT COUNT(*) AS cnt FROM GameCopy WHERE store_id = %s AND game_id = 1",
+                (store_id,),
+            ).fetchone()
+        assert row["cnt"] == 3
+
+    def test_add_game_copy_rejects_non_positive_count(self, client, app):
+        store_id = self._setup_store_session(client, app, username="copy_invalid", name="Copy Invalid")
+        response = client.post(
+            "/mystore/game/add",
+            data={"game_id": "1", "copy_count": "0"},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"Copy count must be a positive number." in response.data
+
+        with app.app_context():
+            row = get_db().execute(
+                "SELECT COUNT(*) AS cnt FROM GameCopy WHERE store_id = %s AND game_id = 1",
+                (store_id,),
+            ).fetchone()
+        assert row["cnt"] == 0
+
+
+class TestMyStoreSessionsFiltering:
+    def _setup_store_with_sessions(self, client, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name="Filter Sessions Store", username="filtersessions")
+            db.execute(
+                'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+                (store_id,),
+            )
+            db.execute(
+                """
+                INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
+                VALUES
+                    (1, %s, 1, '2099-01-01', 10, 12),
+                    (1, %s, 1, '2099-01-02', 13, 15)
+                """,
+                (store_id, store_id),
+            )
+            db.commit()
+        with client.session_transaction() as sess:
+            sess["store_id"] = store_id
+        return store_id
+
+    def test_sessions_view_groups_by_day_with_date_headers(self, client, app):
+        self._setup_store_with_sessions(client, app)
+        response = client.get("/mystore/sessions")
+        assert response.status_code == 200
+        assert b"2099-01-01" in response.data
+        assert b"2099-01-02" in response.data
+        assert b"Apply Filter" in response.data
+
+    def test_sessions_view_filters_by_from_day(self, client, app):
+        self._setup_store_with_sessions(client, app)
+        response = client.get("/mystore/sessions?from_day=2099-01-02")
+        assert response.status_code == 200
+        assert b"2099-01-01" not in response.data
+        assert b"2099-01-02" in response.data
+
+
 # ---------------------------------------------------------------------------
 # Route tests – GET /store/<id>/game/<game_id>
 # ---------------------------------------------------------------------------

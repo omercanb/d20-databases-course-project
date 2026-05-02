@@ -123,11 +123,32 @@ def seed_ratings(user_ids, game_ids):
 
 
 def seed_session(user_ids, store_ids, store_to_game_copy):
-    user1 = user_ids[0]
-    store1 = store_ids[0]
-    games_used = [game_id for game_id, copy_num in store_to_game_copy[store1][:1]]
-    future_day = str(date.today() + timedelta(days=1))
-    create_session(user1, store1, 1, future_day, 10, 15, games_used)
+    # Build varied daily demand over two weeks, centered around ~20 sessions/day.
+    # Capacity is respected by distributing sessions across stores/tables/timeslots/games.
+    random.seed(20)
+    daily_targets = [12, 18, 20, 16, 24, 14, 22, 10, 19, 21, 17, 23, 15, 20]
+    time_slots = [(9, 11), (11, 13), (13, 15), (15, 17), (17, 19)]
+
+    for day_idx, target_count in enumerate(daily_targets, start=1):
+        session_candidates = []
+        for store_id in store_ids:
+            # One unique game per table per timeslot avoids game copy conflicts.
+            game_ids_for_store = [game_id for game_id, _ in store_to_game_copy[store_id]]
+            for start_time, end_time in time_slots:
+                for table_num in (1, 2, 3):
+                    game_id = game_ids_for_store[(table_num - 1) % len(game_ids_for_store)]
+                    user_id = user_ids[(day_idx + table_num + start_time) % len(user_ids)]
+                    session_candidates.append(
+                        (user_id, store_id, table_num, start_time, end_time, game_id)
+                    )
+
+        random.shuffle(session_candidates)
+        selected = session_candidates[:target_count]
+        future_day = str(date.today() + timedelta(days=day_idx))
+        for user_id, store_id, table_num, start_time, end_time, game_id in selected:
+            create_session(
+                user_id, store_id, table_num, future_day, start_time, end_time, [game_id]
+            )
 
 
 def seed_orders(user_ids, game_ids):

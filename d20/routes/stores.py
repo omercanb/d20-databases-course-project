@@ -92,26 +92,111 @@ def stores():
 @bp.route("/mystore")
 @store_login_required
 def my_store():
+    return redirect(url_for("stores.my_store_overview"))
+
+
+@bp.route("/mystore/overview")
+@store_login_required
+def my_store_overview():
     store_id = g.store["id"]
     tables = get_tables(store_id)
     games = get_available_games_with_counts(store_id)
-    all_games = get_games()
     today = str(date.today())
     upcoming_sessions_raw = get_upcoming_sessions_with_user_by_store(store_id, today)
 
-    # Convert to dicts and attach games
     upcoming_sessions = []
     for sess in upcoming_sessions_raw:
         sess_dict = dict(sess)
         sess_dict["games"] = get_session_games(sess["id"])
         upcoming_sessions.append(sess_dict)
 
+    total_copies = sum(game["copy_count"] for game in games)
+    top_games = sorted(games, key=lambda game: game["copy_count"], reverse=True)[:5]
+    reservations_by_day = {}
+    for sess in upcoming_sessions:
+        day = sess["day"]
+        reservations_by_day[day] = reservations_by_day.get(day, 0) + 1
+
     return render_template(
-        "stores/my_store.html",
+        "stores/mystore_overview.html",
         tables=tables,
         games=games,
-        all_games=all_games,
         upcoming_sessions=upcoming_sessions,
+        total_copies=total_copies,
+        top_games=top_games,
+        reservations_by_day=reservations_by_day,
+    )
+
+
+@bp.route("/mystore/games")
+@store_login_required
+def my_store_games():
+    return redirect(url_for("stores.my_store_games_inventory"))
+
+
+@bp.route("/mystore/games/inventory")
+@store_login_required
+def my_store_games_inventory():
+    store_id = g.store["id"]
+    games = get_available_games_with_counts(store_id)
+    all_games = get_games()
+    return render_template(
+        "stores/mystore_games_inventory.html",
+        games=games,
+        all_games=all_games,
+    )
+
+
+@bp.route("/mystore/games/library")
+@store_login_required
+def my_store_games_library():
+    all_games = get_games()
+    return render_template(
+        "stores/mystore_games_library.html",
+        all_games=all_games,
+    )
+
+
+@bp.route("/mystore/tables")
+@store_login_required
+def my_store_tables():
+    store_id = g.store["id"]
+    tables = get_tables(store_id)
+    return render_template(
+        "stores/mystore_tables.html",
+        tables=tables,
+    )
+
+
+@bp.route("/mystore/sessions")
+@store_login_required
+def my_store_sessions():
+    store_id = g.store["id"]
+    today = str(date.today())
+    from_day = request.args.get("from_day") or ""
+    to_day = request.args.get("to_day") or ""
+    upcoming_sessions_raw = get_upcoming_sessions_with_user_by_store(store_id, today)
+
+    upcoming_sessions = []
+    for sess in upcoming_sessions_raw:
+        if from_day and sess["day"] < from_day:
+            continue
+        if to_day and sess["day"] > to_day:
+            continue
+        sess_dict = dict(sess)
+        sess_dict["games"] = get_session_games(sess["id"])
+        upcoming_sessions.append(sess_dict)
+
+    sessions_by_day = {}
+    for sess in upcoming_sessions:
+        sessions_by_day.setdefault(sess["day"], []).append(sess)
+
+    return render_template(
+        "stores/mystore_sessions.html",
+        upcoming_sessions=upcoming_sessions,
+        sessions_by_day=sessions_by_day,
+        from_day=from_day,
+        to_day=to_day,
     )
 
 
@@ -121,7 +206,7 @@ def add_table():
     capacity = request.form.get("capacity", type=int)
     if capacity is None or capacity <= 0:
         flash("Capacity must be a positive number.")
-        return redirect(url_for("stores.my_store"))
+        return redirect(url_for("stores.my_store_tables"))
 
     try:
         create_table(g.store["id"], capacity)
@@ -129,7 +214,7 @@ def add_table():
     except Exception as e:
         flash(f"Error adding table: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_tables"))
 
 
 @bp.route("/mystore/table/<int:table_num>/update", methods=("POST",))
@@ -138,7 +223,7 @@ def update_table_route(table_num):
     capacity = request.form.get("capacity", type=int)
     if capacity is None or capacity <= 0:
         flash("Capacity must be a positive number.")
-        return redirect(url_for("stores.my_store"))
+        return redirect(url_for("stores.my_store_tables"))
 
     try:
         update_table(g.store["id"], table_num, capacity)
@@ -146,7 +231,7 @@ def update_table_route(table_num):
     except Exception as e:
         flash(f"Error updating table: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_tables"))
 
 
 @bp.route("/mystore/table/<int:table_num>/delete", methods=("POST",))
@@ -158,24 +243,29 @@ def delete_table_route(table_num):
     except Exception as e:
         flash(f"Error deleting table: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_tables"))
 
 
 @bp.route("/mystore/game/add", methods=("POST",))
 @store_login_required
 def add_game_copy():
     game_id = request.form.get("game_id", type=int)
+    copy_count = request.form.get("copy_count", 1, type=int)
     if game_id is None:
         flash("Please select a game.")
-        return redirect(url_for("stores.my_store"))
+        return redirect(url_for("stores.my_store_games_inventory"))
+    if copy_count is None or copy_count <= 0:
+        flash("Copy count must be a positive number.")
+        return redirect(url_for("stores.my_store_games_inventory"))
 
     try:
-        create_game_copy(game_id, g.store["id"])
-        flash("Game copy added successfully.")
+        for _ in range(copy_count):
+            create_game_copy(game_id, g.store["id"])
+        flash(f"{copy_count} game {'copy' if copy_count == 1 else 'copies'} added successfully.")
     except Exception as e:
         flash(f"Error adding game copy: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_games_inventory"))
 
 
 @bp.route("/mystore/game/create", methods=("POST",))
@@ -196,7 +286,7 @@ def create_store_game():
 
     if not name or not symbol:
         flash("Game name and symbol are required.")
-        return redirect(url_for("stores.my_store"))
+        return redirect(url_for("stores.my_store_games_library"))
 
     db = get_db()
     try:
@@ -220,7 +310,7 @@ def create_store_game():
     except Exception as e:
         flash(f"Error creating game: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_games_library"))
 
 
 @bp.route("/mystore/game/<int:game_id>/remove", methods=("POST",))
@@ -231,14 +321,14 @@ def remove_game_copy(game_id):
 
         if not copy:
             flash("No copies of this game found.")
-            return redirect(url_for("stores.my_store"))
+            return redirect(url_for("stores.my_store_games_inventory"))
 
         delete_game_copy(game_id, g.store["id"], copy["copy_num"])
         flash("Game copy removed successfully.")
     except Exception as e:
         flash(f"Error removing game copy: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_games_inventory"))
 
 
 @bp.route("/mystore/session/<int:session_id>/cancel", methods=("POST",))
@@ -247,7 +337,7 @@ def cancel_store_session(session_id):
     sess = get_session(session_id)
     if not sess or sess["store_id"] != g.store["id"]:
         flash("Session not found.")
-        return redirect(url_for("stores.my_store"))
+        return redirect(url_for("stores.my_store_sessions"))
 
     try:
         delete_session(session_id)
@@ -255,7 +345,7 @@ def cancel_store_session(session_id):
     except Exception as e:
         flash(f"Error cancelling session: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_sessions"))
 
 
 @bp.route("/store/<int:store_id>")

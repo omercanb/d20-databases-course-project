@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% block header %}
+    <h1>{% block title %}{{ g.store['name'] }} - Sessions{% endblock %}</h1>
+{% endblock %}
+{% block content %}
+    {% set active_tab = 'sessions' %}
+    {% include 'stores/_mystore_nav.html' %}
+
+    <section class="card-section">
+        <h2 class="card-section-title">Upcoming Sessions</h2>
+        <form method="get" action="{{ url_for('stores.my_store_sessions') }}" class="row g-2 mb-3 align-items-end">
+            <div class="col-md-3">
+                <label for="from-day" class="form-label">From Day</label>
+                <input id="from-day" type="date" name="from_day" value="{{ from_day }}" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label for="to-day" class="form-label">To Day</label>
+                <input id="to-day" type="date" name="to_day" value="{{ to_day }}" class="form-control">
+            </div>
+            <div class="col-md-6 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Apply Filter</button>
+                <a href="{{ url_for('stores.my_store_sessions') }}" class="btn btn-outline-secondary">Clear</a>
+            </div>
+        </form>
+
+        {% if sessions_by_day %}
+            {% for day, sessions in sessions_by_day|dictsort %}
+                <div class="d-flex align-items-center mt-4 mb-2">
+                    <strong class="me-3">{{ day }}</strong>
+                    <hr class="flex-grow-1 m-0">
+                </div>
+                <div class="session-list">
+                    <div class="session-header">
+                        <div>Customer</div>
+                        <div>Time</div>
+                        <div>Table</div>
+                        <div>Games</div>
+                        <div></div>
+                    </div>
+                    {% for sess in sessions %}
+                        <div class="session-row">
+                            <div><strong>{{ sess['username'] }}</strong></div>
+                            <div>{{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
+                            <div>Table {{ sess['table_num'] }}</div>
+                            <div>
+                                {% if sess['games'] %}
+                                    {% for game in sess['games'] %}{{ game['name'] }}{% if not loop.last %}, {% endif %}{% endfor %}
+                                {% else %}
+                                    No games
+                                {% endif %}
+                            </div>
+                            <div>
+                                <form method="post"
+                                      action="{{ url_for('stores.cancel_store_session', session_id=sess['id']) }}"
+                                      style="display: inline;">
+                                    <button type="submit"
+                                            class="btn btn-sm btn-danger"
+                                            onclick="return confirm('Cancel this session?')">
+                                        Cancel
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-muted">No upcoming sessions.</p>
+        {% endif %}
+    </section>
+{% endblock %}
