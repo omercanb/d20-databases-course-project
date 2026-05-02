@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block header %}
+    <h1>{% block title %}{{ g.store['name'] }} - Game Library{% endblock %}</h1>
+{% endblock %}
+{% block content %}
+    {% set active_tab = 'games' %}
+    {% include 'stores/_mystore_nav.html' %}
+    {% set games_tab = 'library' %}
+    {% include 'stores/_mystore_games_nav.html' %}
+
+    <section class="card-section">
+        <h2 class="card-section-title">Game Library</h2>
+        {% if all_games %}
+            <div class="card-grid card-grid-3col mb-4">
+                {% for game in all_games %}
+                    <div class="card h-100 store-card" style="position: relative;">
+                        <div class="card-body">
+                            {% set show_edit_icon = true %}
+                            {% set edit_url = url_for('stores.edit_store_game', game_id=game['id']) %}
+                            {% set show_symbol = true %}
+                            {% include 'stores/_game_card_content.html' %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted">No games in library yet.</p>
+        {% endif %}
+
+        <div class="mt-4">
+            <h3>Add New Game to Catalog</h3>
+            <form method="post" action="{{ url_for('stores.create_store_game') }}">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label for="new-game-name" class="form-label">Name</label>
+                        <input id="new-game-name" name="name" required class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="new-game-symbol" class="form-label">Symbol</label>
+                        <input id="new-game-symbol" name="symbol" required class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="new-game-genre" class="form-label">Genre</label>
+                        <select id="new-game-genre" name="genre" class="form-select">
+                            <option value="">Select genre...</option>
+                            <option value="Strategy">Strategy</option>
+                            <option value="Euro">Euro</option>
+                            <option value="Coop">Coop</option>
+                            <option value="Party">Party</option>
+                            <option value="Deck-Building">Deck-Building</option>
+                            <option value="RPG">RPG</option>
+                            <option value="Abstract">Abstract</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="new-game-publisher" class="form-label">Publisher</label>
+                        <input id="new-game-publisher" name="publisher" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="new-game-min" class="form-label">Min Players</label>
+                        <input id="new-game-min" type="number" min="1" name="min_players" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="new-game-max" class="form-label">Max Players</label>
+                        <input id="new-game-max" type="number" min="1" name="max_players" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="new-game-duration" class="form-label">Avg Duration</label>
+                        <input id="new-game-duration" type="number" min="1" name="avg_duration" class="form-control" placeholder="minutes">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="new-game-complexity" class="form-label">Complexity</label>
+                        <input id="new-game-complexity" type="number" min="1" max="5" name="complexity_rating" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="new-game-strategy" class="form-label">Strategy</label>
+                        <input id="new-game-strategy" type="number" min="1" max="5" name="strategy_rating" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="new-game-luck" class="form-label">Luck</label>
+                        <input id="new-game-luck" type="number" min="1" max="5" name="luck_rating" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="new-game-interaction" class="form-label">Interaction</label>
+                        <input id="new-game-interaction" type="number" min="1" max="5" name="interaction_rating" class="form-control">
+                    </div>
+                    <div class="col-12">
+                        <label for="new-game-description" class="form-label">Description</label>
+                        <textarea id="new-game-description" name="description" rows="3" class="form-control"></textarea>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success mt-3">Create Game</button>
+            </form>
+        </div>
+    </section>
+{% endblock %}

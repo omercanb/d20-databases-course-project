@@ -119,101 +119,114 @@ def delete_game_copy(game_id, store_id, copy_num):
     db.commit()
 
 
-def get_available_games_during(store_id, day, start_time, end_time):
+def _get_games_by_availability_during(
+    store_id,
+    day,
+    start_time,
+    end_time,
+    *,
+    only_available,
+    search=None,
+    genre=None,
+    min_players=None,
+    max_players=None,
+    max_avg_duration=None,
+    user_rating=None,
+    complexity_rating=None,
+    strategy_rating=None,
+    luck_rating=None,
+    interaction_rating=None,
+):
+    query = """
+        SELECT Game.*,
+               COUNT(GameCopy.copy_num) AS total_copies,
+               COALESCE(SUM(
+                   CASE WHEN GameCopy.is_available = TRUE
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM SessionGameCopy
+                            JOIN Session ON (SessionGameCopy.session_id = Session.id)
+                            WHERE SessionGameCopy.game_id = GameCopy.game_id
+                            AND SessionGameCopy.store_id = GameCopy.store_id
+                            AND SessionGameCopy.copy_num = GameCopy.copy_num
+                            AND Session.day = %s
+                            AND Session.start_time < %s
+                            AND Session.end_time > %s
+                        )
+                   THEN 1 ELSE 0 END
+               ), 0) AS available_copies
+        FROM Game
+        JOIN GameCopy ON (Game.id = GameCopy.game_id AND GameCopy.store_id = %s)
+        WHERE 1=1
+    """
+    params = [day, end_time, start_time, store_id]
+
+    if search is not None:
+        query += " AND (Game.name ILIKE %s OR Game.description ILIKE %s)"
+        params.extend([f"%{search}%", f"%{search}%"])
+    if genre is not None:
+        query += " AND Game.genre = %s"
+        params.append(genre)
+    if min_players is not None:
+        query += " AND Game.min_players >= %s"
+        params.append(min_players)
+    if max_players is not None:
+        query += " AND Game.max_players <= %s"
+        params.append(max_players)
+    if max_avg_duration is not None:
+        query += " AND Game.avg_duration <= %s"
+        params.append(max_avg_duration)
+    if user_rating is not None:
+        query += " AND Game.avg_rating >= %s"
+        params.append(user_rating)
+    if complexity_rating is not None:
+        query += " AND Game.complexity_rating = %s"
+        params.append(complexity_rating)
+    if strategy_rating is not None:
+        query += " AND Game.strategy_rating = %s"
+        params.append(strategy_rating)
+    if luck_rating is not None:
+        query += " AND Game.luck_rating = %s"
+        params.append(luck_rating)
+    if interaction_rating is not None:
+        query += " AND Game.interaction_rating = %s"
+        params.append(interaction_rating)
+
+    query += " GROUP BY Game.id"
+    query += """
+        HAVING COALESCE(SUM(
+                   CASE WHEN GameCopy.is_available = TRUE
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM SessionGameCopy
+                            JOIN Session ON (SessionGameCopy.session_id = Session.id)
+                            WHERE SessionGameCopy.game_id = GameCopy.game_id
+                            AND SessionGameCopy.store_id = GameCopy.store_id
+                            AND SessionGameCopy.copy_num = GameCopy.copy_num
+                            AND Session.day = %s
+                            AND Session.start_time < %s
+                            AND Session.end_time > %s
+                        )
+                   THEN 1 ELSE 0 END
+               ), 0) {availability_clause}
+        ORDER BY Game.name
+    """.format(availability_clause=("> 0" if only_available else "= 0"))
+    params.extend([day, end_time, start_time])
+
+    return get_db().execute(query, params).fetchall()
+
+
+def get_available_games_during(store_id, day, start_time, end_time, **filters):
     """Get games with at least one available copy during the time interval."""
-    return (
-        get_db()
-        .execute(
-            """
-            SELECT Game.*,
-                   COUNT(GameCopy.copy_num) AS total_copies,
-                   COALESCE(SUM(
-                       CASE WHEN GameCopy.is_available = TRUE
-                            AND NOT EXISTS (
-                                SELECT 1
-                                FROM SessionGameCopy
-                                JOIN Session ON (SessionGameCopy.session_id = Session.id)
-                                WHERE SessionGameCopy.game_id = GameCopy.game_id
-                                AND SessionGameCopy.store_id = GameCopy.store_id
-                                AND SessionGameCopy.copy_num = GameCopy.copy_num
-                                AND Session.day = %s
-                                AND Session.start_time < %s
-                                AND Session.end_time > %s
-                            )
-                       THEN 1 ELSE 0 END
-                   ), 0) AS available_copies
-            FROM Game
-            JOIN GameCopy ON (Game.id = GameCopy.game_id AND GameCopy.store_id = %s)
-            GROUP BY Game.id
-            HAVING COALESCE(SUM(
-                       CASE WHEN GameCopy.is_available = TRUE
-                            AND NOT EXISTS (
-                                SELECT 1
-                                FROM SessionGameCopy
-                                JOIN Session ON (SessionGameCopy.session_id = Session.id)
-                                WHERE SessionGameCopy.game_id = GameCopy.game_id
-                                AND SessionGameCopy.store_id = GameCopy.store_id
-                                AND SessionGameCopy.copy_num = GameCopy.copy_num
-                                AND Session.day = %s
-                                AND Session.start_time < %s
-                                AND Session.end_time > %s
-                            )
-                       THEN 1 ELSE 0 END
-                   ), 0) > 0
-            ORDER BY Game.name
-            """,
-            (day, end_time, start_time, store_id, day, end_time, start_time),
-        )
-        .fetchall()
+    return _get_games_by_availability_during(
+        store_id, day, start_time, end_time, only_available=True, **filters
     )
 
 
-def get_unavailable_games_during(store_id, day, start_time, end_time):
+def get_unavailable_games_during(store_id, day, start_time, end_time, **filters):
     """Get games with zero available copies during the time interval."""
-    return (
-        get_db()
-        .execute(
-            """
-            SELECT Game.*,
-                   COUNT(GameCopy.copy_num) AS total_copies,
-                   COALESCE(SUM(
-                       CASE WHEN GameCopy.is_available = TRUE
-                            AND NOT EXISTS (
-                                SELECT 1
-                                FROM SessionGameCopy
-                                JOIN Session ON (SessionGameCopy.session_id = Session.id)
-                                WHERE SessionGameCopy.game_id = GameCopy.game_id
-                                AND SessionGameCopy.store_id = GameCopy.store_id
-                                AND SessionGameCopy.copy_num = GameCopy.copy_num
-                                AND Session.day = %s
-                                AND Session.start_time < %s
-                                AND Session.end_time > %s
-                            )
-                       THEN 1 ELSE 0 END
-                   ), 0) AS available_copies
-            FROM Game
-            JOIN GameCopy ON (Game.id = GameCopy.game_id AND GameCopy.store_id = %s)
-            GROUP BY Game.id
-            HAVING COALESCE(SUM(
-                       CASE WHEN GameCopy.is_available = TRUE
-                            AND NOT EXISTS (
-                                SELECT 1
-                                FROM SessionGameCopy
-                                JOIN Session ON (SessionGameCopy.session_id = Session.id)
-                                WHERE SessionGameCopy.game_id = GameCopy.game_id
-                                AND SessionGameCopy.store_id = GameCopy.store_id
-                                AND SessionGameCopy.copy_num = GameCopy.copy_num
-                                AND Session.day = %s
-                                AND Session.start_time < %s
-                                AND Session.end_time > %s
-                            )
-                       THEN 1 ELSE 0 END
-                   ), 0) = 0
-            ORDER BY Game.name
-            """,
-            (day, end_time, start_time, store_id, day, end_time, start_time),
-        )
-        .fetchall()
+    return _get_games_by_availability_during(
+        store_id, day, start_time, end_time, only_available=False, **filters
     )
 
 
@@ -222,11 +235,11 @@ def get_available_games_with_counts(store_id):
         get_db()
         .execute(
             """
-            SELECT Game.id, Game.name, COUNT(*) AS copy_count
+            SELECT Game.id, Game.name, Game.image_url, COUNT(*) AS copy_count
             FROM Game
             JOIN GameCopy ON (Game.id = GameCopy.game_id)
             WHERE GameCopy.store_id = %s
-            GROUP BY Game.id, Game.name
+            GROUP BY Game.id, Game.name, Game.image_url
             """,
             (store_id,),
         )
@@ -355,6 +368,12 @@ def get_games_filtered(store_id, genre=None, min_players=None, max_players=None,
 
 def get_game_detail(game_id):
     return get_db().execute("SELECT * FROM Game WHERE id = %s", (game_id,)).fetchone()
+
+
+def update_game_image_url(game_id, url):
+    db = get_db()
+    db.execute("UPDATE Game SET image_url = %s WHERE id = %s", (url, game_id))
+    db.commit()
 
 
 def _rating_similarity(game, other, column, weight):

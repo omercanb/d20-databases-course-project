@@ -67,7 +67,7 @@ def test_limit_buy_matches_sell(app):
         # Verify cash transferred (seller gets $50 at $10/unit)
         seller = get_market_participant(seller_id)
         buyer = get_market_participant(buyer_id)
-        assert seller["availiable_cash"] == 50.0
+        assert seller["available_cash"] == 50.0
         assert buyer["reserved_cash"] == 0.0
 
         # Verify trade recorded
@@ -113,7 +113,7 @@ def test_limit_sell_matches_buy(app):
         # Verify execution price is buyer's price (passive pricing)
         seller = get_market_participant(seller_id)
         buyer = get_market_participant(buyer_id)
-        assert seller["availiable_cash"] == 45.0  # 3 * $15
+        assert seller["available_cash"] == 45.0  # 3 * $15
         assert buyer["reserved_cash"] == 0.0
 
         # Verify inventory
@@ -161,7 +161,7 @@ def test_market_buy_matches_sell(app):
 
         # Verify execution at seller's price ($8)
         seller = get_market_participant(seller_id)
-        assert seller["availiable_cash"] == 32.0  # 4 * $8
+        assert seller["available_cash"] == 32.0  # 4 * $8
 
         # Verify trade
         trades = get_trades_by_participant(buyer_id)
@@ -204,7 +204,7 @@ def test_market_sell_matches_buy(app):
 
         # Verify execution at buyer's price ($20)
         seller = get_market_participant(seller_id)
-        assert seller["availiable_cash"] == 40.0  # 2 * $20
+        assert seller["available_cash"] == 40.0  # 2 * $20
 
         # Verify trade
         trades = get_trades_by_participant(seller_id)
@@ -324,7 +324,7 @@ def test_cancel_buy_order(app):
 
         # Verify cash is reserved
         buyer_before = get_market_participant(buyer_id)
-        assert buyer_before["availiable_cash"] == 100000.0 - 50.0  # 50 reserved
+        assert buyer_before["available_cash"] == 100000.0 - 50.0  # 50 reserved
         assert buyer_before["reserved_cash"] == 50.0
 
         # Cancel the order
@@ -336,7 +336,7 @@ def test_cancel_buy_order(app):
 
         # Verify cash is returned to available
         buyer_after = get_market_participant(buyer_id)
-        assert buyer_after["availiable_cash"] == 100000.0  # All available again
+        assert buyer_after["available_cash"] == 100000.0  # All available again
         assert buyer_after["reserved_cash"] == 0.0
 
 

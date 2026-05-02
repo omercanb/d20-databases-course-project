@@ -1,0 +1,18 @@
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'overview' %}active{% endif %}"
+           href="{{ url_for('stores.my_store_overview') }}">Overview</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'games' %}active{% endif %}"
+           href="{{ url_for('stores.my_store_games') }}">Games</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'tables' %}active{% endif %}"
+           href="{{ url_for('stores.my_store_tables') }}">Tables</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'sessions' %}active{% endif %}"
+           href="{{ url_for('stores.my_store_sessions') }}">Sessions</a>
+    </li>
+</ul>

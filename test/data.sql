@@ -7,7 +7,7 @@ INSERT INTO Game (name, symbol, genre, min_players, max_players, avg_duration, c
 VALUES
   ('Test Game', 'TG', 'Strategy', 2, 4, 60, 3, 'A test game for testing.');
 
-INSERT INTO MarketPariticipant (customer_id, availiable_cash, reserved_cash)
+INSERT INTO MarketParticipant (customer_id, available_cash, reserved_cash)
 VALUES
   (1, 1000.00, 0.00),
   (2, 1000.00, 0.00);

@@ -1,5 +1,7 @@
 """Tests for the game library feature (db functions and routes)."""
 
+import io
+
 import pytest
 
 from d20.db import get_db
@@ -365,6 +367,252 @@ class TestGameLibraryRoute:
         response = client.get(f"/store/{store_id}?min_players=0")
         assert response.status_code == 200
         assert b"Minimum players" in response.data
+
+
+class TestCreateStoreGameRoute:
+    def _setup_store_session(self, client, app, username="creatorstore", name="Creator Store"):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name=name, username=username)
+        with client.session_transaction() as sess:
+            sess["store_id"] = store_id
+        return store_id
+
+    def test_store_can_create_game_without_copy(self, client, app):
+        store_id = self._setup_store_session(client, app)
+        response = client.post(
+            "/mystore/game/create",
+            data={
+                "name": "Azul",
+                "symbol": "AZ",
+                "genre": "Abstract",
+                "min_players": "2",
+                "max_players": "4",
+                "avg_duration": "45",
+                "complexity_rating": "2",
+                "strategy_rating": "4",
+                "luck_rating": "2",
+                "interaction_rating": "3",
+                "description": "Tile drafting game",
+                "publisher": "Plan B",
+            },
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"Game created in catalog." in response.data
+        assert b"Azul" in response.data
+
+        with app.app_context():
+            db = get_db()
+            game = db.execute(
+                "SELECT id, symbol FROM Game WHERE name = %s",
+                ("Azul",),
+            ).fetchone()
+            assert game is not None
+            copy = db.execute(
+                "SELECT * FROM GameCopy WHERE game_id = %s AND store_id = %s",
+                (game["id"], store_id),
+            ).fetchone()
+            assert copy is None
+
+    def test_duplicate_name_flashes_error(self, client, app):
+        self._setup_store_session(client, app, username="dupecreator", name="Dupe Creator")
+        response = client.post(
+            "/mystore/game/create",
+            data={"name": "Test Game", "symbol": "T2"},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"A game with this name or symbol already exists." in response.data
+
+    def test_duplicate_symbol_flashes_error(self, client, app):
+        self._setup_store_session(client, app, username="dupesymbol", name="Dupe Symbol")
+        response = client.post(
+            "/mystore/game/create",
+            data={"name": "Another Test Game", "symbol": "TG"},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"A game with this name or symbol already exists." in response.data
+
+    def test_missing_name_flashes_validation_error(self, client, app):
+        self._setup_store_session(client, app, username="missingname", name="Missing Name")
+        response = client.post(
+            "/mystore/game/create",
+            data={"name": "", "symbol": "MN"},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"Game name and symbol are required." in response.data
+
+    def test_missing_symbol_flashes_validation_error(self, client, app):
+        self._setup_store_session(client, app, username="missingsymbol", name="Missing Symbol")
+        response = client.post(
+            "/mystore/game/create",
+            data={"name": "Missing Symbol Game", "symbol": ""},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"Game name and symbol are required." in response.data
+
+    def test_unauthenticated_redirects_to_store_login(self, client):
+        response = client.post(
+            "/mystore/game/create",
+            data={"name": "NoAuth", "symbol": "NA"},
+        )
+        assert response.status_code == 302
+        assert "/auth/loginstore" in response.headers["Location"]
+
+
+class TestMyStoreSplitViews:
+    def _setup_store_session(self, client, app, username="splitstore", name="Split Store"):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name=name, username=username)
+        with client.session_transaction() as sess:
+            sess["store_id"] = store_id
+        return store_id
+
+    def test_mystore_redirects_to_overview(self, client, app):
+        self._setup_store_session(client, app, username="split_overview", name="Split Overview")
+        response = client.get("/mystore")
+        assert response.status_code == 302
+        assert "/mystore/overview" in response.headers["Location"]
+
+    def test_mystore_overview_renders(self, client, app):
+        self._setup_store_session(client, app, username="split_ov_view", name="Split Ov View")
+        response = client.get("/mystore/overview")
+        assert response.status_code == 200
+        assert b"Overview" in response.data
+        assert b"Manage Tables" in response.data
+
+    def test_mystore_games_renders(self, client, app):
+        self._setup_store_session(client, app, username="split_games", name="Split Games")
+        response = client.get("/mystore/games")
+        assert response.status_code == 302
+        assert "/mystore/games/inventory" in response.headers["Location"]
+
+    def test_mystore_games_inventory_renders(self, client, app):
+        self._setup_store_session(client, app, username="split_games_inv", name="Split Games Inv")
+        response = client.get("/mystore/games/inventory")
+        assert response.status_code == 200
+        assert b"Add Game Copy" in response.data
+        assert b"Games In Inventory" in response.data
+
+    def test_mystore_games_library_renders(self, client, app):
+        self._setup_store_session(client, app, username="split_games_lib", name="Split Games Lib")
+        response = client.get("/mystore/games/library")
+        assert response.status_code == 200
+        assert b"Add New Game to Catalog" in response.data
+        assert b"Game Library" in response.data
+
+    def test_mystore_tables_renders(self, client, app):
+        self._setup_store_session(client, app, username="split_tables", name="Split Tables")
+        response = client.get("/mystore/tables")
+        assert response.status_code == 200
+        assert b"Add New Table" in response.data
+
+    def test_mystore_sessions_renders(self, client, app):
+        self._setup_store_session(client, app, username="split_sessions", name="Split Sessions")
+        response = client.get("/mystore/sessions")
+        assert response.status_code == 200
+        assert b"Upcoming Sessions" in response.data
+
+    def test_mystore_split_views_require_store_auth(self, client):
+        for path in (
+            "/mystore/overview",
+            "/mystore/games",
+            "/mystore/games/inventory",
+            "/mystore/games/library",
+            "/mystore/tables",
+            "/mystore/sessions",
+        ):
+            response = client.get(path)
+            assert response.status_code == 302
+            assert "/auth/loginstore" in response.headers["Location"]
+
+
+class TestAddGameCopyRoute:
+    def _setup_store_session(self, client, app, username="copyroute", name="Copy Route"):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name=name, username=username)
+        with client.session_transaction() as sess:
+            sess["store_id"] = store_id
+        return store_id
+
+    def test_add_multiple_copies_with_count(self, client, app):
+        store_id = self._setup_store_session(client, app, username="copy_multi", name="Copy Multi")
+        response = client.post(
+            "/mystore/game/add",
+            data={"game_id": "1", "copy_count": "3"},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"3 game copies added successfully." in response.data
+
+        with app.app_context():
+            row = get_db().execute(
+                "SELECT COUNT(*) AS cnt FROM GameCopy WHERE store_id = %s AND game_id = 1",
+                (store_id,),
+            ).fetchone()
+        assert row["cnt"] == 3
+
+    def test_add_game_copy_rejects_non_positive_count(self, client, app):
+        store_id = self._setup_store_session(client, app, username="copy_invalid", name="Copy Invalid")
+        response = client.post(
+            "/mystore/game/add",
+            data={"game_id": "1", "copy_count": "0"},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"Copy count must be a positive number." in response.data
+
+        with app.app_context():
+            row = get_db().execute(
+                "SELECT COUNT(*) AS cnt FROM GameCopy WHERE store_id = %s AND game_id = 1",
+                (store_id,),
+            ).fetchone()
+        assert row["cnt"] == 0
+
+
+class TestMyStoreSessionsFiltering:
+    def _setup_store_with_sessions(self, client, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name="Filter Sessions Store", username="filtersessions")
+            db.execute(
+                'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+                (store_id,),
+            )
+            db.execute(
+                """
+                INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
+                VALUES
+                    (1, %s, 1, '2099-01-01', 10, 12),
+                    (1, %s, 1, '2099-01-02', 13, 15)
+                """,
+                (store_id, store_id),
+            )
+            db.commit()
+        with client.session_transaction() as sess:
+            sess["store_id"] = store_id
+        return store_id
+
+    def test_sessions_view_groups_by_day_with_date_headers(self, client, app):
+        self._setup_store_with_sessions(client, app)
+        response = client.get("/mystore/sessions")
+        assert response.status_code == 200
+        assert b"2099-01-01" in response.data
+        assert b"2099-01-02" in response.data
+        assert b"Apply Filter" in response.data
+
+    def test_sessions_view_filters_by_from_day(self, client, app):
+        self._setup_store_with_sessions(client, app)
+        response = client.get("/mystore/sessions?from_day=2099-01-02")
+        assert response.status_code == 200
+        assert b"2099-01-01" not in response.data
+        assert b"2099-01-02" in response.data
 
 
 # ---------------------------------------------------------------------------
@@ -870,3 +1118,61 @@ class TestSelectGamesRoute:
         )
         assert response.status_code == 200
         assert b"Unrated Game" not in response.data
+
+
+class TestStoreGameImageUpload:
+    def _setup(self, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name="Img Store", username="img_store")
+            game_id = _insert_game(db, name="Image Game", symbol="IM")
+            _insert_game_copy(db, game_id, store_id, copy_num=1)
+            return store_id, game_id
+
+    def _login_store(self, client, store_id):
+        with client.session_transaction() as sess:
+            sess["store_id"] = store_id
+
+    def test_upload_valid_image_sets_image_url(self, client, app):
+        store_id, game_id = self._setup(app)
+        self._login_store(client, store_id)
+
+        uploaded = {}
+
+        class FakeMinio:
+            def put_object(self, bucket_name, object_name, data, length, content_type):
+                uploaded["bucket_name"] = bucket_name
+                uploaded["object_name"] = object_name
+                uploaded["length"] = length
+                uploaded["content_type"] = content_type
+
+        app.extensions["minio"] = FakeMinio()
+        response = client.post(
+            f"/mystore/game/{game_id}/upload-image",
+            data={"image": (io.BytesIO(b"\x89PNG\r\n\x1a\n"), "cover.png")},
+            content_type="multipart/form-data",
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+
+        with app.app_context():
+            row = get_db().execute(
+                "SELECT image_url FROM Game WHERE id = %s", (game_id,)
+            ).fetchone()
+        assert row["image_url"] is not None
+        assert uploaded["bucket_name"] == app.config["MINIO_BUCKET"]
+        assert uploaded["object_name"].startswith(f"{game_id}-")
+        assert uploaded["object_name"].endswith(".png")
+
+    def test_upload_invalid_type_flashes_error(self, client, app):
+        store_id, game_id = self._setup(app)
+        self._login_store(client, store_id)
+
+        response = client.post(
+            f"/mystore/game/{game_id}/upload-image",
+            data={"image": (io.BytesIO(b"not-an-image"), "bad.txt")},
+            content_type="multipart/form-data",
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"Invalid file type" in response.data

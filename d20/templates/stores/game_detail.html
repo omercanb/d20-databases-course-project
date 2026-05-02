@@ -11,6 +11,12 @@
             <div class="col-md-8">
                 <div class="card">
                     <div class="card-body">
+                        {% if game['image_url'] %}
+                            <img src="{{ game['image_url'] }}"
+                                 alt="{{ game['name'] }} cover"
+                                 class="img-fluid rounded mb-3"
+                                 style="max-height: 360px; object-fit: cover; width: 100%;">
+                        {% endif %}
                         {% if game['genre'] %}
                             <span class="badge bg-secondary mb-2">{{ game['genre'] }}</span>
                         {% endif %}

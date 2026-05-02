@@ -1,0 +1,10 @@
+<ul class="nav nav-pills mb-3">
+    <li class="nav-item">
+        <a class="nav-link {% if games_tab == 'inventory' %}active{% endif %}"
+           href="{{ url_for('stores.my_store_games_inventory') }}">Game Inventory</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if games_tab == 'library' %}active{% endif %}"
+           href="{{ url_for('stores.my_store_games_library') }}">Game Library</a>
+    </li>
+</ul>

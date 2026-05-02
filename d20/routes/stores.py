@@ -1,9 +1,11 @@
 import functools
 from datetime import date
+from uuid import uuid4
 
 from flask import (
     Blueprint,
     abort,
+    current_app,
     flash,
     g,
     redirect,
@@ -12,9 +14,11 @@ from flask import (
     session,
     url_for,
 )
+from werkzeug.utils import secure_filename
 
 from d20.db import get_db
 from d20.db.game import (
+    create_game,
     create_game_copy,
     delete_game_copy,
     get_available_games_during,
@@ -30,6 +34,7 @@ from d20.db.game import (
     get_unavailable_games_during,
     get_user_rating,
     rate_game,
+    update_game_image_url,
 )
 from d20.db.session import (
     MAX_RESERVATIONS,
@@ -38,9 +43,8 @@ from d20.db.session import (
     get_available_tables,
     get_reservation_count,
     get_session,
-    get_session_games,
     get_unavailable_tables,
-    get_upcoming_sessions_with_user_by_store,
+    get_upcoming_sessions_with_user_and_games_by_store,
 )
 from d20.db.stores import (
     create_table,
@@ -52,6 +56,8 @@ from d20.db.stores import (
 )
 
 bp = Blueprint("stores", __name__)
+ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 
 
 @bp.before_app_request
@@ -91,26 +97,170 @@ def stores():
 @bp.route("/mystore")
 @store_login_required
 def my_store():
+    return redirect(url_for("stores.my_store_overview"))
+
+
+@bp.route("/mystore/overview")
+@store_login_required
+def my_store_overview():
     store_id = g.store["id"]
     tables = get_tables(store_id)
     games = get_available_games_with_counts(store_id)
-    all_games = get_games()
     today = str(date.today())
-    upcoming_sessions_raw = get_upcoming_sessions_with_user_by_store(store_id, today)
+    upcoming_sessions_raw = get_upcoming_sessions_with_user_and_games_by_store(store_id, today)
+    upcoming_sessions = [dict(sess) for sess in upcoming_sessions_raw]
 
-    # Convert to dicts and attach games
-    upcoming_sessions = []
-    for sess in upcoming_sessions_raw:
-        sess_dict = dict(sess)
-        sess_dict["games"] = get_session_games(sess["id"])
-        upcoming_sessions.append(sess_dict)
+    total_copies = sum(game["copy_count"] for game in games)
+    top_games = sorted(games, key=lambda game: game["copy_count"], reverse=True)[:5]
+    reservations_by_day = {}
+    for sess in upcoming_sessions:
+        day = sess["day"]
+        reservations_by_day[day] = reservations_by_day.get(day, 0) + 1
 
     return render_template(
-        "stores/my_store.html",
+        "stores/mystore_overview.html",
         tables=tables,
         games=games,
-        all_games=all_games,
         upcoming_sessions=upcoming_sessions,
+        total_copies=total_copies,
+        top_games=top_games,
+        reservations_by_day=reservations_by_day,
+    )
+
+
+@bp.route("/mystore/games")
+@store_login_required
+def my_store_games():
+    return redirect(url_for("stores.my_store_games_inventory"))
+
+
+@bp.route("/mystore/games/inventory")
+@store_login_required
+def my_store_games_inventory():
+    store_id = g.store["id"]
+    games = get_available_games_with_counts(store_id)
+    all_games = get_games()
+    return render_template(
+        "stores/mystore_games_inventory.html",
+        games=games,
+        all_games=all_games,
+    )
+
+
+@bp.route("/mystore/games/library")
+@store_login_required
+def my_store_games_library():
+    all_games = get_games()
+    return render_template(
+        "stores/mystore_games_library.html",
+        all_games=all_games,
+    )
+
+
+@bp.route("/mystore/game/<int:game_id>/edit")
+@store_login_required
+def edit_store_game(game_id):
+    game = get_game_detail(game_id)
+    if game is None:
+        abort(404)
+    if not get_game_copies_with_condition(game_id, g.store["id"]):
+        flash("You can only edit games in your inventory.")
+        return redirect(url_for("stores.my_store_games_inventory"))
+    return render_template("stores/mystore_game_edit.html", game=game)
+
+
+@bp.route("/mystore/game/<int:game_id>/edit", methods=("POST",))
+@store_login_required
+def update_store_game(game_id):
+    game = get_game_detail(game_id)
+    if game is None:
+        abort(404)
+    if not get_game_copies_with_condition(game_id, g.store["id"]):
+        flash("You can only edit games in your inventory.")
+        return redirect(url_for("stores.my_store_games_inventory"))
+
+    db = get_db()
+    try:
+        db.execute(
+            """
+            UPDATE Game
+            SET name = %s,
+                symbol = %s,
+                genre = %s,
+                min_players = %s,
+                max_players = %s,
+                avg_duration = %s,
+                complexity_rating = %s,
+                strategy_rating = %s,
+                luck_rating = %s,
+                interaction_rating = %s,
+                description = %s,
+                publisher = %s
+            WHERE id = %s
+            """,
+            (
+                request.form.get("name", "").strip(),
+                request.form.get("symbol", "").strip(),
+                request.form.get("genre") or None,
+                request.form.get("min_players", type=int),
+                request.form.get("max_players", type=int),
+                request.form.get("avg_duration", type=int),
+                request.form.get("complexity_rating", type=int),
+                request.form.get("strategy_rating", type=int),
+                request.form.get("luck_rating", type=int),
+                request.form.get("interaction_rating", type=int),
+                request.form.get("description") or None,
+                request.form.get("publisher") or None,
+                game_id,
+            ),
+        )
+        db.commit()
+        flash("Game updated successfully.")
+    except db.IntegrityError:
+        flash("A game with this name or symbol already exists.")
+    except Exception as exc:
+        flash(f"Error updating game: {exc}")
+    return redirect(url_for("stores.edit_store_game", game_id=game_id))
+
+
+@bp.route("/mystore/tables")
+@store_login_required
+def my_store_tables():
+    store_id = g.store["id"]
+    tables = get_tables(store_id)
+    return render_template(
+        "stores/mystore_tables.html",
+        tables=tables,
+    )
+
+
+@bp.route("/mystore/sessions")
+@store_login_required
+def my_store_sessions():
+    store_id = g.store["id"]
+    today = str(date.today())
+    from_day = request.args.get("from_day") or ""
+    to_day = request.args.get("to_day") or ""
+    upcoming_sessions_raw = get_upcoming_sessions_with_user_and_games_by_store(store_id, today)
+
+    upcoming_sessions = []
+    for sess in upcoming_sessions_raw:
+        if from_day and sess["day"] < from_day:
+            continue
+        if to_day and sess["day"] > to_day:
+            continue
+        upcoming_sessions.append(dict(sess))
+
+    sessions_by_day = {}
+    for sess in upcoming_sessions:
+        sessions_by_day.setdefault(sess["day"], []).append(sess)
+
+    return render_template(
+        "stores/mystore_sessions.html",
+        upcoming_sessions=upcoming_sessions,
+        sessions_by_day=sessions_by_day,
+        from_day=from_day,
+        to_day=to_day,
     )
 
 
@@ -120,7 +270,7 @@ def add_table():
     capacity = request.form.get("capacity", type=int)
     if capacity is None or capacity <= 0:
         flash("Capacity must be a positive number.")
-        return redirect(url_for("stores.my_store"))
+        return redirect(url_for("stores.my_store_tables"))
 
     try:
         create_table(g.store["id"], capacity)
@@ -128,7 +278,7 @@ def add_table():
     except Exception as e:
         flash(f"Error adding table: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_tables"))
 
 
 @bp.route("/mystore/table/<int:table_num>/update", methods=("POST",))
@@ -137,7 +287,7 @@ def update_table_route(table_num):
     capacity = request.form.get("capacity", type=int)
     if capacity is None or capacity <= 0:
         flash("Capacity must be a positive number.")
-        return redirect(url_for("stores.my_store"))
+        return redirect(url_for("stores.my_store_tables"))
 
     try:
         update_table(g.store["id"], table_num, capacity)
@@ -145,7 +295,7 @@ def update_table_route(table_num):
     except Exception as e:
         flash(f"Error updating table: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_tables"))
 
 
 @bp.route("/mystore/table/<int:table_num>/delete", methods=("POST",))
@@ -157,24 +307,126 @@ def delete_table_route(table_num):
     except Exception as e:
         flash(f"Error deleting table: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_tables"))
 
 
 @bp.route("/mystore/game/add", methods=("POST",))
 @store_login_required
 def add_game_copy():
     game_id = request.form.get("game_id", type=int)
+    copy_count = request.form.get("copy_count", 1, type=int)
     if game_id is None:
         flash("Please select a game.")
-        return redirect(url_for("stores.my_store"))
+        return redirect(url_for("stores.my_store_games_inventory"))
+    if copy_count is None or copy_count <= 0:
+        flash("Copy count must be a positive number.")
+        return redirect(url_for("stores.my_store_games_inventory"))
 
     try:
-        create_game_copy(game_id, g.store["id"])
-        flash("Game copy added successfully.")
+        for _ in range(copy_count):
+            create_game_copy(game_id, g.store["id"])
+        flash(f"{copy_count} game {'copy' if copy_count == 1 else 'copies'} added successfully.")
     except Exception as e:
         flash(f"Error adding game copy: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_games_inventory"))
+
+
+@bp.route("/mystore/game/create", methods=("POST",))
+@store_login_required
+def create_store_game():
+    name = request.form.get("name", "").strip()
+    symbol = request.form.get("symbol", "").strip()
+    genre = request.form.get("genre") or None
+    min_players = request.form.get("min_players", type=int)
+    max_players = request.form.get("max_players", type=int)
+    avg_duration = request.form.get("avg_duration", type=int)
+    complexity_rating = request.form.get("complexity_rating", type=int)
+    strategy_rating = request.form.get("strategy_rating", type=int)
+    luck_rating = request.form.get("luck_rating", type=int)
+    interaction_rating = request.form.get("interaction_rating", type=int)
+    description = request.form.get("description") or None
+    publisher = request.form.get("publisher") or None
+
+    if not name or not symbol:
+        flash("Game name and symbol are required.")
+        return redirect(url_for("stores.my_store_games_library"))
+
+    db = get_db()
+    try:
+        create_game(
+            name=name,
+            symbol=symbol,
+            genre=genre,
+            min_players=min_players,
+            max_players=max_players,
+            complexity_rating=complexity_rating,
+            avg_duration=avg_duration,
+            description=description,
+            publisher=publisher,
+            strategy_rating=strategy_rating,
+            luck_rating=luck_rating,
+            interaction_rating=interaction_rating,
+        )
+        flash("Game created in catalog.")
+    except db.IntegrityError:
+        flash("A game with this name or symbol already exists.")
+    except Exception as e:
+        flash(f"Error creating game: {str(e)}")
+
+    return redirect(url_for("stores.my_store_games_library"))
+
+
+@bp.route("/mystore/game/<int:game_id>/upload-image", methods=("POST",))
+@store_login_required
+def upload_game_image(game_id):
+    game = get_game_detail(game_id)
+    if game is None:
+        abort(404)
+    if not get_game_copies_with_condition(game_id, g.store["id"]):
+        flash("You can only upload images for games in your inventory.")
+        return redirect(url_for("stores.edit_store_game", game_id=game_id))
+
+    image = request.files.get("image")
+    if image is None or not image.filename:
+        flash("Please choose an image to upload.")
+        return redirect(url_for("stores.edit_store_game", game_id=game_id))
+
+    filename = secure_filename(image.filename)
+    if "." not in filename:
+        flash("Invalid file type. Use jpg, jpeg, png, or webp.")
+        return redirect(url_for("stores.edit_store_game", game_id=game_id))
+
+    ext = filename.rsplit(".", 1)[1].lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        flash("Invalid file type. Use jpg, jpeg, png, or webp.")
+        return redirect(url_for("stores.edit_store_game", game_id=game_id))
+
+    image.seek(0, 2)
+    size = image.tell()
+    image.seek(0)
+    if size > MAX_IMAGE_SIZE_BYTES:
+        flash("Image is too large. Maximum size is 5MB.")
+        return redirect(url_for("stores.edit_store_game", game_id=game_id))
+
+    bucket = current_app.config["MINIO_BUCKET"]
+    object_name = f"{game_id}-{uuid4().hex[:8]}.{ext}"
+    try:
+        current_app.extensions["minio"].put_object(
+            bucket_name=bucket,
+            object_name=object_name,
+            data=image.stream,
+            length=size,
+            content_type=image.mimetype or "application/octet-stream",
+        )
+        scheme = "https" if current_app.config["MINIO_SECURE"] else "http"
+        image_url = f"{scheme}://{current_app.config['MINIO_ENDPOINT']}/{bucket}/{object_name}"
+        update_game_image_url(game_id, image_url)
+        flash("Game image uploaded successfully.")
+    except Exception as exc:
+        flash(f"Error uploading image: {exc}")
+
+    return redirect(url_for("stores.edit_store_game", game_id=game_id))
 
 
 @bp.route("/mystore/game/<int:game_id>/remove", methods=("POST",))
@@ -185,14 +437,14 @@ def remove_game_copy(game_id):
 
         if not copy:
             flash("No copies of this game found.")
-            return redirect(url_for("stores.my_store"))
+            return redirect(url_for("stores.my_store_games_inventory"))
 
         delete_game_copy(game_id, g.store["id"], copy["copy_num"])
         flash("Game copy removed successfully.")
     except Exception as e:
         flash(f"Error removing game copy: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_games_inventory"))
 
 
 @bp.route("/mystore/session/<int:session_id>/cancel", methods=("POST",))
@@ -201,7 +453,7 @@ def cancel_store_session(session_id):
     sess = get_session(session_id)
     if not sess or sess["store_id"] != g.store["id"]:
         flash("Session not found.")
-        return redirect(url_for("stores.my_store"))
+        return redirect(url_for("stores.my_store_sessions"))
 
     try:
         delete_session(session_id)
@@ -209,7 +461,7 @@ def cancel_store_session(session_id):
     except Exception as e:
         flash(f"Error cancelling session: {str(e)}")
 
-    return redirect(url_for("stores.my_store"))
+    return redirect(url_for("stores.my_store_sessions"))
 
 
 @bp.route("/store/<int:store_id>")
@@ -285,14 +537,14 @@ def book_session(store_id):
     start_time = request.args.get("start_time", 9, type=int)
     end_time = request.args.get("end_time", 20, type=int)
     day = request.args.get("day") or str(date.today())
+    store = get_store_by_id(store_id)
+    if store is None:
+        abort(404)
     if start_time is None or end_time is None or end_time <= start_time:
         flash("End time must be later than start time.")
         start_time, end_time = 9, 20
     tables = get_available_tables(store_id, day, start_time, end_time)
     unvailable_tables = get_unavailable_tables(store_id, day, start_time, end_time)
-    store = get_store_by_id(store_id)
-    if store is None:
-        abort(404)
     return render_template(
         "stores/book_session.html",
         store=store,
@@ -331,45 +583,25 @@ def select_games(store_id, table_num):
     if store is None:
         abort(404)
     table = get_table(store_id, table_num)
-    available_games = get_available_games_during(store_id, day, start_time, end_time)
+    filter_args = dict(
+        search=search,
+        genre=genre,
+        min_players=min_players,
+        max_players=max_players,
+        max_avg_duration=max_avg_duration,
+        user_rating=user_rating,
+        complexity_rating=complexity_rating,
+        strategy_rating=strategy_rating,
+        luck_rating=luck_rating,
+        interaction_rating=interaction_rating,
+    )
+    available_games = get_available_games_during(
+        store_id, day, start_time, end_time, **filter_args
+    )
     unavailable_games = get_unavailable_games_during(
-        store_id, day, start_time, end_time
+        store_id, day, start_time, end_time, **filter_args
     )
     genres = get_store_genres(store_id)
-
-    def matches_filters(game):
-        if search:
-            text = f"{game['name']} {game['description'] or ''}".lower()
-            if search.lower() not in text:
-                return False
-        if genre is not None and game["genre"] != genre:
-            return False
-        if min_players is not None and (
-            game["min_players"] is None or game["min_players"] < min_players
-        ):
-            return False
-        if max_players is not None and (
-            game["max_players"] is None or game["max_players"] > max_players
-        ):
-            return False
-        if max_avg_duration is not None and (
-            game["avg_duration"] is None or game["avg_duration"] > max_avg_duration
-        ):
-            return False
-        if user_rating is not None and (not game["avg_rating"] or game["avg_rating"] < user_rating):
-            return False
-        if complexity_rating is not None and game["complexity_rating"] != complexity_rating:
-            return False
-        if strategy_rating is not None and game["strategy_rating"] != strategy_rating:
-            return False
-        if luck_rating is not None and game["luck_rating"] != luck_rating:
-            return False
-        if interaction_rating is not None and game["interaction_rating"] != interaction_rating:
-            return False
-        return True
-
-    available_games = [game for game in available_games if matches_filters(game)]
-    unavailable_games = [game for game in unavailable_games if matches_filters(game)]
 
     return render_template(
         "stores/select_games.html",

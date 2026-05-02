@@ -30,6 +30,21 @@ body {
     grid-template-columns: repeat(3, 1fr);
 }
 
+.game-card-image-wrap {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border-radius: 0.5rem;
+    background: var(--bs-tertiary-bg);
+}
+
+.game-card-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
 /* Card section styling */
 .card-section {
     margin-bottom: 3rem;

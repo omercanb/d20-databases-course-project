@@ -67,9 +67,9 @@ def create_order(
         if order_type == "LIMIT":
             required_cash = initial_quantity * price
 
-            if participant["availiable_cash"] < required_cash:
+            if participant["available_cash"] < required_cash:
                 raise ValueError(
-                    f"Cannot buy {initial_quantity} units at ${price}. Only ${participant['availiable_cash']:.2f} available."
+                    f"Cannot buy {initial_quantity} units at ${price}. Only ${participant['available_cash']:.2f} available."
                 )
             decrement_available_cash(participant_id, required_cash)
             increment_reserved_cash(participant_id, required_cash)
@@ -109,7 +109,9 @@ def try_match_order(order_id):
     an error is only returned if the order is a market buy order and the user doesn't have enough cash
     """
     """Set up before finding matches"""
-    order = get_order(order_id)
+    order = get_order(order_id, for_update=True)
+    if not order or order["status"] not in ("OPEN", "PARTIAL"):
+        return 0, False
     game_id = order["game_id"]
     game_symbol = get_game(game_id)["symbol"]
     side = order["side"]
@@ -117,11 +119,11 @@ def try_match_order(order_id):
     # fetch the opposite order type (sorted increasing for buys and decreasing for sells (plus earliness))
     if side == "BUY":
         # TODO only get active orders
-        possible_matches = get_sell_orders(game_id)
+        possible_matches = get_sell_orders(game_id, for_update=True)
         # price is matching is a comparator function to be later used to check against possible matching prices
         price_is_matching = operator.ge
     else:
-        possible_matches = get_buy_orders(game_id)
+        possible_matches = get_buy_orders(game_id, for_update=True)
         price_is_matching = operator.le
     # Simulate a market order with an order with the most flexible price range possible
     # The price limit is the price that needs to match
@@ -173,13 +175,15 @@ def try_match_order(order_id):
         # We need to set transfer direction based on wether this was a buy or sell order
         if side == "BUY":
             buyer = order["participant_id"]
-            seller = get_order(matched_order_id)["participant_id"]
+            seller = get_order(matched_order_id, for_update=True)["participant_id"]
         else:
-            buyer = get_order(matched_order_id)["participant_id"]
+            buyer = get_order(matched_order_id, for_update=True)["participant_id"]
             seller = order["participant_id"]
 
         total_fills += num_fills
-        matched_order = get_order(matched_order_id)
+        matched_order = get_order(matched_order_id, for_update=True)
+        if not matched_order or matched_order["status"] not in ("OPEN", "PARTIAL"):
+            continue
         # The order rows themselves are updated
         add_fills(matched_order_id, num_fills)
         add_fills(order_id, num_fills)
@@ -228,9 +232,12 @@ def try_match_order(order_id):
     return total_fills, False
 
 
-def get_order(order_id):
+def get_order(order_id, for_update=False):
     """Get an order by ID."""
-    return get_db().execute("select * from Orders where id = %s", (order_id,)).fetchone()
+    query = "select * from Orders where id = %s"
+    if for_update:
+        query += " for update"
+    return get_db().execute(query, (order_id,)).fetchone()
 
 
 def get_orders_by_participant(participant_id):
@@ -313,48 +320,44 @@ def get_active_orders(participant_id=None):
         )
 
 
-def get_buy_orders(game_id, participant_id=None):
+def get_buy_orders(game_id, participant_id=None, for_update=False):
     """Get all open BUY orders for a game. Used for order matching."""
     if participant_id:
-        return (
-            get_db()
-            .execute(
-                "select * from Orders where game_id = %s and side = 'BUY' and status in ('OPEN', 'PARTIAL') and participant_id = %s order by price desc, created_at asc",
-                (game_id, participant_id),
-            )
-            .fetchall()
+        query = (
+            "select * from Orders where game_id = %s and side = 'BUY' and status in ('OPEN', 'PARTIAL') "
+            "and participant_id = %s order by price desc, created_at asc"
         )
+        if for_update:
+            query += " for update skip locked"
+        return get_db().execute(query, (game_id, participant_id)).fetchall()
     else:
-        return (
-            get_db()
-            .execute(
-                "select * from Orders where game_id = %s and side = 'BUY' and status in ('OPEN', 'PARTIAL') order by price desc, created_at asc",
-                (game_id,),
-            )
-            .fetchall()
+        query = (
+            "select * from Orders where game_id = %s and side = 'BUY' and status in ('OPEN', 'PARTIAL') "
+            "order by price desc, created_at asc"
         )
+        if for_update:
+            query += " for update skip locked"
+        return get_db().execute(query, (game_id,)).fetchall()
 
 
-def get_sell_orders(game_id, participant_id=None):
+def get_sell_orders(game_id, participant_id=None, for_update=False):
     """Get all open SELL orders for a game. Used for order matching."""
     if participant_id:
-        return (
-            get_db()
-            .execute(
-                "select * from Orders where game_id = %s and side = 'SELL' and status in ('OPEN', 'PARTIAL') and participant_id = %s order by price asc, created_at asc",
-                (game_id, participant_id),
-            )
-            .fetchall()
+        query = (
+            "select * from Orders where game_id = %s and side = 'SELL' and status in ('OPEN', 'PARTIAL') "
+            "and participant_id = %s order by price asc, created_at asc"
         )
+        if for_update:
+            query += " for update skip locked"
+        return get_db().execute(query, (game_id, participant_id)).fetchall()
     else:
-        return (
-            get_db()
-            .execute(
-                "select * from Orders where game_id = %s and side = 'SELL' and status in ('OPEN', 'PARTIAL') order by price asc, created_at asc",
-                (game_id,),
-            )
-            .fetchall()
+        query = (
+            "select * from Orders where game_id = %s and side = 'SELL' and status in ('OPEN', 'PARTIAL') "
+            "order by price asc, created_at asc"
         )
+        if for_update:
+            query += " for update skip locked"
+        return get_db().execute(query, (game_id,)).fetchall()
 
 
 def get_orders_by_status(status):
