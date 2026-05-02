@@ -53,6 +53,7 @@ CREATE TABLE Game (
     luck_rating         INTEGER,
     interaction_rating  INTEGER,
     description         TEXT,
+    image_url           TEXT DEFAULT NULL,
     avg_rating          DOUBLE PRECISION DEFAULT 0,
     base_price          NUMERIC(10, 2) DEFAULT 10.00
 );

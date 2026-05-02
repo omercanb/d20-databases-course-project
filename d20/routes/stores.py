@@ -1,9 +1,11 @@
 import functools
 from datetime import date
+from uuid import uuid4
 
 from flask import (
     Blueprint,
     abort,
+    current_app,
     flash,
     g,
     redirect,
@@ -12,6 +14,7 @@ from flask import (
     session,
     url_for,
 )
+from werkzeug.utils import secure_filename
 
 from d20.db import get_db
 from d20.db.game import (
@@ -31,6 +34,7 @@ from d20.db.game import (
     get_unavailable_games_during,
     get_user_rating,
     rate_game,
+    update_game_image_url,
 )
 from d20.db.session import (
     MAX_RESERVATIONS,
@@ -53,6 +57,8 @@ from d20.db.stores import (
 )
 
 bp = Blueprint("stores", __name__)
+ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 
 
 @bp.before_app_request
@@ -155,6 +161,72 @@ def my_store_games_library():
         "stores/mystore_games_library.html",
         all_games=all_games,
     )
+
+
+@bp.route("/mystore/game/<int:game_id>/edit")
+@store_login_required
+def edit_store_game(game_id):
+    game = get_game_detail(game_id)
+    if game is None:
+        abort(404)
+    if not get_game_copies_with_condition(game_id, g.store["id"]):
+        flash("You can only edit games in your inventory.")
+        return redirect(url_for("stores.my_store_games_inventory"))
+    return render_template("stores/mystore_game_edit.html", game=game)
+
+
+@bp.route("/mystore/game/<int:game_id>/edit", methods=("POST",))
+@store_login_required
+def update_store_game(game_id):
+    game = get_game_detail(game_id)
+    if game is None:
+        abort(404)
+    if not get_game_copies_with_condition(game_id, g.store["id"]):
+        flash("You can only edit games in your inventory.")
+        return redirect(url_for("stores.my_store_games_inventory"))
+
+    db = get_db()
+    try:
+        db.execute(
+            """
+            UPDATE Game
+            SET name = %s,
+                symbol = %s,
+                genre = %s,
+                min_players = %s,
+                max_players = %s,
+                avg_duration = %s,
+                complexity_rating = %s,
+                strategy_rating = %s,
+                luck_rating = %s,
+                interaction_rating = %s,
+                description = %s,
+                publisher = %s
+            WHERE id = %s
+            """,
+            (
+                request.form.get("name", "").strip(),
+                request.form.get("symbol", "").strip(),
+                request.form.get("genre") or None,
+                request.form.get("min_players", type=int),
+                request.form.get("max_players", type=int),
+                request.form.get("avg_duration", type=int),
+                request.form.get("complexity_rating", type=int),
+                request.form.get("strategy_rating", type=int),
+                request.form.get("luck_rating", type=int),
+                request.form.get("interaction_rating", type=int),
+                request.form.get("description") or None,
+                request.form.get("publisher") or None,
+                game_id,
+            ),
+        )
+        db.commit()
+        flash("Game updated successfully.")
+    except db.IntegrityError:
+        flash("A game with this name or symbol already exists.")
+    except Exception as exc:
+        flash(f"Error updating game: {exc}")
+    return redirect(url_for("stores.edit_store_game", game_id=game_id))
 
 
 @bp.route("/mystore/tables")
@@ -311,6 +383,58 @@ def create_store_game():
         flash(f"Error creating game: {str(e)}")
 
     return redirect(url_for("stores.my_store_games_library"))
+
+
+@bp.route("/mystore/game/<int:game_id>/upload-image", methods=("POST",))
+@store_login_required
+def upload_game_image(game_id):
+    game = get_game_detail(game_id)
+    if game is None:
+        abort(404)
+    if not get_game_copies_with_condition(game_id, g.store["id"]):
+        flash("You can only upload images for games in your inventory.")
+        return redirect(url_for("stores.edit_store_game", game_id=game_id))
+
+    image = request.files.get("image")
+    if image is None or not image.filename:
+        flash("Please choose an image to upload.")
+        return redirect(url_for("stores.edit_store_game", game_id=game_id))
+
+    filename = secure_filename(image.filename)
+    if "." not in filename:
+        flash("Invalid file type. Use jpg, jpeg, png, or webp.")
+        return redirect(url_for("stores.edit_store_game", game_id=game_id))
+
+    ext = filename.rsplit(".", 1)[1].lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        flash("Invalid file type. Use jpg, jpeg, png, or webp.")
+        return redirect(url_for("stores.edit_store_game", game_id=game_id))
+
+    image.seek(0, 2)
+    size = image.tell()
+    image.seek(0)
+    if size > MAX_IMAGE_SIZE_BYTES:
+        flash("Image is too large. Maximum size is 5MB.")
+        return redirect(url_for("stores.edit_store_game", game_id=game_id))
+
+    bucket = current_app.config["MINIO_BUCKET"]
+    object_name = f"{game_id}-{uuid4().hex[:8]}.{ext}"
+    try:
+        current_app.extensions["minio"].put_object(
+            bucket_name=bucket,
+            object_name=object_name,
+            data=image.stream,
+            length=size,
+            content_type=image.mimetype or "application/octet-stream",
+        )
+        scheme = "https" if current_app.config["MINIO_SECURE"] else "http"
+        image_url = f"{scheme}://{current_app.config['MINIO_ENDPOINT']}/{bucket}/{object_name}"
+        update_game_image_url(game_id, image_url)
+        flash("Game image uploaded successfully.")
+    except Exception as exc:
+        flash(f"Error uploading image: {exc}")
+
+    return redirect(url_for("stores.edit_store_game", game_id=game_id))
 
 
 @bp.route("/mystore/game/<int:game_id>/remove", methods=("POST",))

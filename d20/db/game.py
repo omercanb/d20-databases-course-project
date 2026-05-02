@@ -222,11 +222,11 @@ def get_available_games_with_counts(store_id):
         get_db()
         .execute(
             """
-            SELECT Game.id, Game.name, COUNT(*) AS copy_count
+            SELECT Game.id, Game.name, Game.image_url, COUNT(*) AS copy_count
             FROM Game
             JOIN GameCopy ON (Game.id = GameCopy.game_id)
             WHERE GameCopy.store_id = %s
-            GROUP BY Game.id, Game.name
+            GROUP BY Game.id, Game.name, Game.image_url
             """,
             (store_id,),
         )
@@ -355,6 +355,12 @@ def get_games_filtered(store_id, genre=None, min_players=None, max_players=None,
 
 def get_game_detail(game_id):
     return get_db().execute("SELECT * FROM Game WHERE id = %s", (game_id,)).fetchone()
+
+
+def update_game_image_url(game_id, url):
+    db = get_db()
+    db.execute("UPDATE Game SET image_url = %s WHERE id = %s", (url, game_id))
+    db.commit()
 
 
 def _rating_similarity(game, other, column, weight):

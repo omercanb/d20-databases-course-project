@@ -1,5 +1,7 @@
 """Tests for the game library feature (db functions and routes)."""
 
+import io
+
 import pytest
 
 from d20.db import get_db
@@ -1116,3 +1118,61 @@ class TestSelectGamesRoute:
         )
         assert response.status_code == 200
         assert b"Unrated Game" not in response.data
+
+
+class TestStoreGameImageUpload:
+    def _setup(self, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name="Img Store", username="img_store")
+            game_id = _insert_game(db, name="Image Game", symbol="IM")
+            _insert_game_copy(db, game_id, store_id, copy_num=1)
+            return store_id, game_id
+
+    def _login_store(self, client, store_id):
+        with client.session_transaction() as sess:
+            sess["store_id"] = store_id
+
+    def test_upload_valid_image_sets_image_url(self, client, app):
+        store_id, game_id = self._setup(app)
+        self._login_store(client, store_id)
+
+        uploaded = {}
+
+        class FakeMinio:
+            def put_object(self, bucket_name, object_name, data, length, content_type):
+                uploaded["bucket_name"] = bucket_name
+                uploaded["object_name"] = object_name
+                uploaded["length"] = length
+                uploaded["content_type"] = content_type
+
+        app.extensions["minio"] = FakeMinio()
+        response = client.post(
+            f"/mystore/game/{game_id}/upload-image",
+            data={"image": (io.BytesIO(b"\x89PNG\r\n\x1a\n"), "cover.png")},
+            content_type="multipart/form-data",
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+
+        with app.app_context():
+            row = get_db().execute(
+                "SELECT image_url FROM Game WHERE id = %s", (game_id,)
+            ).fetchone()
+        assert row["image_url"] is not None
+        assert uploaded["bucket_name"] == app.config["MINIO_BUCKET"]
+        assert uploaded["object_name"].startswith(f"{game_id}-")
+        assert uploaded["object_name"].endswith(".png")
+
+    def test_upload_invalid_type_flashes_error(self, client, app):
+        store_id, game_id = self._setup(app)
+        self._login_store(client, store_id)
+
+        response = client.post(
+            f"/mystore/game/{game_id}/upload-image",
+            data={"image": (io.BytesIO(b"not-an-image"), "bad.txt")},
+            content_type="multipart/form-data",
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"Invalid file type" in response.data

@@ -9,6 +9,7 @@ dependencies = [
     "pytest",
     "psycopg2-binary",
     "python-dotenv",
+    "minio",
 ]
 
 [build-system]
@@ -21,4 +22,3 @@ testpaths = ["test"]
 [tool.coverage.run]
 branch = true
 source = ["d20"]
-

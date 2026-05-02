@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}Edit {{ game['name'] }}{% endblock %}
+{% block header %}
+    <h1>{% block _title %}Edit {{ game['name'] }}{% endblock %}</h1>
+{% endblock %}
+{% block content %}
+    {% set active_tab = 'games' %}
+    {% include 'stores/_mystore_nav.html' %}
+    {% set games_tab = 'library' %}
+    {% include 'stores/_mystore_games_nav.html' %}
+
+    <div class="container">
+        <a href="{{ url_for('stores.my_store_games_library') }}" class="btn btn-outline-secondary mb-4">&larr; Back to Game Library</a>
+
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-body">
+                        {% if game['image_url'] %}
+                            <img src="{{ game['image_url'] }}"
+                                 alt="{{ game['name'] }} cover"
+                                 class="img-fluid rounded mb-3"
+                                 style="max-height: 360px; object-fit: cover; width: 100%;">
+                        {% endif %}
+
+                        <form method="post" action="{{ url_for('stores.update_store_game', game_id=game['id']) }}">
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <label for="name" class="form-label">Name</label>
+                                    <input id="name" name="name" required class="form-control" value="{{ game['name'] }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="symbol" class="form-label">Symbol</label>
+                                    <input id="symbol" name="symbol" required class="form-control" value="{{ game['symbol'] }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="genre" class="form-label">Genre</label>
+                                    <input id="genre" name="genre" class="form-control" value="{{ game['genre'] or '' }}">
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label for="publisher" class="form-label">Publisher</label>
+                                    <input id="publisher" name="publisher" class="form-control" value="{{ game['publisher'] or '' }}">
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="min_players" class="form-label">Min</label>
+                                    <input id="min_players" type="number" min="1" name="min_players" class="form-control" value="{{ game['min_players'] or '' }}">
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="max_players" class="form-label">Max</label>
+                                    <input id="max_players" type="number" min="1" name="max_players" class="form-control" value="{{ game['max_players'] or '' }}">
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="avg_duration" class="form-label">Duration</label>
+                                    <input id="avg_duration" type="number" min="1" name="avg_duration" class="form-control" value="{{ game['avg_duration'] or '' }}">
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="complexity_rating" class="form-label">Complexity</label>
+                                    <input id="complexity_rating" type="number" min="1" max="5" name="complexity_rating" class="form-control" value="{{ game['complexity_rating'] or '' }}">
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label for="strategy_rating" class="form-label">Strategy</label>
+                                    <input id="strategy_rating" type="number" min="1" max="5" name="strategy_rating" class="form-control" value="{{ game['strategy_rating'] or '' }}">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="luck_rating" class="form-label">Luck</label>
+                                    <input id="luck_rating" type="number" min="1" max="5" name="luck_rating" class="form-control" value="{{ game['luck_rating'] or '' }}">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="interaction_rating" class="form-label">Interaction</label>
+                                    <input id="interaction_rating" type="number" min="1" max="5" name="interaction_rating" class="form-control" value="{{ game['interaction_rating'] or '' }}">
+                                </div>
+
+                                <div class="col-12">
+                                    <label for="description" class="form-label">Description</label>
+                                    <textarea id="description" name="description" rows="4" class="form-control">{{ game['description'] or '' }}</textarea>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success mt-3">Save Game Details</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Update Cover Image</h5>
+                        <form method="post"
+                              action="{{ url_for('stores.upload_game_image', game_id=game['id']) }}"
+                              enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="image" class="form-label">Image File</label>
+                                <input id="image" type="file" name="image" accept=".jpg,.jpeg,.png,.webp" class="form-control" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Upload Image</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
