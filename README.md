@@ -56,7 +56,24 @@ POSTGRES_TEST_DB=d20_test
 
 DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}
 TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5433/${POSTGRES_TEST_DB}
+
+# MinIO (game image upload)
+MINIO_ENDPOINT=localhost:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_BUCKET=game-images
+MINIO_SECURE=false
 ```
+
+## MinIO
+
+Game kapak görselleri MinIO'ya yükleniyor.
+
+- API endpoint: `http://localhost:9000`
+- Console: `http://localhost:9001`
+- Bucket: `game-images`
+
+`docker compose up -d` komutu MinIO servisini de ayağa kaldırır.
 
 ## Init
 
@@ -102,16 +119,16 @@ docker compose up -d db_test
 Sonra PostgreSQL testlerini çalıştır:
 
 ```bash
-pytest --pg
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest --pg
 ```
 
 Farklı bir test veritabanı URL'i kullanacaksan:
 
 ```bash
-TEST_DATABASE_URL=postgresql://d20:d20@localhost:5433/d20_test pytest --pg
+TEST_DATABASE_URL=postgresql://d20:d20@localhost:5433/d20_test PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest --pg
 ```
 
 ## Kullandığımız stack
 Web frameworkü olarak Flask kullandık
 Stylign (CSS) için Bootstrap diye bir library var
-Bazı gereken dynamic/interaktif yerler için htmx 
+Bazı gereken dynamic/interaktif yerler için htmx
