@@ -11,7 +11,7 @@ DROP TABLE IF EXISTS TradingScript CASCADE;
 DROP TABLE IF EXISTS MarketHistory CASCADE;
 DROP TABLE IF EXISTS Orders CASCADE;
 DROP TABLE IF EXISTS MarketParticipantInventory CASCADE;
-DROP TABLE IF EXISTS MarketPariticipant CASCADE;
+DROP TABLE IF EXISTS MarketParticipant CASCADE;
 DROP TABLE IF EXISTS Store CASCADE;
 DROP TABLE IF EXISTS "User" CASCADE;
 
@@ -176,11 +176,11 @@ CREATE TABLE GameDamage (
     PRIMARY KEY (session_id, game_id, store_id, copy_num)
 );
 
-CREATE TABLE MarketPariticipant (
+CREATE TABLE MarketParticipant (
     id              SERIAL PRIMARY KEY,
     customer_id     INTEGER,
     store_id        INTEGER,
-    availiable_cash NUMERIC(10, 2),
+    available_cash NUMERIC(10, 2),
     reserved_cash   NUMERIC(10, 2),
     CHECK ((customer_id IS NOT NULL AND store_id IS NULL) OR (customer_id IS NULL AND store_id IS NOT NULL))
 );
@@ -190,7 +190,7 @@ CREATE TABLE MarketParticipantInventory (
     game_id            INTEGER NOT NULL,
     available_quantity INTEGER NOT NULL,
     reserved_quantity  INTEGER NOT NULL,
-    FOREIGN KEY (participant_id) REFERENCES MarketPariticipant(id),
+    FOREIGN KEY (participant_id) REFERENCES MarketParticipant(id),
     FOREIGN KEY (game_id) REFERENCES Game(id),
     PRIMARY KEY (participant_id, game_id)
 );
@@ -200,7 +200,7 @@ CREATE TABLE TradingScript (
     name     TEXT NOT NULL,
     code     TEXT NOT NULL,
     owner_id INTEGER NOT NULL,
-    FOREIGN KEY (owner_id) REFERENCES MarketPariticipant(id)
+    FOREIGN KEY (owner_id) REFERENCES MarketParticipant(id)
 );
 
 CREATE TABLE Orders (
@@ -231,6 +231,6 @@ CREATE TABLE MarketHistory (
     PRIMARY KEY (buy_order_id, sell_order_id),
     FOREIGN KEY (buy_order_id)  REFERENCES Orders(id),
     FOREIGN KEY (sell_order_id) REFERENCES Orders(id),
-    FOREIGN KEY (buyer_id)      REFERENCES MarketPariticipant(id),
-    FOREIGN KEY (seller_id)     REFERENCES MarketPariticipant(id)
+    FOREIGN KEY (buyer_id)      REFERENCES MarketParticipant(id),
+    FOREIGN KEY (seller_id)     REFERENCES MarketParticipant(id)
 );

@@ -43,9 +43,8 @@ from d20.db.session import (
     get_available_tables,
     get_reservation_count,
     get_session,
-    get_session_games,
     get_unavailable_tables,
-    get_upcoming_sessions_with_user_by_store,
+    get_upcoming_sessions_with_user_and_games_by_store,
 )
 from d20.db.stores import (
     create_table,
@@ -108,13 +107,8 @@ def my_store_overview():
     tables = get_tables(store_id)
     games = get_available_games_with_counts(store_id)
     today = str(date.today())
-    upcoming_sessions_raw = get_upcoming_sessions_with_user_by_store(store_id, today)
-
-    upcoming_sessions = []
-    for sess in upcoming_sessions_raw:
-        sess_dict = dict(sess)
-        sess_dict["games"] = get_session_games(sess["id"])
-        upcoming_sessions.append(sess_dict)
+    upcoming_sessions_raw = get_upcoming_sessions_with_user_and_games_by_store(store_id, today)
+    upcoming_sessions = [dict(sess) for sess in upcoming_sessions_raw]
 
     total_copies = sum(game["copy_count"] for game in games)
     top_games = sorted(games, key=lambda game: game["copy_count"], reverse=True)[:5]
@@ -247,7 +241,7 @@ def my_store_sessions():
     today = str(date.today())
     from_day = request.args.get("from_day") or ""
     to_day = request.args.get("to_day") or ""
-    upcoming_sessions_raw = get_upcoming_sessions_with_user_by_store(store_id, today)
+    upcoming_sessions_raw = get_upcoming_sessions_with_user_and_games_by_store(store_id, today)
 
     upcoming_sessions = []
     for sess in upcoming_sessions_raw:
@@ -255,9 +249,7 @@ def my_store_sessions():
             continue
         if to_day and sess["day"] > to_day:
             continue
-        sess_dict = dict(sess)
-        sess_dict["games"] = get_session_games(sess["id"])
-        upcoming_sessions.append(sess_dict)
+        upcoming_sessions.append(dict(sess))
 
     sessions_by_day = {}
     for sess in upcoming_sessions:
@@ -545,14 +537,14 @@ def book_session(store_id):
     start_time = request.args.get("start_time", 9, type=int)
     end_time = request.args.get("end_time", 20, type=int)
     day = request.args.get("day") or str(date.today())
+    store = get_store_by_id(store_id)
+    if store is None:
+        abort(404)
     if start_time is None or end_time is None or end_time <= start_time:
         flash("End time must be later than start time.")
         start_time, end_time = 9, 20
     tables = get_available_tables(store_id, day, start_time, end_time)
     unvailable_tables = get_unavailable_tables(store_id, day, start_time, end_time)
-    store = get_store_by_id(store_id)
-    if store is None:
-        abort(404)
     return render_template(
         "stores/book_session.html",
         store=store,
@@ -591,45 +583,25 @@ def select_games(store_id, table_num):
     if store is None:
         abort(404)
     table = get_table(store_id, table_num)
-    available_games = get_available_games_during(store_id, day, start_time, end_time)
+    filter_args = dict(
+        search=search,
+        genre=genre,
+        min_players=min_players,
+        max_players=max_players,
+        max_avg_duration=max_avg_duration,
+        user_rating=user_rating,
+        complexity_rating=complexity_rating,
+        strategy_rating=strategy_rating,
+        luck_rating=luck_rating,
+        interaction_rating=interaction_rating,
+    )
+    available_games = get_available_games_during(
+        store_id, day, start_time, end_time, **filter_args
+    )
     unavailable_games = get_unavailable_games_during(
-        store_id, day, start_time, end_time
+        store_id, day, start_time, end_time, **filter_args
     )
     genres = get_store_genres(store_id)
-
-    def matches_filters(game):
-        if search:
-            text = f"{game['name']} {game['description'] or ''}".lower()
-            if search.lower() not in text:
-                return False
-        if genre is not None and game["genre"] != genre:
-            return False
-        if min_players is not None and (
-            game["min_players"] is None or game["min_players"] < min_players
-        ):
-            return False
-        if max_players is not None and (
-            game["max_players"] is None or game["max_players"] > max_players
-        ):
-            return False
-        if max_avg_duration is not None and (
-            game["avg_duration"] is None or game["avg_duration"] > max_avg_duration
-        ):
-            return False
-        if user_rating is not None and (not game["avg_rating"] or game["avg_rating"] < user_rating):
-            return False
-        if complexity_rating is not None and game["complexity_rating"] != complexity_rating:
-            return False
-        if strategy_rating is not None and game["strategy_rating"] != strategy_rating:
-            return False
-        if luck_rating is not None and game["luck_rating"] != luck_rating:
-            return False
-        if interaction_rating is not None and game["interaction_rating"] != interaction_rating:
-            return False
-        return True
-
-    available_games = [game for game in available_games if matches_filters(game)]
-    unavailable_games = [game for game in unavailable_games if matches_filters(game)]
 
     return render_template(
         "stores/select_games.html",

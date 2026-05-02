@@ -167,6 +167,36 @@ def get_upcoming_sessions_with_user_by_store(store_id, today):
     )
 
 
+def get_upcoming_sessions_with_user_and_games_by_store(store_id, today):
+    return (
+        get_db()
+        .execute(
+            """
+            SELECT
+                Session.*,
+                "User".username,
+                COALESCE(
+                    json_agg(
+                        json_build_object('id', Game.id, 'name', Game.name)
+                        ORDER BY Game.name
+                    ) FILTER (WHERE Game.id IS NOT NULL),
+                    '[]'::json
+                ) AS games
+            FROM Session
+            JOIN "User" ON (Session.user_id = "User".id)
+            LEFT JOIN SessionGameCopy ON (Session.id = SessionGameCopy.session_id)
+            LEFT JOIN Game ON (SessionGameCopy.game_id = Game.id)
+            WHERE Session.store_id = %s
+            AND Session.day >= %s
+            GROUP BY Session.id, "User".username
+            ORDER BY Session.day ASC, Session.start_time ASC
+            """,
+            (store_id, today),
+        )
+        .fetchall()
+    )
+
+
 def update_session(session_id, day, start_time, end_time):
     db = get_db()
     db.execute(

@@ -17,7 +17,7 @@ def create_app(test_config=None):
     app = Flask(__name__)
     bootstrap = Bootstrap5(app)
     app.config.from_mapping(
-        SECRET_KEY="dev",
+        SECRET_KEY=os.environ.get("SECRET_KEY", os.urandom(32).hex()),
         DATABASE_URL=os.environ.get("DATABASE_URL", "postgresql://localhost/d20"),
         MINIO_ENDPOINT=os.environ.get("MINIO_ENDPOINT", "localhost:9000"),
         MINIO_ACCESS_KEY=os.environ.get("MINIO_ACCESS_KEY", "minioadmin"),
