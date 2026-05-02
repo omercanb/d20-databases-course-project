@@ -15,6 +15,7 @@ from flask import (
 
 from d20.db import get_db
 from d20.db.game import (
+    create_game,
     create_game_copy,
     delete_game_copy,
     get_available_games_during,
@@ -173,6 +174,51 @@ def add_game_copy():
         flash("Game copy added successfully.")
     except Exception as e:
         flash(f"Error adding game copy: {str(e)}")
+
+    return redirect(url_for("stores.my_store"))
+
+
+@bp.route("/mystore/game/create", methods=("POST",))
+@store_login_required
+def create_store_game():
+    name = request.form.get("name", "").strip()
+    symbol = request.form.get("symbol", "").strip()
+    genre = request.form.get("genre") or None
+    min_players = request.form.get("min_players", type=int)
+    max_players = request.form.get("max_players", type=int)
+    avg_duration = request.form.get("avg_duration", type=int)
+    complexity_rating = request.form.get("complexity_rating", type=int)
+    strategy_rating = request.form.get("strategy_rating", type=int)
+    luck_rating = request.form.get("luck_rating", type=int)
+    interaction_rating = request.form.get("interaction_rating", type=int)
+    description = request.form.get("description") or None
+    publisher = request.form.get("publisher") or None
+
+    if not name or not symbol:
+        flash("Game name and symbol are required.")
+        return redirect(url_for("stores.my_store"))
+
+    db = get_db()
+    try:
+        create_game(
+            name=name,
+            symbol=symbol,
+            genre=genre,
+            min_players=min_players,
+            max_players=max_players,
+            complexity_rating=complexity_rating,
+            avg_duration=avg_duration,
+            description=description,
+            publisher=publisher,
+            strategy_rating=strategy_rating,
+            luck_rating=luck_rating,
+            interaction_rating=interaction_rating,
+        )
+        flash("Game created in catalog.")
+    except db.IntegrityError:
+        flash("A game with this name or symbol already exists.")
+    except Exception as e:
+        flash(f"Error creating game: {str(e)}")
 
     return redirect(url_for("stores.my_store"))
 

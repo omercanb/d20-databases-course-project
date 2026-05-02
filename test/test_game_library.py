@@ -367,6 +367,101 @@ class TestGameLibraryRoute:
         assert b"Minimum players" in response.data
 
 
+class TestCreateStoreGameRoute:
+    def _setup_store_session(self, client, app, username="creatorstore", name="Creator Store"):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name=name, username=username)
+        with client.session_transaction() as sess:
+            sess["store_id"] = store_id
+        return store_id
+
+    def test_store_can_create_game_without_copy(self, client, app):
+        store_id = self._setup_store_session(client, app)
+        response = client.post(
+            "/mystore/game/create",
+            data={
+                "name": "Azul",
+                "symbol": "AZ",
+                "genre": "Abstract",
+                "min_players": "2",
+                "max_players": "4",
+                "avg_duration": "45",
+                "complexity_rating": "2",
+                "strategy_rating": "4",
+                "luck_rating": "2",
+                "interaction_rating": "3",
+                "description": "Tile drafting game",
+                "publisher": "Plan B",
+            },
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"Game created in catalog." in response.data
+        assert b"Azul" in response.data
+
+        with app.app_context():
+            db = get_db()
+            game = db.execute(
+                "SELECT id, symbol FROM Game WHERE name = %s",
+                ("Azul",),
+            ).fetchone()
+            assert game is not None
+            copy = db.execute(
+                "SELECT * FROM GameCopy WHERE game_id = %s AND store_id = %s",
+                (game["id"], store_id),
+            ).fetchone()
+            assert copy is None
+
+    def test_duplicate_name_flashes_error(self, client, app):
+        self._setup_store_session(client, app, username="dupecreator", name="Dupe Creator")
+        response = client.post(
+            "/mystore/game/create",
+            data={"name": "Test Game", "symbol": "T2"},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"A game with this name or symbol already exists." in response.data
+
+    def test_duplicate_symbol_flashes_error(self, client, app):
+        self._setup_store_session(client, app, username="dupesymbol", name="Dupe Symbol")
+        response = client.post(
+            "/mystore/game/create",
+            data={"name": "Another Test Game", "symbol": "TG"},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"A game with this name or symbol already exists." in response.data
+
+    def test_missing_name_flashes_validation_error(self, client, app):
+        self._setup_store_session(client, app, username="missingname", name="Missing Name")
+        response = client.post(
+            "/mystore/game/create",
+            data={"name": "", "symbol": "MN"},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"Game name and symbol are required." in response.data
+
+    def test_missing_symbol_flashes_validation_error(self, client, app):
+        self._setup_store_session(client, app, username="missingsymbol", name="Missing Symbol")
+        response = client.post(
+            "/mystore/game/create",
+            data={"name": "Missing Symbol Game", "symbol": ""},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert b"Game name and symbol are required." in response.data
+
+    def test_unauthenticated_redirects_to_store_login(self, client):
+        response = client.post(
+            "/mystore/game/create",
+            data={"name": "NoAuth", "symbol": "NA"},
+        )
+        assert response.status_code == 302
+        assert "/auth/loginstore" in response.headers["Location"]
+
+
 # ---------------------------------------------------------------------------
 # Route tests – GET /store/<id>/game/<game_id>
 # ---------------------------------------------------------------------------
