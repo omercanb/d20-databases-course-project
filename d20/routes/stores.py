@@ -755,3 +755,17 @@ def rate_game_route(store_id, game_id):
     rate_game(g.user["id"], game_id, rating, comment)
     flash("Rating submitted successfully.")
     return redirect(url_for("stores.game_detail", store_id=store_id, game_id=game_id))
+
+from d20.db.menu import get_menu
+
+@bp.route('/store/<int:store_id>/menu')
+def store_menu(store_id):
+    store = get_store_by_id(store_id)
+    if store is None:
+        abort(404)
+    menu_items = get_menu(store_id)
+    return render_template(
+        'stores/menu.html',
+        store=store,
+        menu_items=menu_items,
+    )

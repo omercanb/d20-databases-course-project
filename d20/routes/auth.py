@@ -23,6 +23,7 @@ from d20.db.session import (
 )
 from d20.db.stores import create_store, get_store, get_store_by_id
 from d20.db.user import create_user, get_user, get_user_by_id
+from d20.db.menu import get_menu, create_session_order, get_session_orders
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -205,3 +206,41 @@ def cancel_session(session_id):
         flash(f"Error cancelling session: {str(e)}")
 
     return redirect(url_for("auth.view_sessions"))
+
+@bp.route('/session/<int:session_id>/order', methods=('GET', 'POST'))
+@login_required
+def order_food(session_id):
+    sess = get_session(session_id)
+    if not sess or sess['user_id'] != g.user['id']:
+        flash('Session not found.')
+        return redirect(url_for('auth.view_sessions'))
+        
+    store = get_store_by_id(sess['store_id'])
+    menu_items = get_menu(store['id'])
+    
+    if request.method == 'POST':
+        # Process order
+        items_to_order = []
+        for item in menu_items:
+            qty_str = request.form.get(f'qty_{item["id"]}')
+            if qty_str and qty_str.isdigit():
+                qty = int(qty_str)
+                if qty > 0:
+                    items_to_order.append((item['id'], qty))
+                    
+        if items_to_order:
+            create_session_order(session_id, items_to_order)
+            flash('Order placed successfully!')
+            return redirect(url_for('auth.view_sessions'))
+        else:
+            flash('Please select at least one item.')
+            
+    # GET: show order form and previous orders
+    previous_orders = get_session_orders(session_id)
+    return render_template(
+        'auth/order.html',
+        session=sess,
+        store=store,
+        menu_items=menu_items,
+        previous_orders=previous_orders
+    )
