@@ -3,7 +3,12 @@ from datetime import date, timedelta
 
 import click
 
-from d20.db.game import create_game, create_game_copy, rate_game, refresh_game_similarities
+from d20.db.game import (
+    create_game,
+    create_game_copy,
+    rate_game,
+    refresh_game_similarities,
+)
 from d20.db.market.market_participant import (
     get_market_participant,
     get_market_participant_by_customer,
@@ -11,10 +16,10 @@ from d20.db.market.market_participant import (
 )
 from d20.db.market.orders import create_order
 from d20.db.market.participant_inventory import increment_available_quantity
+from d20.db.menu import create_beverage, create_food, create_menu_item
 from d20.db.session import create_session
 from d20.db.stores import create_store, create_table
 from d20.db.user import create_user
-from d20.db.menu import create_menu_item, create_food, create_beverage
 
 
 def seed_users():
@@ -84,7 +89,8 @@ def seed_games():
     ]
     return [
         create_game(
-            g["name"], g["symbol"],
+            g["name"],
+            g["symbol"],
             publisher=g["publisher"],
             genre=g["genre"],
             min_players=g["min_players"],
@@ -128,17 +134,25 @@ def seed_session(user_ids, store_ids, store_to_game_copy):
     # Capacity is respected by distributing sessions across stores/tables/timeslots/games.
     random.seed(20)
     daily_targets = [12, 18, 20, 16, 24, 14, 22, 10, 19, 21, 17, 23, 15, 20]
+    daily_targets = [2, 3, 4]
+    # daily_targets = [d // 10 for d in daily_targets]
     time_slots = [(9, 11), (11, 13), (13, 15), (15, 17), (17, 19)]
 
     for day_idx, target_count in enumerate(daily_targets, start=1):
         session_candidates = []
         for store_id in store_ids:
             # One unique game per table per timeslot avoids game copy conflicts.
-            game_ids_for_store = [game_id for game_id, _ in store_to_game_copy[store_id]]
+            game_ids_for_store = [
+                game_id for game_id, _ in store_to_game_copy[store_id]
+            ]
             for start_time, end_time in time_slots:
                 for table_num in (1, 2, 3):
-                    game_id = game_ids_for_store[(table_num - 1) % len(game_ids_for_store)]
-                    user_id = user_ids[(day_idx + table_num + start_time) % len(user_ids)]
+                    game_id = game_ids_for_store[
+                        (table_num - 1) % len(game_ids_for_store)
+                    ]
+                    user_id = user_ids[
+                        (day_idx + table_num + start_time) % len(user_ids)
+                    ]
                     session_candidates.append(
                         (user_id, store_id, table_num, start_time, end_time, game_id)
                     )
@@ -148,7 +162,13 @@ def seed_session(user_ids, store_ids, store_to_game_copy):
         future_day = str(date.today() + timedelta(days=day_idx))
         for user_id, store_id, table_num, start_time, end_time, game_id in selected:
             create_session(
-                user_id, store_id, table_num, future_day, start_time, end_time, [game_id]
+                user_id,
+                store_id,
+                table_num,
+                future_day,
+                start_time,
+                end_time,
+                [game_id],
             )
 
 
@@ -168,21 +188,27 @@ def seed_orders(user_ids, game_ids):
     increment_available_cash(user2_market, 100)
     create_order(user2_market, game2, "MARKET", "BUY", None, 1)
 
+
 def seed_menus(store_ids):
     for store_id in store_ids:
         # Food
-        nachos_id = create_menu_item(store_id, "Nachos", 8.99, "Crispy nachos with cheese dip")
+        nachos_id = create_menu_item(
+            store_id, "Nachos", 8.99, "Crispy nachos with cheese dip"
+        )
         create_food(nachos_id, is_vegetarian=True, category="Snack")
-        
-        burger_id = create_menu_item(store_id, "Classic Burger", 12.50, "Beef burger with fries")
+
+        burger_id = create_menu_item(
+            store_id, "Classic Burger", 12.50, "Beef burger with fries"
+        )
         create_food(burger_id, is_vegetarian=False, category="Main")
-        
+
         # Beverages
         cola_id = create_menu_item(store_id, "Cola", 2.99, "Cold fizzy drink")
         create_beverage(cola_id, size="Large", temperature="Cold")
-        
+
         coffee_id = create_menu_item(store_id, "Black Coffee", 3.50, "Freshly brewed")
         create_beverage(coffee_id, size="Regular", temperature="Hot")
+
 
 def seed_the_universe():
     user_ids = seed_users()

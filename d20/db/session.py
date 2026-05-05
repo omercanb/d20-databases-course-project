@@ -2,15 +2,19 @@ from datetime import date
 
 from d20.db import get_db
 
-MAX_RESERVATIONS = 2
+MAX_RESERVATIONS = 5
 
 
 def get_reservation_count(user_id):
-    row = get_db().execute(
-        "SELECT COUNT(*) AS cnt FROM Session WHERE user_id = %s"
-        " AND (day::date + (end_time || ' hours')::interval) > NOW()",
-        (user_id,)
-    ).fetchone()
+    row = (
+        get_db()
+        .execute(
+            "SELECT COUNT(*) AS cnt FROM Session WHERE user_id = %s"
+            " AND (day::date + (end_time || ' hours')::interval) > NOW()",
+            (user_id,),
+        )
+        .fetchone()
+    )
     return row["cnt"]
 
 
@@ -42,7 +46,9 @@ def create_session(
         (store_id, table_num, day, end_time, start_time),
     ).fetchone()
     if occupied_table:
-        raise ValueError("The table you selected is occupied at the selected time slot.")
+        raise ValueError(
+            "The table you selected is occupied at the selected time slot."
+        )
 
     game_copies = []
     if game_ids:
@@ -96,7 +102,9 @@ def create_session(
 
 def get_session(session_id):
     return (
-        get_db().execute("SELECT * FROM Session WHERE id = %s", (session_id,)).fetchone()
+        get_db()
+        .execute("SELECT * FROM Session WHERE id = %s", (session_id,))
+        .fetchone()
     )
 
 

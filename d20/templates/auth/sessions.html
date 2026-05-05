@@ -7,6 +7,7 @@
 {% block content %}
     <div class="container">
         <section class="card-section">
+            <h3>{{ reservation_count }}/{{ max_reservation_count }} sessions available booked</h3>
             <h2 class="card-section-title">Upcoming Sessions</h2>
             {% if upcoming_sessions %}
                 <div class="session-list">
@@ -19,12 +20,17 @@
                     </div>
                     {% for sess in upcoming_sessions %}
                         <div class="session-row">
-                            <div><strong>{{ sess['store_name'] }}</strong></div>
+                            <div>
+                                <strong>{{ sess['store_name'] }}</strong>
+                            </div>
                             <div>{{ sess['day'] }} • {{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
                             <div>Table {{ sess['table_num'] }}</div>
                             <div>
                                 {% if sess['games'] %}
-                                    {% for game in sess['games'] %}{{ game['name'] }}{% if not loop.last %}, {% endif %}{% endfor %}
+                                    {% for game in sess['games'] %}
+                                        {{ game['name'] }}
+                                        {% if not loop.last %},{% endif %}
+                                    {% endfor %}
                                 {% else %}
                                     No games
                                 {% endif %}
@@ -37,16 +43,15 @@
                                 {% else %}
                                     <form method="post"
                                           action="{{ url_for('auth.cancel_session', session_id=sess['id']) }}"
-                                          style="display: inline;">
+                                          style="display: inline">
                                         <button type="submit"
                                                 class="btn btn-sm btn-danger"
-                                            onclick="return confirm('Are you sure you want to cancel this session?')">
+                                                onclick="return confirm('Are you sure you want to cancel this session?')">
                                             Cancel
                                         </button>
                                     </form>
-                                    <a href="{{ url_for('auth.order_food', session_id=sess['id']) }}" class="btn btn-sm btn-outline-primary ms-2">
-                                        Order Food/Drinks
-                                    </a>
+                                    <a href="{{ url_for('auth.order_food', session_id=sess['id']) }}"
+                                       class="btn btn-sm btn-outline-primary ms-2">Order Food/Drinks</a>
                                 {% endif %}
                             </div>
                         </div>
@@ -56,7 +61,6 @@
                 <p class="text-muted">No upcoming sessions.</p>
             {% endif %}
         </section>
-
         <section class="card-section">
             <h2 class="card-section-title">Past Sessions</h2>
             {% if past_sessions %}
@@ -70,12 +74,17 @@
                     </div>
                     {% for sess in past_sessions %}
                         <div class="session-row past">
-                            <div><strong>{{ sess['store_name'] }}</strong></div>
+                            <div>
+                                <strong>{{ sess['store_name'] }}</strong>
+                            </div>
                             <div>{{ sess['day'] }} • {{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
                             <div>Table {{ sess['table_num'] }}</div>
                             <div>
                                 {% if sess['games'] %}
-                                    {% for game in sess['games'] %}{{ game['name'] }}{% if not loop.last %}, {% endif %}{% endfor %}
+                                    {% for game in sess['games'] %}
+                                        {{ game['name'] }}
+                                        {% if not loop.last %},{% endif %}
+                                    {% endfor %}
                                 {% else %}
                                     No games
                                 {% endif %}

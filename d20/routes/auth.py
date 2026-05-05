@@ -1,5 +1,4 @@
 import functools
-
 from datetime import date
 
 from flask import (
@@ -15,15 +14,17 @@ from flask import (
 from werkzeug.security import check_password_hash
 
 from d20.db import get_db
+from d20.db.menu import create_session_order, get_menu, get_session_orders
 from d20.db.session import (
+    MAX_RESERVATIONS,
     delete_session,
+    get_reservation_count,
     get_session,
     get_session_games,
     get_sessions_with_store_by_user,
 )
 from d20.db.stores import create_store, get_store, get_store_by_id
 from d20.db.user import create_user, get_user, get_user_by_id
-from d20.db.menu import get_menu, create_session_order, get_session_orders
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -186,7 +187,11 @@ def view_sessions():
             upcoming.append(sess_dict)
 
     return render_template(
-        "auth/sessions.html", upcoming_sessions=upcoming, past_sessions=past
+        "auth/sessions.html",
+        upcoming_sessions=upcoming,
+        past_sessions=past,
+        reservation_count=get_reservation_count(g.user["id"]),
+        max_reservation_count=MAX_RESERVATIONS,
     )
 
 
@@ -207,18 +212,19 @@ def cancel_session(session_id):
 
     return redirect(url_for("auth.view_sessions"))
 
-@bp.route('/session/<int:session_id>/order', methods=('GET', 'POST'))
+
+@bp.route("/session/<int:session_id>/order", methods=("GET", "POST"))
 @login_required
 def order_food(session_id):
     sess = get_session(session_id)
-    if not sess or sess['user_id'] != g.user['id']:
-        flash('Session not found.')
-        return redirect(url_for('auth.view_sessions'))
-        
-    store = get_store_by_id(sess['store_id'])
-    menu_items = get_menu(store['id'])
-    
-    if request.method == 'POST':
+    if not sess or sess["user_id"] != g.user["id"]:
+        flash("Session not found.")
+        return redirect(url_for("auth.view_sessions"))
+
+    store = get_store_by_id(sess["store_id"])
+    menu_items = get_menu(store["id"])
+
+    if request.method == "POST":
         # Process order
         items_to_order = []
         for item in menu_items:
@@ -226,28 +232,28 @@ def order_food(session_id):
             if qty_str and qty_str.isdigit():
                 qty = int(qty_str)
                 if qty > 0:
-                    items_to_order.append((item['id'], qty))
-                    
+                    items_to_order.append((item["id"], qty))
+
         if items_to_order:
             create_session_order(session_id, items_to_order)
-            flash('Order placed successfully!')
-            return redirect(url_for('auth.view_sessions'))
+            flash("Order placed successfully!")
+            return redirect(url_for("auth.view_sessions"))
         else:
-            flash('Please select at least one item.')
-            
+            flash("Please select at least one item.")
+
     # GET: show order form and previous orders
     previous_orders = get_session_orders(session_id)
     return render_template(
-        'auth/order.html',
+        "auth/order.html",
         session=sess,
         store=store,
         menu_items=menu_items,
-        previous_orders=previous_orders
+        previous_orders=previous_orders,
     )
 
 
-from d20.db.game import rate_game
 from d20.db.checkout import get_bill as _get_bill_for_user
+from d20.db.game import rate_game
 
 
 @bp.route("/session/<int:session_id>/rate", methods=("GET", "POST"))

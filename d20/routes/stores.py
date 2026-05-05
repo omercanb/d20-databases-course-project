@@ -107,7 +107,9 @@ def my_store_overview():
     tables = get_tables(store_id)
     games = get_available_games_with_counts(store_id)
     today = str(date.today())
-    upcoming_sessions_raw = get_upcoming_sessions_with_user_and_games_by_store(store_id, today)
+    upcoming_sessions_raw = get_upcoming_sessions_with_user_and_games_by_store(
+        store_id, today
+    )
     upcoming_sessions = [dict(sess) for sess in upcoming_sessions_raw]
 
     total_copies = sum(game["copy_count"] for game in games)
@@ -241,7 +243,9 @@ def my_store_sessions():
     today = str(date.today())
     from_day = request.args.get("from_day") or ""
     to_day = request.args.get("to_day") or ""
-    upcoming_sessions_raw = get_upcoming_sessions_with_user_and_games_by_store(store_id, today)
+    upcoming_sessions_raw = get_upcoming_sessions_with_user_and_games_by_store(
+        store_id, today
+    )
 
     upcoming_sessions = []
     for sess in upcoming_sessions_raw:
@@ -261,6 +265,8 @@ def my_store_sessions():
         sessions_by_day=sessions_by_day,
         from_day=from_day,
         to_day=to_day,
+        reservation_count=get_reservation_count(g.user["id"]),
+        max_reservation_count=MAX_RESERVATIONS,
     )
 
 
@@ -325,7 +331,9 @@ def add_game_copy():
     try:
         for _ in range(copy_count):
             create_game_copy(game_id, g.store["id"])
-        flash(f"{copy_count} game {'copy' if copy_count == 1 else 'copies'} added successfully.")
+        flash(
+            f"{copy_count} game {'copy' if copy_count == 1 else 'copies'} added successfully."
+        )
     except Exception as e:
         flash(f"Error adding game copy: {str(e)}")
 
@@ -420,7 +428,9 @@ def upload_game_image(game_id):
             content_type=image.mimetype or "application/octet-stream",
         )
         scheme = "https" if current_app.config["MINIO_SECURE"] else "http"
-        image_url = f"{scheme}://{current_app.config['MINIO_ENDPOINT']}/{bucket}/{object_name}"
+        image_url = (
+            f"{scheme}://{current_app.config['MINIO_ENDPOINT']}/{bucket}/{object_name}"
+        )
         update_game_image_url(game_id, image_url)
         flash("Game image uploaded successfully.")
     except Exception as exc:
@@ -464,7 +474,8 @@ def cancel_store_session(session_id):
     return redirect(url_for("stores.my_store_sessions"))
 
 
-from d20.db.checkout import checkout_session as do_checkout_session, get_bill, get_session_game_copies
+from d20.db.checkout import checkout_session as do_checkout_session
+from d20.db.checkout import get_bill, get_session_game_copies
 from d20.db.menu import get_session_orders
 
 
@@ -511,13 +522,15 @@ def do_checkout(session_id):
         field_description = f"desc_{gc['game_id']}_{gc['copy_num']}"
         condition = request.form.get(field_condition, "good")
         description = request.form.get(field_description, "")
-        game_conditions.append({
-            "game_id": gc["game_id"],
-            "store_id": gc["store_id"],
-            "copy_num": gc["copy_num"],
-            "condition": condition,
-            "description": description,
-        })
+        game_conditions.append(
+            {
+                "game_id": gc["game_id"],
+                "store_id": gc["store_id"],
+                "copy_num": gc["copy_num"],
+                "condition": condition,
+                "description": description,
+            }
+        )
 
     try:
         do_checkout_session(session_id, game_conditions)
@@ -843,16 +856,18 @@ def rate_game_route(store_id, game_id):
     flash("Rating submitted successfully.")
     return redirect(url_for("stores.game_detail", store_id=store_id, game_id=game_id))
 
+
 from d20.db.menu import get_menu
 
-@bp.route('/store/<int:store_id>/menu')
+
+@bp.route("/store/<int:store_id>/menu")
 def store_menu(store_id):
     store = get_store_by_id(store_id)
     if store is None:
         abort(404)
     menu_items = get_menu(store_id)
     return render_template(
-        'stores/menu.html',
+        "stores/menu.html",
         store=store,
         menu_items=menu_items,
     )
