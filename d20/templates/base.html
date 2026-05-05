@@ -26,7 +26,7 @@
                  width="50"
                  height="50">
         </h1>
-        <ul class="navbar-nav d-flex flex-row gap-3">
+        <ul class="navbar-nav d-flex flex-row gap-3 me-auto">
             {% if g.user %}
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for("market.portfolio") }}">Market</a>
@@ -37,12 +37,6 @@
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for("auth.view_sessions") }}">My Sessions</a>
                 </li>
-                <li class="nav-item">
-                    <span class="nav-link">{{ g.user['username'] }}</span>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for("auth.logout") }}">Log Out</a>
-                </li>
             {% elif g.store %}
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for("market.portfolio") }}">Market</a>
@@ -50,8 +44,19 @@
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for("stores.my_store_overview") }}">My Store</a>
                 </li>
+            {% endif %}
+        </ul>
+        <ul class="navbar-nav d-flex flex-row gap-3">
+            {% if g.user %}
+                <li class="nav-item d-flex align-items-center">
+                    <span class="navbar-text fw-bold text-primary">{{ g.user['username'] }}</span>
+                </li>
                 <li class="nav-item">
-                    <span class="nav-link">{{ g.store['name'] }}</span>
+                    <a class="nav-link" href="{{ url_for("auth.logout") }}">Log Out</a>
+                </li>
+            {% elif g.store %}
+                <li class="nav-item d-flex align-items-center">
+                    <span class="navbar-text fw-bold text-primary">{{ g.store['name'] }}</span>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for("auth.logout") }}">Log Out</a>
