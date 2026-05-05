@@ -464,6 +464,93 @@ def cancel_store_session(session_id):
     return redirect(url_for("stores.my_store_sessions"))
 
 
+from d20.db.checkout import checkout_session as do_checkout_session, get_bill, get_session_game_copies
+from d20.db.menu import get_session_orders
+
+
+@bp.route("/mystore/session/<int:session_id>/checkout", methods=("GET",))
+@store_login_required
+def checkout_session_form(session_id):
+    sess = get_session(session_id)
+    if not sess or sess["store_id"] != g.store["id"]:
+        flash("Session not found.")
+        return redirect(url_for("stores.my_store_sessions"))
+
+    if sess["checkout_status"] == "checked_out":
+        return redirect(url_for("stores.view_bill", session_id=session_id))
+
+    game_copies = get_session_game_copies(session_id)
+    food_orders = get_session_orders(session_id)
+    food_total = sum(float(o["total_amount"]) for o in food_orders)
+
+    return render_template(
+        "stores/checkout.html",
+        sess=sess,
+        game_copies=game_copies,
+        food_orders=food_orders,
+        food_total=food_total,
+    )
+
+
+@bp.route("/mystore/session/<int:session_id>/checkout", methods=("POST",))
+@store_login_required
+def do_checkout(session_id):
+    sess = get_session(session_id)
+    if not sess or sess["store_id"] != g.store["id"]:
+        flash("Session not found.")
+        return redirect(url_for("stores.my_store_sessions"))
+
+    if sess["checkout_status"] == "checked_out":
+        flash("Session already checked out.")
+        return redirect(url_for("stores.view_bill", session_id=session_id))
+
+    game_copies = get_session_game_copies(session_id)
+    game_conditions = []
+    for gc in game_copies:
+        field_condition = f"condition_{gc['game_id']}_{gc['copy_num']}"
+        field_description = f"desc_{gc['game_id']}_{gc['copy_num']}"
+        condition = request.form.get(field_condition, "good")
+        description = request.form.get(field_description, "")
+        game_conditions.append({
+            "game_id": gc["game_id"],
+            "store_id": gc["store_id"],
+            "copy_num": gc["copy_num"],
+            "condition": condition,
+            "description": description,
+        })
+
+    try:
+        do_checkout_session(session_id, game_conditions)
+        flash("Session checked out successfully!")
+        return redirect(url_for("stores.view_bill", session_id=session_id))
+    except ValueError as e:
+        flash(str(e))
+        return redirect(url_for("stores.checkout_session_form", session_id=session_id))
+    except Exception as e:
+        flash(f"Error during checkout: {str(e)}")
+        return redirect(url_for("stores.checkout_session_form", session_id=session_id))
+
+
+@bp.route("/mystore/session/<int:session_id>/bill")
+@store_login_required
+def view_bill(session_id):
+    sess = get_session(session_id)
+    if not sess or sess["store_id"] != g.store["id"]:
+        flash("Session not found.")
+        return redirect(url_for("stores.my_store_sessions"))
+
+    bill = get_bill(session_id)
+    game_copies = get_session_game_copies(session_id)
+    food_orders = get_session_orders(session_id)
+    return render_template(
+        "stores/bill.html",
+        sess=sess,
+        bill=bill,
+        game_copies=game_copies,
+        food_orders=food_orders,
+    )
+
+
 @bp.route("/store/<int:store_id>")
 def store(store_id):
     genre = request.args.get("genre") or None

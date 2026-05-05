@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block header %}
+    <h1>{% block title %}Rate Your Games{% endblock %}</h1>
+{% endblock %}
+{% block content %}
+    <div class="container">
+        <p class="text-muted">You played these games on {{ sess['day'] }}. How did you like them?</p>
+
+        <form method="post" action="{{ url_for('auth.rate_session_games', session_id=sess['id']) }}">
+            {% if games %}
+                {% for game in games %}
+                <div class="card mb-4 p-4">
+                    <h4>{{ game['name'] }}</h4>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Your Rating</label>
+                        <div class="d-flex gap-2">
+                            {% for i in range(1, 6) %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio"
+                                       name="rating_{{ game['game_id'] }}" id="r_{{ game['game_id'] }}_{{ i }}" value="{{ i }}">
+                                <label class="form-check-label" for="r_{{ game['game_id'] }}_{{ i }}">{{ i }}⭐</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="comment_{{ game['game_id'] }}" class="form-label fw-bold">Comment (optional)</label>
+                        <textarea id="comment_{{ game['game_id'] }}" name="comment_{{ game['game_id'] }}"
+                                  class="form-control" rows="2" placeholder="Share your thoughts..."></textarea>
+                    </div>
+                </div>
+                {% endfor %}
+
+                <button type="submit" class="btn btn-primary btn-lg">Submit Ratings</button>
+                <a href="{{ url_for('auth.view_sessions') }}" class="btn btn-outline-secondary ms-2">Skip</a>
+            {% else %}
+                <p class="text-muted">No games to rate for this session.</p>
+                <a href="{{ url_for('auth.view_sessions') }}" class="btn btn-outline-secondary">Back to My Sessions</a>
+            {% endif %}
+        </form>
+    </div>
+{% endblock %}

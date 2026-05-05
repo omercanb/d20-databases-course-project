@@ -180,10 +180,10 @@ def view_sessions():
     for sess in sessions:
         sess_dict = dict(sess)
         sess_dict["games"] = get_session_games(sess["id"])
-        if sess["day"] >= today:
-            upcoming.append(sess_dict)
-        else:
+        if sess["checkout_status"] == "checked_out" or sess["day"] < today:
             past.append(sess_dict)
+        else:
+            upcoming.append(sess_dict)
 
     return render_template(
         "auth/sessions.html", upcoming_sessions=upcoming, past_sessions=past
@@ -243,4 +243,43 @@ def order_food(session_id):
         store=store,
         menu_items=menu_items,
         previous_orders=previous_orders
+    )
+
+
+from d20.db.game import rate_game
+from d20.db.checkout import get_bill as _get_bill_for_user
+
+
+@bp.route("/session/<int:session_id>/rate", methods=("GET", "POST"))
+@login_required
+def rate_session_games(session_id):
+    sess = get_session(session_id)
+    if not sess or sess["user_id"] != g.user["id"]:
+        flash("Session not found.")
+        return redirect(url_for("auth.view_sessions"))
+
+    games = get_session_games(session_id)
+
+    if request.method == "POST":
+        any_rated = False
+        for game in games:
+            game_id = game["game_id"]
+            rating_val = request.form.get(f"rating_{game_id}", type=int)
+            comment_val = request.form.get(f"comment_{game_id}", "").strip() or None
+            if rating_val and 1 <= rating_val <= 5:
+                try:
+                    rate_game(g.user["id"], game_id, rating_val, comment_val)
+                    any_rated = True
+                except Exception:
+                    pass  # Already rated — ignore duplicate
+        if any_rated:
+            flash("Ratings submitted! Thank you.")
+        else:
+            flash("Please select at least one rating (1–5).")
+        return redirect(url_for("auth.view_sessions"))
+
+    return render_template(
+        "auth/rate_session.html",
+        sess=sess,
+        games=games,
     )

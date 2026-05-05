@@ -30,18 +30,24 @@
                                 {% endif %}
                             </div>
                             <div>
-                                <form method="post"
-                                      action="{{ url_for('auth.cancel_session', session_id=sess['id']) }}"
-                                      style="display: inline;">
-                                    <button type="submit"
-                                            class="btn btn-sm btn-danger"
-                                        onclick="return confirm('Are you sure you want to cancel this session?')">
-                                        Cancel
-                                    </button>
-                                </form>
-                                <a href="{{ url_for('auth.order_food', session_id=sess['id']) }}" class="btn btn-sm btn-outline-primary ms-2">
-                                    Order Food/Drinks
-                                </a>
+                                {% if sess['checkout_status'] == 'checked_out' %}
+                                    <span class="badge bg-secondary me-1">Checked Out</span>
+                                    <a href="{{ url_for('auth.rate_session_games', session_id=sess['id']) }}"
+                                       class="btn btn-sm btn-outline-warning">Rate Games</a>
+                                {% else %}
+                                    <form method="post"
+                                          action="{{ url_for('auth.cancel_session', session_id=sess['id']) }}"
+                                          style="display: inline;">
+                                        <button type="submit"
+                                                class="btn btn-sm btn-danger"
+                                            onclick="return confirm('Are you sure you want to cancel this session?')">
+                                            Cancel
+                                        </button>
+                                    </form>
+                                    <a href="{{ url_for('auth.order_food', session_id=sess['id']) }}" class="btn btn-sm btn-outline-primary ms-2">
+                                        Order Food/Drinks
+                                    </a>
+                                {% endif %}
                             </div>
                         </div>
                     {% endfor %}
@@ -74,7 +80,12 @@
                                     No games
                                 {% endif %}
                             </div>
-                            <div></div>
+                            <div>
+                                {% if sess['checkout_status'] == 'checked_out' %}
+                                    <a href="{{ url_for('auth.rate_session_games', session_id=sess['id']) }}"
+                                       class="btn btn-sm btn-outline-warning">Rate Games</a>
+                                {% endif %}
+                            </div>
                         </div>
                     {% endfor %}
                 </div>
