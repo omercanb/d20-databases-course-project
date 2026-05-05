@@ -39,4 +39,4 @@ def market_login_required(view):
 
 
 # Import route modules to register them on the blueprint
-from . import algorithmic, history, portfolio, scripts_json_endpoints, trading
+from . import algorithmic, history, portfolio, price_graphs, scripts_json_endpoints, trading

@@ -1,5 +1,5 @@
 import random
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import click
 
@@ -23,7 +23,7 @@ from d20.db.user import create_user
 
 
 def seed_users():
-    users = [("user1", "pass"), ("user2", "pass")]
+    users = [("user1", "pass"), ("user2", "pass"), ("user3", "pass")]
     return [create_user(username, password) for username, password in users]
 
 
@@ -130,12 +130,10 @@ def seed_ratings(user_ids, game_ids):
 
 
 def seed_session(user_ids, store_ids, store_to_game_copy):
-    # Build varied daily demand over two weeks, centered around ~20 sessions/day.
+    # Build varied daily demand over a couple days, centered around 2-4 sessions/day.
     # Capacity is respected by distributing sessions across stores/tables/timeslots/games.
     random.seed(20)
-    daily_targets = [12, 18, 20, 16, 24, 14, 22, 10, 19, 21, 17, 23, 15, 20]
     daily_targets = [2, 3, 4]
-    # daily_targets = [d // 10 for d in daily_targets]
     time_slots = [(9, 11), (11, 13), (13, 15), (15, 17), (17, 19)]
 
     for day_idx, target_count in enumerate(daily_targets, start=1):
@@ -210,6 +208,70 @@ def seed_menus(store_ids):
         create_beverage(coffee_id, size="Regular", temperature="Hot")
 
 
+def seed_historical_price_data(user_ids, game_ids):
+    """Generate 14 days of historical price data for games."""
+    user2_id = user_ids[1]
+    user3_id = user_ids[2]
+
+    user2_market = get_market_participant_by_customer(user2_id)["id"]
+    user3_market = get_market_participant_by_customer(user3_id)["id"]
+
+    # Generate price data for each game
+    num_days = 14
+    today = datetime.now()
+
+    for game_id in game_ids:
+        # Generate random starting price between $10 and $30
+        starting_price = random.uniform(10, 30)
+        prices = [starting_price]
+
+        # Generate prices for each day with random walk
+        current_price = starting_price
+        for _ in range(num_days - 1):
+            # Random price change between -2 and +2
+            price_change = random.uniform(-2, 2)
+            current_price = max(1, current_price + price_change)
+            prices.append(current_price)
+
+        # Reverse prices so oldest is first
+        prices.reverse()
+
+        # Add game to user2's inventory
+        increment_available_quantity(user2_market, game_id, num_days)
+
+        # Add sufficient cash to user3
+        total_cost = sum(prices)
+        increment_available_cash(user3_market, total_cost + 100)
+
+        # Create orders for each day
+        for day_offset in range(num_days):
+            # Calculate timestamp for this day
+            day_timestamp = (today - timedelta(days=num_days - 1 - day_offset)).isoformat()
+            price = prices[day_offset]
+
+            # User 2 creates limit sell order
+            sell_order_id, _, _ = create_order(
+                user2_market,
+                game_id,
+                "LIMIT",
+                "SELL",
+                price,
+                1,
+                created_at=day_timestamp,
+            )
+
+            # User 3 creates market buy order to fill it
+            create_order(
+                user3_market,
+                game_id,
+                "MARKET",
+                "BUY",
+                None,
+                1,
+                created_at=day_timestamp,
+            )
+
+
 def seed_the_universe():
     user_ids = seed_users()
     store_ids = seed_stores()
@@ -220,6 +282,7 @@ def seed_the_universe():
     seed_session(user_ids, store_ids, store_to_game_copy)
     seed_orders(user_ids, game_ids)
     seed_menus(store_ids)
+    seed_historical_price_data(user_ids, game_ids)
 
 
 @click.command("seed")

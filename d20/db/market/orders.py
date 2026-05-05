@@ -29,6 +29,7 @@ def create_order(
     price,
     initial_quantity,
     script_id=None,
+    created_at=None,
 ):
     """Create a new order and reserve the required cash or inventory.
 
@@ -39,6 +40,8 @@ def create_order(
         side: 'BUY' or 'SELL'
         price: Price per unit (None for MARKET orders)
         initial_quantity: Total quantity requested
+        script_id: Optional script ID
+        created_at: Optional timestamp (defaults to now)
 
     Returns:
         (The ID of the newly created order, any errors, and the number of fills)
@@ -77,6 +80,7 @@ def create_order(
     # Create the order record
     db = get_db()
     game_symbol = get_game(game_id)["symbol"]  # The symbol name that's traded
+    order_timestamp = created_at if created_at else datetime.now().isoformat()
     cursor = db.execute(
         """insert into Orders
            (participant_id, game_id, game_symbol, order_type, side, price, initial_quantity, filled_quantity, status, created_at, script_id)
@@ -92,17 +96,17 @@ def create_order(
             initial_quantity,
             0,
             "OPEN",
-            datetime.now().isoformat(),
+            order_timestamp,
             script_id,
         ),
     )
     db.commit()
     order_id = cursor.fetchone()["id"]
-    num_fills, error = try_match_order(order_id)
+    num_fills, error = try_match_order(order_id, executed_at=created_at)
     return order_id, num_fills, error
 
 
-def try_match_order(order_id):
+def try_match_order(order_id, executed_at=None):
     """
     Used for a newly created order to try to match it with an order of the other side
     Returns (number of fills done, error)
@@ -223,6 +227,7 @@ def try_match_order(order_id):
             game_symbol,
             execution_price,
             num_fills,
+            executed_at,
         )
 
     # If we have a market order and don't have enough liqudity we fill what we can then cancel the order

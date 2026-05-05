@@ -11,13 +11,18 @@ def record_trade(
     game_symbol,
     execution_price,
     quantity,
+    executed_at=None,
 ):
     """Record a completed trade (fill).
+
+    Args:
+        executed_at: Optional timestamp (defaults to now)
 
     Returns:
         1 on success
     """
     db = get_db()
+    trade_timestamp = executed_at if executed_at else datetime.now().isoformat()
     db.execute(
         "INSERT INTO MarketHistory"
         " (buy_order_id, sell_order_id, buyer_id, seller_id, game_symbol,"
@@ -31,7 +36,7 @@ def record_trade(
             game_symbol,
             execution_price,
             quantity,
-            datetime.now().isoformat(),
+            trade_timestamp,
         ),
     )
     db.commit()
@@ -75,3 +80,17 @@ def get_price(game_symbol):
     if row is None:
         return None
     return row["execution_price"]
+
+
+def get_historical_game_prices():
+    """Get all historical game price data grouped by game."""
+    return (
+        get_db()
+        .execute(
+            "SELECT hgp.game_id, g.name, hgp.timestamp, hgp.price "
+            "FROM historical_game_price hgp "
+            "JOIN Game g ON hgp.game_id = g.id "
+            "ORDER BY hgp.game_id, hgp.timestamp ASC"
+        )
+        .fetchall()
+    )

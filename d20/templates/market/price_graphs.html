@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block header %}
+    <h1>
+        {% block title %}Market - Price Graphs{% endblock %}
+    </h1>
+{% endblock %}
+{% block content %}
+    <div class="container">
+        {% include 'market/_subnav.html' %}
+
+        <section class="mt-4">
+            <h2 class="card-section-title">Historical Game Prices</h2>
+
+            {% if games_data %}
+                <div class="row">
+                    {% for game_id, game_info in games_data|dictsort %}
+                        <div class="col-lg-6 mb-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="card-title mb-0">{{ game_info['name'] }}</h5>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="chart-game-{{ game_id }}" height="300"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted">No historical price data available yet.</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const gamesData = {{ games_data|tojson }};
+
+        Object.entries(gamesData).forEach(([gameId, gameInfo]) => {
+            const prices = gameInfo.prices;
+            if (prices.length === 0) return;
+
+            const timestamps = prices.map(p => new Date(p.timestamp).toLocaleString());
+            const priceValues = prices.map(p => p.price);
+
+            const ctx = document.getElementById('chart-game-' + gameId).getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timestamps,
+                    datasets: [{
+                        label: gameInfo.name + ' Price',
+                        data: priceValues,
+                        borderColor: '#0d6efd',
+                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#0d6efd',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toFixed(2);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+{% endblock %}

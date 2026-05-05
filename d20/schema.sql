@@ -288,3 +288,11 @@ CREATE TABLE SessionOrderItem (
     quantity INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (order_id, item_id)
 );
+
+CREATE VIEW historical_game_price AS
+SELECT
+    o.game_id,
+    mh.executed_at::TIMESTAMP AS timestamp,
+    mh.execution_price AS price
+FROM MarketHistory mh
+JOIN Orders o ON mh.buy_order_id = o.id;

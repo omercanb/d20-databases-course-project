@@ -265,8 +265,6 @@ def my_store_sessions():
         sessions_by_day=sessions_by_day,
         from_day=from_day,
         to_day=to_day,
-        reservation_count=get_reservation_count(g.user["id"]),
-        max_reservation_count=MAX_RESERVATIONS,
     )
 
 
