@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block header %}
+<h1 class="text-3xl font-bold font-mono tracking-wider mb-2">Order Food & Drinks</h1>
+<h2 class="text-xl font-mono text-gray-600">Session at {{ store.name }} (Table {{ session.table_num }})</h2>
+{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+  <div class="lg:col-span-2 space-y-6">
+    <form method="post" action="{{ url_for('auth.order_food', session_id=session.id) }}">
+      <div class="bg-gray-100 p-6 rounded-sm border-2 border-gray-900 shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
+        <h3 class="text-xl font-bold font-mono mb-4 border-b-2 border-gray-900 pb-2">Menu</h3>
+        
+        {% if not menu_items %}
+          <p class="text-gray-600">No menu items available at this store.</p>
+        {% else %}
+          <div class="space-y-4">
+            {% for item in menu_items %}
+              {% if item.is_available %}
+              <div class="bg-white p-4 border border-gray-300 rounded flex justify-between items-center gap-4">
+                <div class="flex-grow">
+                  <h4 class="font-bold text-lg flex items-center gap-2">
+                    {{ item.name }}
+                    {% if item.is_vegetarian %}
+                      <span class="text-[10px] bg-green-200 text-green-800 px-1 py-0.5 rounded font-bold uppercase">Veg</span>
+                    {% endif %}
+                  </h4>
+                  <p class="text-sm text-gray-600">{{ item.description }}</p>
+                  <div class="font-mono font-bold mt-1">${{ "%.2f"|format(item.price) }}</div>
+                </div>
+                <div class="w-24 shrink-0">
+                  <label for="qty_{{ item.id }}" class="block text-xs font-bold text-gray-700 mb-1">Quantity</label>
+                  <input type="number" id="qty_{{ item.id }}" name="qty_{{ item.id }}" min="0" max="10" value="0" class="w-full border-2 border-gray-900 rounded-sm px-2 py-1 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+              </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+          <div class="mt-6 flex justify-end">
+            <button type="submit" class="bg-blue-600 text-white font-bold font-mono px-6 py-2 border-2 border-black rounded-sm shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:translate-y-1 hover:shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-all">
+              Place Order
+            </button>
+          </div>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <div class="space-y-6">
+    <div class="bg-yellow-50 p-6 rounded-sm border-2 border-gray-900 shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
+      <h3 class="text-xl font-bold font-mono mb-4 border-b-2 border-gray-900 pb-2">Your Orders</h3>
+      
+      {% if not previous_orders %}
+        <p class="text-sm text-gray-600">You haven't ordered anything yet for this session.</p>
+      {% else %}
+        <div class="space-y-4">
+          {% set total_bill = 0 %}
+          {% for order in previous_orders %}
+            {% set total_bill = total_bill + order.total_amount %}
+            <div class="bg-white p-3 border border-gray-300 rounded text-sm">
+              <div class="font-bold flex justify-between mb-2">
+                <span>Order #{{ order.id }}</span>
+                <span>${{ "%.2f"|format(order.total_amount) }}</span>
+              </div>
+              <ul class="space-y-1 text-gray-700">
+                {% for item in order['items'] %}
+                  <li class="flex justify-between">
+                    <span>{{ item.quantity }}x {{ item.name }}</span>
+                    <span>${{ "%.2f"|format(item.subtotal) }}</span>
+                  </li>
+                {% endfor %}
+              </ul>
+              <div class="mt-2 text-xs text-gray-500 text-right">
+                Status: <span class="font-bold uppercase">{{ order.status }}</span>
+              </div>
+            </div>
+          {% endfor %}
+          
+          <div class="border-t-2 border-gray-900 pt-3 flex justify-between items-center font-bold font-mono text-lg">
+            <span>Total Food/Drink Tab:</span>
+            <span>${{ "%.2f"|format(total_bill) }}</span>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+    
+    <div>
+      <a href="{{ url_for('auth.view_sessions') }}" class="inline-block text-gray-600 hover:text-gray-900 underline font-mono text-sm">
+        &larr; Back to My Sessions
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

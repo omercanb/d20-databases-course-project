@@ -35,10 +35,13 @@
                                       style="display: inline;">
                                     <button type="submit"
                                             class="btn btn-sm btn-danger"
-                                            onclick="return confirm('Are you sure you want to cancel this session?')">
+                                        onclick="return confirm('Are you sure you want to cancel this session?')">
                                         Cancel
                                     </button>
                                 </form>
+                                <a href="{{ url_for('auth.order_food', session_id=sess['id']) }}" class="btn btn-sm btn-outline-primary ms-2">
+                                    Order Food/Drinks
+                                </a>
                             </div>
                         </div>
                     {% endfor %}

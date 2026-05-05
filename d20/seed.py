@@ -14,6 +14,7 @@ from d20.db.market.participant_inventory import increment_available_quantity
 from d20.db.session import create_session
 from d20.db.stores import create_store, create_table
 from d20.db.user import create_user
+from d20.db.menu import create_menu_item, create_food, create_beverage
 
 
 def seed_users():
@@ -167,6 +168,21 @@ def seed_orders(user_ids, game_ids):
     increment_available_cash(user2_market, 100)
     create_order(user2_market, game2, "MARKET", "BUY", None, 1)
 
+def seed_menus(store_ids):
+    for store_id in store_ids:
+        # Food
+        nachos_id = create_menu_item(store_id, "Nachos", 8.99, "Crispy nachos with cheese dip")
+        create_food(nachos_id, is_vegetarian=True, category="Snack")
+        
+        burger_id = create_menu_item(store_id, "Classic Burger", 12.50, "Beef burger with fries")
+        create_food(burger_id, is_vegetarian=False, category="Main")
+        
+        # Beverages
+        cola_id = create_menu_item(store_id, "Cola", 2.99, "Cold fizzy drink")
+        create_beverage(cola_id, size="Large", temperature="Cold")
+        
+        coffee_id = create_menu_item(store_id, "Black Coffee", 3.50, "Freshly brewed")
+        create_beverage(coffee_id, size="Regular", temperature="Hot")
 
 def seed_the_universe():
     user_ids = seed_users()
@@ -177,6 +193,7 @@ def seed_the_universe():
     store_to_game_copy = seed_game_copies(store_ids, game_ids)
     seed_session(user_ids, store_ids, store_to_game_copy)
     seed_orders(user_ids, game_ids)
+    seed_menus(store_ids)
 
 
 @click.command("seed")

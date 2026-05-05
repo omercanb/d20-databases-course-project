@@ -12,6 +12,11 @@ DROP TABLE IF EXISTS MarketHistory CASCADE;
 DROP TABLE IF EXISTS Orders CASCADE;
 DROP TABLE IF EXISTS MarketParticipantInventory CASCADE;
 DROP TABLE IF EXISTS MarketParticipant CASCADE;
+DROP TABLE IF EXISTS SessionOrderItem CASCADE;
+DROP TABLE IF EXISTS SessionOrder CASCADE;
+DROP TABLE IF EXISTS Beverage CASCADE;
+DROP TABLE IF EXISTS Food CASCADE;
+DROP TABLE IF EXISTS MenuItem CASCADE;
 DROP TABLE IF EXISTS Store CASCADE;
 DROP TABLE IF EXISTS "User" CASCADE;
 
@@ -233,4 +238,41 @@ CREATE TABLE MarketHistory (
     FOREIGN KEY (sell_order_id) REFERENCES Orders(id),
     FOREIGN KEY (buyer_id)      REFERENCES MarketParticipant(id),
     FOREIGN KEY (seller_id)     REFERENCES MarketParticipant(id)
+);
+
+CREATE TABLE MenuItem (
+    id SERIAL PRIMARY KEY,
+    store_id INTEGER NOT NULL REFERENCES Store(id),
+    name TEXT NOT NULL,
+    price NUMERIC(10, 2) NOT NULL,
+    description TEXT,
+    is_available BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE Food (
+    item_id INTEGER PRIMARY KEY REFERENCES MenuItem(id),
+    is_vegetarian BOOLEAN NOT NULL DEFAULT FALSE,
+    allergens TEXT,
+    category TEXT
+);
+
+CREATE TABLE Beverage (
+    item_id INTEGER PRIMARY KEY REFERENCES MenuItem(id),
+    size TEXT,
+    temperature TEXT
+);
+
+CREATE TABLE SessionOrder (
+    id SERIAL PRIMARY KEY,
+    session_id INTEGER NOT NULL REFERENCES Session(id),
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'cancelled')),
+    total_amount NUMERIC(10, 2) DEFAULT 0.00
+);
+
+CREATE TABLE SessionOrderItem (
+    order_id INTEGER NOT NULL REFERENCES SessionOrder(id),
+    item_id INTEGER NOT NULL REFERENCES MenuItem(id),
+    quantity INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (order_id, item_id)
 );
