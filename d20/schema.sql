@@ -23,6 +23,7 @@ DROP TABLE IF EXISTS "User" CASCADE;
 
 DROP FUNCTION IF EXISTS fn_set_game_copy_availability() CASCADE;
 DROP FUNCTION IF EXISTS fn_update_dynamic_price_after_session() CASCADE;
+DROP FUNCTION IF EXISTS fn_release_reserved_on_cancel() CASCADE;
 
 CREATE TABLE "User" (
     id       SERIAL PRIMARY KEY,
@@ -235,6 +236,30 @@ CREATE TABLE Orders (
     script_id        INTEGER DEFAULT NULL,
     FOREIGN KEY (script_id) REFERENCES TradingScript(id)
 );
+
+CREATE OR REPLACE FUNCTION fn_release_reserved_on_cancel()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.status = 'CANCELLED' AND OLD.status != 'CANCELLED' THEN
+        IF NEW.side = 'SELL' THEN
+            UPDATE MarketParticipantInventory
+            SET reserved_quantity = reserved_quantity - (NEW.initial_quantity - NEW.filled_quantity),
+                available_quantity = available_quantity + (NEW.initial_quantity - NEW.filled_quantity)
+            WHERE participant_id = NEW.participant_id AND game_id = NEW.game_id;
+        ELSIF NEW.side = 'BUY' AND NEW.order_type = 'LIMIT' THEN
+            UPDATE MarketParticipant
+            SET reserved_cash = reserved_cash - (NEW.initial_quantity - NEW.filled_quantity) * NEW.price,
+                available_cash = available_cash + (NEW.initial_quantity - NEW.filled_quantity) * NEW.price
+            WHERE id = NEW.participant_id;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER release_reserved_on_cancel
+AFTER UPDATE ON Orders
+FOR EACH ROW EXECUTE FUNCTION fn_release_reserved_on_cancel();
 
 CREATE TABLE MarketHistory (
     buy_order_id    INTEGER NOT NULL,

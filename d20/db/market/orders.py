@@ -413,27 +413,14 @@ def add_fills(order_id, quantity_to_add):
 
 
 def cancel_order(order_id):
-    """Cancel an order and return reserved resources."""
+    """Cancel an order. Reserved resources are automatically released by trigger.
+
+    The database trigger fn_release_reserved_on_cancel handles returning
+    reserved cash/inventory when status changes to CANCELLED.
+    """
     db = get_db()
     order = get_order(order_id)
-    status = order["status"]
-    assert status != "COMPLETED"
-    participant_id = order["participant_id"]
-    remaining_quantity = order["initial_quantity"] - order["filled_quantity"]
-    side = order["side"]
-    order_type = order["order_type"]
-
-    if side == "BUY":
-        # Only LIMIT orders have reserved cash (MARKET orders don't reserve upfront)
-        if order_type == "LIMIT":
-            price = order["price"]
-            total_cost = remaining_quantity * price
-            decrement_reserved_cash(participant_id, total_cost)
-            increment_available_cash(participant_id, total_cost)
-    else:  # side == "SELL"
-        game_id = order["game_id"]
-        decrement_reserved_quantity(participant_id, game_id, remaining_quantity)
-        increment_available_quantity(participant_id, game_id, remaining_quantity)
+    assert order["status"] != "COMPLETED", "Cannot cancel a completed order"
 
     db.execute("update Orders set status = 'CANCELLED' where id = %s", (order_id,))
     db.commit()
