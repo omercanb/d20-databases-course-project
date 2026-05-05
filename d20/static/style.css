@@ -1,9 +1,49 @@
+:root {
+    --bg-color: #f8fafc;
+    --card-bg: #ffffff;
+    --primary-color: #6366f1;
+    --primary-hover: #4f46e5;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --card-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+}
+
+.card {
+    background-color: var(--card-bg);
+    border: none;
+    border-radius: 0.75rem;
+    box-shadow: var(--card-shadow);
+}
+
+.btn {
+    border-radius: 0.5rem;
+    transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #ffffff;
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+
 .form-signin {
     max-width: 330px;
     padding: 1rem;
-  }
-body {
-    font-family: "Courier Prime", monospace;
 }
 
 
@@ -11,11 +51,13 @@ body {
 /* Can be expanded for use in other cards as well */
 .store-card {
     cursor: pointer;
-    transition: background-color 0.15s ease;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
 .store-card:hover {
-    background-color: var(--bs-tertiary-bg);
+    background-color: var(--card-bg);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
 /* Reusable grid layout */
@@ -58,7 +100,7 @@ body {
     align-items: center;
     padding: 1rem;
     border-bottom: 1px solid var(--bs-border-color);
-    background: var(--bs-body-bg);
+    background: var(--card-bg);
     transition: background-color 0.15s ease;
 }
 
@@ -67,7 +109,7 @@ body {
     grid-template-columns: 1fr 1fr 1fr 1fr;
     gap: 1rem;
     padding: 1rem;
-    background-color: var(--bs-tertiary-bg);
+    background-color: #f1f5f9;
     font-weight: 600;
     border-radius: 0.375rem 0.375rem 0 0;
 }
@@ -79,7 +121,7 @@ body {
     align-items: center;
     padding: 1rem;
     border-bottom: 1px solid var(--bs-border-color);
-    background: var(--bs-body-bg);
+    background: var(--card-bg);
     transition: background-color 0.15s ease;
 }
 
@@ -97,7 +139,7 @@ body {
     grid-template-columns: 1fr 1fr 1fr 1fr 120px;
     gap: 1rem;
     padding: 1rem;
-    background-color: var(--bs-tertiary-bg);
+    background-color: #f1f5f9;
     font-weight: 600;
     border-radius: 0.375rem 0.375rem 0 0;
 }
@@ -107,6 +149,7 @@ body {
     border-radius: 0.375rem;
     overflow: hidden;
     margin-bottom: 2rem;
+    box-shadow: var(--card-shadow);
 }
 
 .session-list.empty {
