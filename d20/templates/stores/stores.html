@@ -5,12 +5,13 @@
     </h1>
 {% endblock %}
 {% block content %}
-    <form method="get" class="mb-4">
+    <form method="get" class="mb-4 d-flex gap-2">
         <input type="text"
                name="search"
                value="{{ search }}"
                placeholder="Search stores..."
                class="form-control" />
+        <button type="submit" class="btn btn-primary">Search</button>
     </form>
     <div class="card-grid card-grid-3col">
         {% for store in stores %}
@@ -19,7 +20,7 @@
                 <div class="card h-100 store-card">
                     <div class="card-body">
                         <h5 class="card-title">{{ store['name'] }}</h5>
-                        <p class="card-text text-muted">Placeholder Address</p>
+                        <p class="card-text text-muted">{{ store['address'] }}</p>
                     </div>
                 </div>
             </a>

@@ -107,6 +107,8 @@
                                                    value="{{ game['id'] }}"
                                                    id="game-{{ game['id'] }}">
                                             <span style="margin-left: 0.5rem;">
+                                                {% set link_to_detail = true %}
+                                                {% set store_id = store['id'] %}
                                                 {% set show_availability = true %}
                                                 {% set available_copies = game['available_copies'] %}
                                                 {% set total_copies = game['total_copies'] %}
@@ -126,6 +128,8 @@
                             {% for game in unavailable_games %}
                                 <div class="card h-100 store-card">
                                     <div class="card-body">
+                                        {% set link_to_detail = true %}
+                                        {% set store_id = store['id'] %}
                                         {% set show_unavailable = true %}
                                         {% set total_copies = game['total_copies'] %}
                                         {% set title_muted = true %}

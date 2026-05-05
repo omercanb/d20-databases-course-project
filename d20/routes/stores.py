@@ -86,10 +86,12 @@ def stores():
     db = get_db()
 
     search = request.args.get("search", "")
+    print(f"[STORES] Search query: '{search}'")
 
     stores = db.execute(
-        "select * from Store where name like %s", (f"%{search}%",)
+        "select * from Store where name ilike %s", (f"%{search}%",)
     ).fetchall()
+    print(f"[STORES] Found {len(stores)} results")
 
     return render_template("stores/stores.html", stores=stores, search=search)
 
@@ -856,14 +858,14 @@ def rate_game_route(store_id, game_id):
 
 
 from d20.db.menu import (
+    create_beverage,
+    create_food,
+    create_menu_item,
+    delete_menu_item,
     get_menu,
     get_menu_item_full,
-    create_menu_item,
-    create_food,
-    create_beverage,
-    update_menu_item,
     toggle_menu_item_availability,
-    delete_menu_item,
+    update_menu_item,
 )
 
 
@@ -881,6 +883,7 @@ def store_menu(store_id):
 
 
 # ── Store owner menu management ──────────────────────────────────────────────
+
 
 @bp.route("/mystore/menu")
 @store_login_required
@@ -962,9 +965,17 @@ def edit_menu_item(item_id):
         temperature = request.form.get("temperature", "").strip() or None
 
         update_menu_item(
-            item_id, name, price, description, is_available, item_type,
-            is_vegetarian=is_vegetarian, allergens=allergens, category=category,
-            size=size, temperature=temperature,
+            item_id,
+            name,
+            price,
+            description,
+            is_available,
+            item_type,
+            is_vegetarian=is_vegetarian,
+            allergens=allergens,
+            category=category,
+            size=size,
+            temperature=temperature,
         )
         flash(f"'{name}' updated successfully.")
         return redirect(url_for("stores.my_store_menu"))

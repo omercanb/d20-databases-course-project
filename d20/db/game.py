@@ -2,17 +2,39 @@ from d20.db import get_db
 
 
 # Game Functions
-def create_game(name, symbol, genre=None, min_players=None, max_players=None,
-                complexity_rating=None, avg_duration=None, description=None,
-                publisher=None, strategy_rating=None, luck_rating=None,
-                interaction_rating=None):
+def create_game(
+    name,
+    symbol,
+    genre=None,
+    min_players=None,
+    max_players=None,
+    complexity_rating=None,
+    avg_duration=None,
+    description=None,
+    publisher=None,
+    strategy_rating=None,
+    luck_rating=None,
+    interaction_rating=None,
+):
     db = get_db()
     cursor = db.execute(
         "INSERT INTO Game (name, publisher, symbol, genre, min_players, max_players,"
         " avg_duration, complexity_rating, strategy_rating, luck_rating, interaction_rating, description)"
         " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-        (name, publisher, symbol, genre, min_players, max_players,
-         avg_duration, complexity_rating, strategy_rating, luck_rating, interaction_rating, description),
+        (
+            name,
+            publisher,
+            symbol,
+            genre,
+            min_players,
+            max_players,
+            avg_duration,
+            complexity_rating,
+            strategy_rating,
+            luck_rating,
+            interaction_rating,
+            description,
+        ),
     )
     db.commit()
     return cursor.fetchone()["id"]
@@ -44,7 +66,9 @@ class InvalidSymbolError(Exception):
 
 
 def get_game_by_symbol(symbol):
-    return get_db().execute("SELECT * FROM Game WHERE symbol = %s", (symbol,)).fetchone()
+    return (
+        get_db().execute("SELECT * FROM Game WHERE symbol = %s", (symbol,)).fetchone()
+    )
 
 
 def delete_game(game_id):
@@ -82,7 +106,9 @@ def get_game_copies(store_id):
 def get_game_copy_count(store_id):
     return (
         get_db()
-        .execute("SELECT COUNT(*) AS cnt FROM GameCopy WHERE store_id = %s", (store_id,))
+        .execute(
+            "SELECT COUNT(*) AS cnt FROM GameCopy WHERE store_id = %s", (store_id,)
+        )
         .fetchone()["cnt"]
     )
 
@@ -307,10 +333,21 @@ def delete_damage_report(session_id, game_id, store_id, copy_num):
 
 # Game Library / Browse Functions
 
-def get_games_filtered(store_id, genre=None, min_players=None, max_players=None,
-                       user_rating=None, complexity_rating=None, strategy_rating=None,
-                       luck_rating=None, interaction_rating=None, max_avg_duration=None,
-                       available_only=False, search=None):
+
+def get_games_filtered(
+    store_id,
+    genre=None,
+    min_players=None,
+    max_players=None,
+    user_rating=None,
+    complexity_rating=None,
+    strategy_rating=None,
+    luck_rating=None,
+    interaction_rating=None,
+    max_avg_duration=None,
+    available_only=False,
+    search=None,
+):
     """Get games at a store with optional filters."""
     query = """
         SELECT DISTINCT Game.*
@@ -409,9 +446,11 @@ def _player_similarity(game, other):
     ):
         return 0
 
-    overlap = min(game["max_players"], other["max_players"]) - max(
-        game["min_players"], other["min_players"]
-    ) + 1
+    overlap = (
+        min(game["max_players"], other["max_players"])
+        - max(game["min_players"], other["min_players"])
+        + 1
+    )
     if overlap <= 0:
         return 0
 
@@ -467,16 +506,20 @@ def get_similar_games(game_id, store_id, limit=3):
 
 
 def get_store_genres(store_id):
-    return get_db().execute(
-        """
+    return (
+        get_db()
+        .execute(
+            """
         SELECT DISTINCT Game.genre
         FROM Game
         JOIN GameCopy ON (Game.id = GameCopy.game_id AND GameCopy.store_id = %s)
         WHERE Game.genre IS NOT NULL
         ORDER BY Game.genre
         """,
-        (store_id,),
-    ).fetchall()
+            (store_id,),
+        )
+        .fetchall()
+    )
 
 
 def get_game_copies_with_condition(game_id, store_id):

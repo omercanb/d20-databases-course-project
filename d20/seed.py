@@ -29,12 +29,13 @@ def seed_users():
 
 def seed_stores():
     stores = [
-        ("store1", "Big Boy Playhouse", "pass"),
-        ("store2", "The Dawg Pen", "pass"),
-        ("store3", "The Den", "pass"),
+        ("store1", "Big Boy Playhouse", "pass", "Ankara/Kızılay"),
+        ("store2", "The Dawg Pen", "pass", "Ankara/Ümitköy"),
+        ("store3", "The Den", "pass", "İstanbul/Şişli"),
     ]
     store_ids = [
-        create_store(username, name, password) for username, name, password in stores
+        create_store(username, name, password, address)
+        for username, name, password, address in stores
     ]
     for store_id in store_ids:
         for _ in range(3):
@@ -45,9 +46,9 @@ def seed_stores():
 def seed_games():
     games = [
         {
-            "name": "Freakopoly",
-            "symbol": "FRKPOL",
-            "publisher": "Freak Games",
+            "name": "Monopoly",
+            "symbol": "MONOPOL",
+            "publisher": "Capitalist Games",
             "genre": "Strategy",
             "min_players": 2,
             "max_players": 6,
@@ -56,12 +57,12 @@ def seed_games():
             "strategy_rating": 4,
             "luck_rating": 4,
             "interaction_rating": 5,
-            "description": "A freaky twist on the classic property trading game.",
+            "description": "The classic property trading game.",
         },
         {
-            "name": "Secret Freak",
-            "symbol": "SCRTFRK",
-            "publisher": "Freak Games",
+            "name": "Catan",
+            "symbol": "CATAN",
+            "publisher": "Catan Games",
             "genre": "Social Deduction",
             "min_players": 4,
             "max_players": 10,
@@ -70,12 +71,12 @@ def seed_games():
             "strategy_rating": 3,
             "luck_rating": 2,
             "interaction_rating": 5,
-            "description": "Uncover the secret freak among your friends.",
+            "description": "Become the baron.",
         },
         {
-            "name": "Freaknames",
-            "symbol": "FRKNMS",
-            "publisher": "Freak Games",
+            "name": "Codenames",
+            "symbol": "CDNMS",
+            "publisher": "Secret Games",
             "genre": "Party",
             "min_players": 2,
             "max_players": 8,
@@ -246,7 +247,9 @@ def seed_historical_price_data(user_ids, game_ids):
         # Create orders for each day
         for day_offset in range(num_days):
             # Calculate timestamp for this day
-            day_timestamp = (today - timedelta(days=num_days - 1 - day_offset)).isoformat()
+            day_timestamp = (
+                today - timedelta(days=num_days - 1 - day_offset)
+            ).isoformat()
             price = prices[day_offset]
 
             # User 2 creates limit sell order

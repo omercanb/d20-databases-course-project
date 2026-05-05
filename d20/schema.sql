@@ -35,7 +35,8 @@ CREATE TABLE Store (
     id       SERIAL PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL,
-    name     TEXT NOT NULL UNIQUE
+    name     TEXT NOT NULL UNIQUE,
+    address  TEXT NOT NULL
 );
 
 CREATE TABLE "Table" (

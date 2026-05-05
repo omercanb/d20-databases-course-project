@@ -4,11 +4,11 @@ from d20.db import get_db
 from d20.db.market.market_participant import create_market_participant
 
 
-def create_store(username, name, password):
+def create_store(username, name, password, address):
     db = get_db()
     cursor = db.execute(
-        "INSERT INTO Store (username, name, password) VALUES (%s, %s, %s) RETURNING id",
-        (username, name, generate_password_hash(password)),
+        "INSERT INTO Store (username, name, password, address) VALUES (%s, %s, %s, %s) RETURNING id",
+        (username, name, generate_password_hash(password), address),
     )
     db.commit()
     store_id = cursor.fetchone()["id"]
@@ -25,11 +25,7 @@ def get_store(username):
 
 
 def get_store_by_id(store_id):
-    return (
-        get_db()
-        .execute("SELECT * FROM store WHERE id = %s", (store_id,))
-        .fetchone()
-    )
+    return get_db().execute("SELECT * FROM store WHERE id = %s", (store_id,)).fetchone()
 
 
 # Table Functions
