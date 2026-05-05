@@ -1,9 +1,49 @@
+:root {
+    --bg-color: #f8fafc;
+    --card-bg: #ffffff;
+    --primary-color: #6366f1;
+    --primary-hover: #4f46e5;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --card-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+}
+
+.card {
+    background-color: var(--card-bg);
+    border: none;
+    border-radius: 0.75rem;
+    box-shadow: var(--card-shadow);
+}
+
+.btn {
+    border-radius: 0.5rem;
+    transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #ffffff;
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+
 .form-signin {
     max-width: 330px;
     padding: 1rem;
-  }
-body {
-    font-family: "Courier Prime", monospace;
 }
 
 
@@ -11,11 +51,13 @@ body {
 /* Can be expanded for use in other cards as well */
 .store-card {
     cursor: pointer;
-    transition: background-color 0.15s ease;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
 .store-card:hover {
-    background-color: var(--bs-tertiary-bg);
+    background-color: var(--card-bg);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
 /* Reusable grid layout */
