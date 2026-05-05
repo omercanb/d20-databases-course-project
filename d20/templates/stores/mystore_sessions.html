@@ -50,15 +50,26 @@
                                 {% endif %}
                             </div>
                             <div>
-                                <form method="post"
-                                      action="{{ url_for('stores.cancel_store_session', session_id=sess['id']) }}"
-                                      style="display: inline;">
-                                    <button type="submit"
-                                            class="btn btn-sm btn-danger"
-                                            onclick="return confirm('Cancel this session?')">
-                                        Cancel
-                                    </button>
-                                </form>
+                                {% if sess['checkout_status'] == 'checked_out' %}
+                                    <span class="badge bg-success me-1">Checked Out</span>
+                                    <a href="{{ url_for('stores.view_bill', session_id=sess['id']) }}"
+                                       class="btn btn-sm btn-outline-success">View Bill</a>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark me-1">Active</span>
+                                    <form method="post"
+                                          action="{{ url_for('stores.cancel_store_session', session_id=sess['id']) }}"
+                                          style="display: inline;">
+                                        <button type="submit"
+                                                class="btn btn-sm btn-danger"
+                                                onclick="return confirm('Cancel this session?')">
+                                            Cancel
+                                        </button>
+                                    </form>
+                                    <a href="{{ url_for('stores.checkout_session_form', session_id=sess['id']) }}"
+                                       class="btn btn-sm btn-success ms-1">
+                                        Checkout
+                                    </a>
+                                {% endif %}
                             </div>
                         </div>
                     {% endfor %}

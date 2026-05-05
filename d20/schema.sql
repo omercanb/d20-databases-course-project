@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS Bill CASCADE;
 DROP TABLE IF EXISTS GameDamage CASCADE;
 DROP TABLE IF EXISTS SessionGameCopy CASCADE;
 DROP TABLE IF EXISTS DynamicGamePrice CASCADE;
@@ -118,13 +119,14 @@ CREATE TABLE GameRating (
 );
 
 CREATE TABLE Session (
-    id         SERIAL PRIMARY KEY,
-    user_id    INTEGER NOT NULL,
-    store_id   INTEGER NOT NULL,
-    table_num  INTEGER NOT NULL,
-    day        TEXT NOT NULL,
-    start_time INTEGER NOT NULL,
-    end_time   INTEGER NOT NULL,
+    id              SERIAL PRIMARY KEY,
+    user_id         INTEGER NOT NULL,
+    store_id        INTEGER NOT NULL,
+    table_num       INTEGER NOT NULL,
+    day             TEXT NOT NULL,
+    start_time      INTEGER NOT NULL,
+    end_time        INTEGER NOT NULL,
+    checkout_status TEXT NOT NULL DEFAULT 'active' CHECK (checkout_status IN ('active', 'checked_out')),
     FOREIGN KEY (store_id, table_num) REFERENCES "Table"(store_id, table_num),
     FOREIGN KEY (user_id) REFERENCES "User"(id)
 );
@@ -179,6 +181,16 @@ CREATE TABLE GameDamage (
     FOREIGN KEY (session_id) REFERENCES Session(id),
     FOREIGN KEY (game_id, store_id, copy_num) REFERENCES GameCopy(game_id, store_id, copy_num),
     PRIMARY KEY (session_id, game_id, store_id, copy_num)
+);
+
+CREATE TABLE Bill (
+    id              SERIAL PRIMARY KEY,
+    session_id      INTEGER NOT NULL UNIQUE REFERENCES Session(id),
+    table_fee       NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    food_total      NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    damage_fee      NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    grand_total     NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    generated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE MarketParticipant (

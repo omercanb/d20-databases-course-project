@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+{% block header %}
+    <h1>{% block title %}Checkout - Session #{{ sess['id'] }}{% endblock %}</h1>
+{% endblock %}
+{% block content %}
+    {% include 'stores/_mystore_nav.html' %}
+    <div class="container">
+        <div class="row g-4">
+            <!-- Game Condition Form -->
+            <div class="col-lg-8">
+                <form method="post" action="{{ url_for('stores.do_checkout', session_id=sess['id']) }}">
+                    <section class="card-section">
+                        <h2 class="card-section-title">Session Details</h2>
+                        <p><strong>Customer:</strong> {{ sess['user_id'] }}</p>
+                        <p><strong>Date:</strong> {{ sess['day'] }}</p>
+                        <p><strong>Time:</strong> {{ sess['start_time'] }}:00 – {{ sess['end_time'] }}:00</p>
+                        <p><strong>Table:</strong> {{ sess['table_num'] }}</p>
+                    </section>
+
+                    <section class="card-section mt-4">
+                        <h2 class="card-section-title">Game Condition Logging</h2>
+                        {% if game_copies %}
+                            {% for gc in game_copies %}
+                                <div class="card mb-3 p-3">
+                                    <h5>{{ gc['game_name'] }} <small class="text-muted">Copy #{{ gc['copy_num'] }}</small></h5>
+                                    <div class="row g-2">
+                                        <div class="col-md-4">
+                                            <label for="cond_{{ gc['game_id'] }}_{{ gc['copy_num'] }}" class="form-label">Condition</label>
+                                            <select id="cond_{{ gc['game_id'] }}_{{ gc['copy_num'] }}"
+                                                    name="condition_{{ gc['game_id'] }}_{{ gc['copy_num'] }}"
+                                                    class="form-select condition-select">
+                                                <option value="good" {% if gc['condition'] == 'good' %}selected{% endif %}>Good</option>
+                                                <option value="minor_wear" {% if gc['condition'] == 'minor_wear' %}selected{% endif %}>Minor Wear</option>
+                                                <option value="damaged" {% if gc['condition'] == 'damaged' %}selected{% endif %}>Damaged (+$25 fee)</option>
+                                                <option value="missing_pieces" {% if gc['condition'] == 'missing_pieces' %}selected{% endif %}>Missing Pieces (+$25 fee)</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-8">
+                                            <label for="desc_{{ gc['game_id'] }}_{{ gc['copy_num'] }}" class="form-label">Description (optional)</label>
+                                            <input type="text"
+                                                   id="desc_{{ gc['game_id'] }}_{{ gc['copy_num'] }}"
+                                                   name="desc_{{ gc['game_id'] }}_{{ gc['copy_num'] }}"
+                                                   class="form-control"
+                                                   placeholder="Describe damage if any...">
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted">No game copies were checked out for this session.</p>
+                        {% endif %}
+                    </section>
+
+                    <section class="card-section mt-4">
+                        <h2 class="card-section-title">Food & Drink Orders</h2>
+                        {% if food_orders %}
+                            {% for order in food_orders %}
+                                <div class="mb-2">
+                                    <strong>Order #{{ order['id'] }}</strong> — ${{ "%.2f"|format(order['total_amount']) }}
+                                    <ul class="list-unstyled ms-3">
+                                        {% for item in order['items'] %}
+                                            <li>{{ item['quantity'] }}× {{ item['name'] }} = ${{ "%.2f"|format(item['subtotal']) }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            {% endfor %}
+                            <p><strong>Food & Drink Total:</strong> ${{ "%.2f"|format(food_total) }}</p>
+                        {% else %}
+                            <p class="text-muted">No food/drink orders.</p>
+                        {% endif %}
+                    </section>
+
+                    <div class="mt-4">
+                        <button type="submit" id="checkout-submit-btn" class="btn btn-primary btn-lg">
+                            Confirm Checkout & Generate Bill
+                        </button>
+                        <a href="{{ url_for('stores.my_store_sessions') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Bill Estimate Sidebar -->
+            <div class="col-lg-4">
+                <section class="card-section bg-light">
+                    <h2 class="card-section-title">Estimated Bill</h2>
+                    {% set hours = sess['end_time'] - sess['start_time'] %}
+                    <table class="table table-sm">
+                        <tr><td>Table Fee ({{ hours }}h × $5.00)</td><td class="text-end">${{ "%.2f"|format(hours * 5.0) }}</td></tr>
+                        <tr><td>Food & Drinks</td><td class="text-end">${{ "%.2f"|format(food_total) }}</td></tr>
+                        <tr><td>Damage Fee</td><td class="text-end" id="damage-estimate">$0.00</td></tr>
+                        <tr class="table-dark fw-bold"><td>Estimated Total</td><td class="text-end" id="est-total">${{ "%.2f"|format(hours * 5.0 + food_total) }}</td></tr>
+                    </table>
+                </section>
+            </div>
+        </div>
+    </div>
+
+<div id="checkout-data"
+     data-base-fee="{{ (sess['end_time'] - sess['start_time']) * 5.0 }}"
+     data-food-total="{{ food_total }}"
+     style="display:none;"></div>
+
+<script>
+    (function() {
+        var data = document.getElementById('checkout-data');
+        var baseFee = parseFloat(data.getAttribute('data-base-fee'));
+        var foodTotal = parseFloat(data.getAttribute('data-food-total'));
+        var DAMAGE_FEE = 25.00;
+
+        document.querySelectorAll('.condition-select').forEach(function(sel) {
+            sel.addEventListener('change', updateEstimate);
+        });
+
+        function updateEstimate() {
+            var damageFee = 0;
+            document.querySelectorAll('.condition-select').forEach(function(sel) {
+                if (sel.value === 'damaged' || sel.value === 'missing_pieces') {
+                    damageFee += DAMAGE_FEE;
+                }
+            });
+            document.getElementById('damage-estimate').textContent = '$' + damageFee.toFixed(2);
+            document.getElementById('est-total').textContent = '$' + (baseFee + foodTotal + damageFee).toFixed(2);
+        }
+    })();
+</script>
+{% endblock %}

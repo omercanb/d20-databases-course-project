@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block header %}
+    <h1>{% block title %}Bill - Session #{{ sess['id'] }}{% endblock %}</h1>
+{% endblock %}
+{% block content %}
+    {% include 'stores/_mystore_nav.html' %}
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-7">
+                <section class="card-section">
+                    <h2 class="card-section-title">Session Summary</h2>
+                    <p><strong>Customer ID:</strong> {{ sess['user_id'] }}</p>
+                    <p><strong>Date:</strong> {{ sess['day'] }}</p>
+                    <p><strong>Time:</strong> {{ sess['start_time'] }}:00 – {{ sess['end_time'] }}:00</p>
+                    <p><strong>Table:</strong> {{ sess['table_num'] }}</p>
+                    <p><strong>Status:</strong>
+                        <span class="badge bg-success">Checked Out</span>
+                    </p>
+                </section>
+
+                {% if bill %}
+                <section class="card-section mt-4">
+                    <h2 class="card-section-title">Final Bill</h2>
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                                <td>Table Fee ({{ sess['end_time'] - sess['start_time'] }} hours × $5.00/hr)</td>
+                                <td class="text-end">${{ "%.2f"|format(bill['table_fee']) }}</td>
+                            </tr>
+                            <tr>
+                                <td>Food & Drink Orders</td>
+                                <td class="text-end">${{ "%.2f"|format(bill['food_total']) }}</td>
+                            </tr>
+                            {% if bill['damage_fee'] > 0 %}
+                            <tr class="table-danger">
+                                <td>Damage Fee</td>
+                                <td class="text-end">${{ "%.2f"|format(bill['damage_fee']) }}</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="table-dark fw-bold fs-5">
+                                <td>Grand Total</td>
+                                <td class="text-end">${{ "%.2f"|format(bill['grand_total']) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <p class="text-muted small">Generated at: {{ bill['generated_at'] }}</p>
+                </section>
+                {% endif %}
+
+                {% if game_copies %}
+                <section class="card-section mt-4">
+                    <h2 class="card-section-title">Game Conditions (at Return)</h2>
+                    <div class="list-group">
+                        {% for gc in game_copies %}
+                        <div class="list-group-item d-flex justify-content-between">
+                            <span>{{ gc['game_name'] }} <small class="text-muted">(Copy #{{ gc['copy_num'] }})</small></span>
+                            <span class="badge
+                                {% if gc['condition'] == 'good' %}bg-success
+                                {% elif gc['condition'] == 'minor_wear' %}bg-warning text-dark
+                                {% else %}bg-danger
+                                {% endif %}">
+                                {{ gc['condition'].replace('_', ' ').title() }}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </section>
+                {% endif %}
+
+                <div class="mt-4 d-flex gap-2">
+                    <a href="{{ url_for('stores.my_store_sessions') }}" class="btn btn-outline-secondary">Back to Sessions</a>
+                    <button class="btn btn-outline-dark" onclick="window.print()">🖨 Print Bill</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
