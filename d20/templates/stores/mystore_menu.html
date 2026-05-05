@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+{% block header %}
+    <h1>{% block title %}Menu Management{% endblock %}</h1>
+{% endblock %}
+{% block content %}
+    {% set active_tab = 'menu' %}
+    {% include 'stores/_mystore_nav.html' %}
+
+    <div class="container">
+        <div class="row g-4">
+
+            <!-- Current Menu Items -->
+            <div class="col-lg-8">
+                <section class="card-section">
+                    <h2 class="card-section-title">Current Menu</h2>
+
+                    {% if menu_items %}
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Price</th>
+                                        <th>Status</th>
+                                        <th>Details</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in menu_items %}
+                                    <tr class="{% if not item['is_available'] %}table-secondary text-muted{% endif %}">
+                                        <td><strong>{{ item['name'] }}</strong>
+                                            {% if item['description'] %}<br><small class="text-muted">{{ item['description'] }}</small>{% endif %}
+                                        </td>
+                                        <td>
+                                            {% if item['item_type'] == 'Food' %}
+                                                <span class="badge bg-success">Food</span>
+                                            {% elif item['item_type'] == 'Beverage' %}
+                                                <span class="badge bg-info text-dark">Beverage</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Other</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>${{ "%.2f"|format(item['price']) }}</td>
+                                        <td>
+                                            {% if item['is_available'] %}
+                                                <span class="badge bg-success">Available</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Unavailable</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <small class="text-muted">
+                                            {% if item['item_type'] == 'Food' %}
+                                                {% if item['is_vegetarian'] %}<span class="badge bg-success me-1">Veg</span>{% endif %}
+                                                {% if item['category'] %}{{ item['category'] }}{% endif %}
+                                                {% if item['allergens'] %}<br>Allergens: {{ item['allergens'] }}{% endif %}
+                                            {% elif item['item_type'] == 'Beverage' %}
+                                                {% if item['size'] %}{{ item['size'] }}{% endif %}
+                                                {% if item['temperature'] %} · {{ item['temperature'] }}{% endif %}
+                                            {% endif %}
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <div class="d-flex gap-1 flex-wrap">
+                                                <a href="{{ url_for('stores.edit_menu_item', item_id=item['id']) }}"
+                                                   class="btn btn-sm btn-outline-primary">Edit</a>
+                                                <form method="post" action="{{ url_for('stores.toggle_menu_item', item_id=item['id']) }}" style="display:inline;">
+                                                    <button type="submit" class="btn btn-sm btn-outline-warning">
+                                                        {% if item['is_available'] %}Hide{% else %}Show{% endif %}
+                                                    </button>
+                                                </form>
+                                                <form method="post" action="{{ url_for('stores.delete_menu_item_route', item_id=item['id']) }}" style="display:inline;">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                            onclick="return confirm('Are you sure you want to delete this item?')">
+                                                        Delete
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">No menu items yet. Add your first item →</p>
+                    {% endif %}
+                </section>
+            </div>
+
+            <!-- Add Item Panel -->
+            <div class="col-lg-4">
+                <section class="card-section">
+                    <h2 class="card-section-title">Add New Item</h2>
+                    <form method="post" action="{{ url_for('stores.add_menu_item') }}" id="add-menu-form">
+
+                        <div class="mb-3">
+                            <label for="add-name" class="form-label">Name <span class="text-danger">*</span></label>
+                            <input id="add-name" type="text" name="name" class="form-control" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="add-price" class="form-label">Price ($) <span class="text-danger">*</span></label>
+                            <input id="add-price" type="number" name="price" step="0.01" min="0" class="form-control" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="add-description" class="form-label">Description</label>
+                            <textarea id="add-description" name="description" class="form-control" rows="2"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Type</label>
+                            <select id="add-item-type" name="item_type" class="form-select" onchange="toggleAddFields()">
+                                <option value="Food">Food</option>
+                                <option value="Beverage">Beverage</option>
+                            </select>
+                        </div>
+
+                        <!-- Food-specific -->
+                        <div id="add-food-fields">
+                            <div class="mb-3">
+                                <label for="add-category" class="form-label">Category</label>
+                                <input id="add-category" type="text" name="category" class="form-control" placeholder="e.g. Snack, Main...">
+                            </div>
+                            <div class="mb-3">
+                                <label for="add-allergens" class="form-label">Allergens</label>
+                                <input id="add-allergens" type="text" name="allergens" class="form-control" placeholder="e.g. Nuts, Gluten...">
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="add-veg" name="is_vegetarian">
+                                <label class="form-check-label" for="add-veg">Vegetarian</label>
+                            </div>
+                        </div>
+
+                        <!-- Beverage-specific -->
+                        <div id="add-bev-fields" style="display:none;">
+                            <div class="mb-3">
+                                <label for="add-size" class="form-label">Size</label>
+                                <input id="add-size" type="text" name="size" class="form-control" placeholder="e.g. Small, Large, 500ml">
+                            </div>
+                            <div class="mb-3">
+                                <label for="add-temperature" class="form-label">Temperature</label>
+                                <select id="add-temperature" name="temperature" class="form-select">
+                                    <option value="">—</option>
+                                    <option value="Hot">Hot</option>
+                                    <option value="Cold">Cold</option>
+                                    <option value="Room temperature">Room temperature</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">Add to Menu</button>
+                    </form>
+                </section>
+            </div>
+
+        </div>
+    </div>
+
+<script>
+    function toggleAddFields() {
+        var type = document.getElementById('add-item-type').value;
+        document.getElementById('add-food-fields').style.display = type === 'Food' ? '' : 'none';
+        document.getElementById('add-bev-fields').style.display = type === 'Beverage' ? '' : 'none';
+    }
+</script>
+{% endblock %}

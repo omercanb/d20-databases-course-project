@@ -855,7 +855,16 @@ def rate_game_route(store_id, game_id):
     return redirect(url_for("stores.game_detail", store_id=store_id, game_id=game_id))
 
 
-from d20.db.menu import get_menu
+from d20.db.menu import (
+    get_menu,
+    get_menu_item_full,
+    create_menu_item,
+    create_food,
+    create_beverage,
+    update_menu_item,
+    toggle_menu_item_availability,
+    delete_menu_item,
+)
 
 
 @bp.route("/store/<int:store_id>/menu")
@@ -869,3 +878,120 @@ def store_menu(store_id):
         store=store,
         menu_items=menu_items,
     )
+
+
+# ── Store owner menu management ──────────────────────────────────────────────
+
+@bp.route("/mystore/menu")
+@store_login_required
+def my_store_menu():
+    store_id = g.store["id"]
+    menu_items = get_menu(store_id)
+    return render_template(
+        "stores/mystore_menu.html",
+        menu_items=menu_items,
+    )
+
+
+@bp.route("/mystore/menu/add", methods=("POST",))
+@store_login_required
+def add_menu_item():
+    store_id = g.store["id"]
+    name = request.form.get("name", "").strip()
+    price_str = request.form.get("price", "")
+    description = request.form.get("description", "").strip() or None
+    item_type = request.form.get("item_type", "Food")
+
+    if not name:
+        flash("Name is required.")
+        return redirect(url_for("stores.my_store_menu"))
+    try:
+        price = float(price_str)
+        if price < 0:
+            raise ValueError
+    except ValueError:
+        flash("Price must be a non-negative number.")
+        return redirect(url_for("stores.my_store_menu"))
+
+    item_id = create_menu_item(store_id, name, price, description, is_available=True)
+
+    if item_type == "Food":
+        is_vegetarian = request.form.get("is_vegetarian") == "on"
+        allergens = request.form.get("allergens", "").strip() or None
+        category = request.form.get("category", "").strip() or None
+        create_food(item_id, is_vegetarian, allergens, category)
+    elif item_type == "Beverage":
+        size = request.form.get("size", "").strip() or None
+        temperature = request.form.get("temperature", "").strip() or None
+        create_beverage(item_id, size, temperature)
+
+    flash(f"'{name}' added to the menu.")
+    return redirect(url_for("stores.my_store_menu"))
+
+
+@bp.route("/mystore/menu/<int:item_id>/edit", methods=("GET", "POST"))
+@store_login_required
+def edit_menu_item(item_id):
+    item = get_menu_item_full(item_id)
+    if item is None or item["store_id"] != g.store["id"]:
+        flash("Menu item not found.")
+        return redirect(url_for("stores.my_store_menu"))
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        price_str = request.form.get("price", "")
+        description = request.form.get("description", "").strip() or None
+        is_available = request.form.get("is_available") == "on"
+        item_type = request.form.get("item_type", item["item_type"])
+
+        if not name:
+            flash("Name is required.")
+            return redirect(url_for("stores.edit_menu_item", item_id=item_id))
+        try:
+            price = float(price_str)
+            if price < 0:
+                raise ValueError
+        except ValueError:
+            flash("Price must be a non-negative number.")
+            return redirect(url_for("stores.edit_menu_item", item_id=item_id))
+
+        is_vegetarian = request.form.get("is_vegetarian") == "on"
+        allergens = request.form.get("allergens", "").strip() or None
+        category = request.form.get("category", "").strip() or None
+        size = request.form.get("size", "").strip() or None
+        temperature = request.form.get("temperature", "").strip() or None
+
+        update_menu_item(
+            item_id, name, price, description, is_available, item_type,
+            is_vegetarian=is_vegetarian, allergens=allergens, category=category,
+            size=size, temperature=temperature,
+        )
+        flash(f"'{name}' updated successfully.")
+        return redirect(url_for("stores.my_store_menu"))
+
+    return render_template("stores/mystore_menu_edit.html", item=item)
+
+
+@bp.route("/mystore/menu/<int:item_id>/toggle", methods=("POST",))
+@store_login_required
+def toggle_menu_item(item_id):
+    item = get_menu_item_full(item_id)
+    if item is None or item["store_id"] != g.store["id"]:
+        flash("Menu item not found.")
+    else:
+        toggle_menu_item_availability(item_id)
+        status = "unavailable" if item["is_available"] else "available"
+        flash(f"'{item['name']}' marked as {status}.")
+    return redirect(url_for("stores.my_store_menu"))
+
+
+@bp.route("/mystore/menu/<int:item_id>/delete", methods=("POST",))
+@store_login_required
+def delete_menu_item_route(item_id):
+    item = get_menu_item_full(item_id)
+    if item is None or item["store_id"] != g.store["id"]:
+        flash("Menu item not found.")
+    else:
+        delete_menu_item(item_id)
+        flash(f"'{item['name']}' removed from the menu.")
+    return redirect(url_for("stores.my_store_menu"))
