@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block header %}
+    <h1>{% block title %}Edit: {{ item['name'] }}{% endblock %}</h1>
+{% endblock %}
+{% block content %}
+    {% set active_tab = 'menu' %}
+    {% include 'stores/_mystore_nav.html' %}
+
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-6">
+                <section class="card-section">
+                    <form method="post" action="{{ url_for('stores.edit_menu_item', item_id=item['id']) }}">
+
+                        <div class="mb-3">
+                            <label for="edit-name" class="form-label">Name <span class="text-danger">*</span></label>
+                            <input id="edit-name" type="text" name="name" class="form-control"
+                                   value="{{ item['name'] }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="edit-price" class="form-label">Price ($) <span class="text-danger">*</span></label>
+                            <input id="edit-price" type="number" name="price" step="0.01" min="0" class="form-control"
+                                   value="{{ item['price'] }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="edit-description" class="form-label">Description</label>
+                            <textarea id="edit-description" name="description" class="form-control" rows="2">{{ item['description'] or '' }}</textarea>
+                        </div>
+
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="edit-available" name="is_available"
+                                   {% if item['is_available'] %}checked{% endif %}>
+                            <label class="form-check-label" for="edit-available">Available on menu</label>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Type</label>
+                            <select id="edit-item-type" name="item_type" class="form-select" onchange="toggleEditFields()">
+                                <option value="Food" {% if item['item_type'] == 'Food' %}selected{% endif %}>Food</option>
+                                <option value="Beverage" {% if item['item_type'] == 'Beverage' %}selected{% endif %}>Beverage</option>
+                            </select>
+                        </div>
+
+                        <!-- Food fields -->
+                        <div id="edit-food-fields" {% if item['item_type'] != 'Food' %}style="display:none;"{% endif %}>
+                            <div class="mb-3">
+                                <label for="edit-category" class="form-label">Category</label>
+                                <input id="edit-category" type="text" name="category" class="form-control"
+                                       value="{{ item['category'] or '' }}" placeholder="e.g. Snack, Main...">
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit-allergens" class="form-label">Allergens</label>
+                                <input id="edit-allergens" type="text" name="allergens" class="form-control"
+                                       value="{{ item['allergens'] or '' }}" placeholder="e.g. Nuts, Gluten...">
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="edit-veg" name="is_vegetarian"
+                                       {% if item['is_vegetarian'] %}checked{% endif %}>
+                                <label class="form-check-label" for="edit-veg">Vegetarian</label>
+                            </div>
+                        </div>
+
+                        <!-- Beverage fields -->
+                        <div id="edit-bev-fields" {% if item['item_type'] != 'Beverage' %}style="display:none;"{% endif %}>
+                            <div class="mb-3">
+                                <label for="edit-size" class="form-label">Size</label>
+                                <input id="edit-size" type="text" name="size" class="form-control"
+                                       value="{{ item['size'] or '' }}" placeholder="e.g. Small, Large, 500ml">
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit-temperature" class="form-label">Temperature</label>
+                                <select id="edit-temperature" name="temperature" class="form-select">
+                                    <option value="" {% if not item['temperature'] %}selected{% endif %}>—</option>
+                                    <option value="Hot" {% if item['temperature'] == 'Hot' %}selected{% endif %}>Hot</option>
+                                    <option value="Cold" {% if item['temperature'] == 'Cold' %}selected{% endif %}>Cold</option>
+                                    <option value="Room temperature" {% if item['temperature'] == 'Room temperature' %}selected{% endif %}>Room temperature</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                            <a href="{{ url_for('stores.my_store_menu') }}" class="btn btn-outline-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </section>
+            </div>
+        </div>
+    </div>
+
+<script>
+    function toggleEditFields() {
+        var type = document.getElementById('edit-item-type').value;
+        document.getElementById('edit-food-fields').style.display = type === 'Food' ? '' : 'none';
+        document.getElementById('edit-bev-fields').style.display = type === 'Beverage' ? '' : 'none';
+    }
+</script>
+{% endblock %}

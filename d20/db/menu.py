@@ -104,3 +104,77 @@ def get_session_orders(session_id):
         orders.append(order)
         
     return orders
+
+
+def get_menu_item_full(item_id):
+    """Return MenuItem joined with Food/Beverage details."""
+    db = get_db()
+    row = db.execute(
+        """
+        SELECT m.id, m.store_id, m.name, m.price, m.description, m.is_available,
+               f.is_vegetarian, f.allergens, f.category,
+               b.size, b.temperature,
+               CASE WHEN f.item_id IS NOT NULL THEN 'Food'
+                    WHEN b.item_id IS NOT NULL THEN 'Beverage'
+                    ELSE 'Other' END as item_type
+        FROM MenuItem m
+        LEFT JOIN Food f ON m.id = f.item_id
+        LEFT JOIN Beverage b ON m.id = b.item_id
+        WHERE m.id = %s
+        """,
+        (item_id,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def update_menu_item(item_id, name, price, description, is_available,
+                     item_type,
+                     is_vegetarian=False, allergens=None, category=None,
+                     size=None, temperature=None):
+    db = get_db()
+    db.execute(
+        "UPDATE MenuItem SET name=%s, price=%s, description=%s, is_available=%s WHERE id=%s",
+        (name, price, description, is_available, item_id)
+    )
+    if item_type == "Food":
+        db.execute(
+            """
+            INSERT INTO Food (item_id, is_vegetarian, allergens, category)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (item_id) DO UPDATE
+            SET is_vegetarian=EXCLUDED.is_vegetarian,
+                allergens=EXCLUDED.allergens,
+                category=EXCLUDED.category
+            """,
+            (item_id, is_vegetarian, allergens or None, category or None)
+        )
+        db.execute("DELETE FROM Beverage WHERE item_id = %s", (item_id,))
+    elif item_type == "Beverage":
+        db.execute(
+            """
+            INSERT INTO Beverage (item_id, size, temperature)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (item_id) DO UPDATE
+            SET size=EXCLUDED.size, temperature=EXCLUDED.temperature
+            """,
+            (item_id, size or None, temperature or None)
+        )
+        db.execute("DELETE FROM Food WHERE item_id = %s", (item_id,))
+    db.commit()
+
+
+def toggle_menu_item_availability(item_id):
+    db = get_db()
+    db.execute(
+        "UPDATE MenuItem SET is_available = NOT is_available WHERE id = %s",
+        (item_id,)
+    )
+    db.commit()
+
+
+def delete_menu_item(item_id):
+    db = get_db()
+    db.execute("DELETE FROM Food WHERE item_id = %s", (item_id,))
+    db.execute("DELETE FROM Beverage WHERE item_id = %s", (item_id,))
+    db.execute("DELETE FROM MenuItem WHERE id = %s", (item_id,))
+    db.commit()

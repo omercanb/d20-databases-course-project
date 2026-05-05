@@ -9,7 +9,6 @@
     {% include 'stores/_mystore_nav.html' %}
     <section class="card-section">
         <h2 class="card-section-title">Upcoming Sessions</h2>
-        <h3>{{ reservation_count }}/{{ max_reservation_count }} sessions booked</h3>
         <form method="get"
               action="{{ url_for("stores.my_store_sessions") }}"
               class="row g-2 mb-3 align-items-end">
