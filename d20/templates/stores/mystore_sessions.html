@@ -78,7 +78,9 @@
                                           style="display: inline">
                                         <button type="submit"
                                                 class="btn btn-sm btn-danger"
-                                                onclick="return confirm('Cancel this session?')">Cancel</button>
+                                                data-confirm="Cancel this session?">
+                                            Cancel
+                                        </button>
                                     </form>
                                     <a href="{{ url_for('stores.checkout_session_form', session_id=sess['id']) }}"
                                        class="btn btn-sm btn-success ms-1">Checkout</a>

@@ -161,21 +161,29 @@
 
         // Create a new script
         function createNewScript() {
-            const name = prompt('Script name:', 'New Script');
-            if (name === null) return;
-
-            fetch('{{ url_for("market.create_script_endpoint") }}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name, code: '' })
-            }).then(r => r.json()).then(data => {
-                if (data.success) {
-                    refreshScriptsList();
-                } else {
-                    alert('Error: ' + data.error);
+            Swal.fire({
+                title: 'Script name:',
+                input: 'text',
+                inputValue: 'New Script',
+                showCancelButton: true,
+                confirmButtonText: 'Create'
+            }).then((result) => {
+                if (result.isConfirmed && result.value) {
+                    const name = result.value;
+                    fetch('{{ url_for("market.create_script_endpoint") }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: name, code: '' })
+                    }).then(r => r.json()).then(data => {
+                        if (data.success) {
+                            refreshScriptsList();
+                        } else {
+                            Swal.fire('Error', data.error, 'error');
+                        }
+                    }).catch(error => {
+                        Swal.fire('Error', 'Error creating script: ' + error.message, 'error');
+                    });
                 }
-            }).catch(error => {
-                alert('Error creating script: ' + error.message);
             });
         }
 
@@ -230,13 +238,14 @@
                 errorContainer.style.display = 'block';
             });
             const streamContainer = document.getElementById('streaming-output-container');
-            streamContainer.textContent = "";
-
-            document.getElementById('streaming-output-container').setAttribute(
-                'sse-connect', 
-                `/market/algorithmic/run/stream?script_id=${currentScriptId}&code=${code}`
-            );
-            htmx.process(document.getElementById('streaming-output-container'));
+            if (streamContainer) {
+                streamContainer.textContent = "";
+                document.getElementById('streaming-output-container').setAttribute(
+                    'sse-connect', 
+                    `/market/algorithmic/run/stream?script_id=${currentScriptId}&code=${code}`
+                );
+                htmx.process(document.getElementById('streaming-output-container'));
+            }
         }
 
         // Save script
@@ -252,38 +261,59 @@
                 body: JSON.stringify({ name: name, code: code })
             }).then(r => r.json()).then(data => {
                 if (data.success) {
-                    console.log('Script saved');
+                    Toast.fire({
+                        icon: 'success',
+                        title: 'Script saved'
+                    });
                 }
             });
         }
 
         function renameScript() {
             if (!currentScriptId) return;
-            const newName = prompt('New script name:');
-            if (!newName) return;
-
-            const code = document.getElementById('algo-code').value;
-            fetch(`/market/algorithmic/scripts/${currentScriptId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: newName, code: code })
-            }).then(() => refreshScriptsList());
+            Swal.fire({
+                title: 'New script name:',
+                input: 'text',
+                showCancelButton: true,
+                confirmButtonText: 'Rename'
+            }).then((result) => {
+                if (result.isConfirmed && result.value) {
+                    const newName = result.value;
+                    const code = document.getElementById('algo-code').value;
+                    fetch(`/market/algorithmic/scripts/${currentScriptId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: newName, code: code })
+                    }).then(() => refreshScriptsList());
+                }
+            });
         }
 
         function deleteScript() {
-            if (!currentScriptId || !confirm('Delete this script?')) return;
-
-            fetch(`/market/algorithmic/scripts/${currentScriptId}`, {
-                method: 'DELETE'
-            }).then(() => {
-                currentScriptId = null;
-                document.getElementById('script-editor').innerHTML = '<p class="text-muted">Select a script to edit...</p>';
-                document.getElementById('script-actions').style.display = 'none';
-                document.getElementById('run-button').disabled = true;
-                document.getElementById('save-button').disabled = true;
-                document.getElementById('current-script-name').textContent = 'Select or create a script';
-                document.getElementById('script-orders').innerHTML = '<tr><td colspan="9" class="text-muted">No orders.</td></tr>';
-                refreshScriptsList();
+            if (!currentScriptId) return;
+            Swal.fire({
+                title: 'Are you sure?',
+                text: 'Delete this script?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch(`/market/algorithmic/scripts/${currentScriptId}`, {
+                        method: 'DELETE'
+                    }).then(() => {
+                        currentScriptId = null;
+                        document.getElementById('script-editor').innerHTML = '<p class="text-muted">Select a script to edit...</p>';
+                        document.getElementById('script-actions').style.display = 'none';
+                        document.getElementById('run-button').disabled = true;
+                        document.getElementById('save-button').disabled = true;
+                        document.getElementById('current-script-name').textContent = 'Select or create a script';
+                        document.getElementById('script-orders').innerHTML = '<tr><td colspan="9" class="text-muted">No orders.</td></tr>';
+                        refreshScriptsList();
+                    });
+                }
             });
         }
 

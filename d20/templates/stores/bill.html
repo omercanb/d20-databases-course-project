@@ -39,7 +39,7 @@
                             {% endif %}
                         </tbody>
                         <tfoot>
-                            <tr class="table-dark fw-bold fs-5">
+                            <tr class="table-primary fw-bold fs-5">
                                 <td>Grand Total</td>
                                 <td class="text-end">${{ "%.2f"|format(bill['grand_total']) }}</td>
                             </tr>
@@ -71,7 +71,7 @@
 
                 <div class="mt-4 d-flex gap-2">
                     <a href="{{ url_for('stores.my_store_sessions') }}" class="btn btn-outline-secondary">Back to Sessions</a>
-                    <button class="btn btn-outline-dark" onclick="window.print()">🖨 Print Bill</button>
+                    <button class="btn btn-primary" onclick="window.print()">🖨 Print Bill</button>
                 </div>
             </div>
         </div>
