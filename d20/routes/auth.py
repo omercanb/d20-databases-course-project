@@ -279,8 +279,8 @@ def rate_session_games(session_id):
                 except Exception:
                     pass  # Already rated — ignore duplicate
         if any_rated:
-            from d20.db.loyalty import add_points, RATING_POINTS
-            add_points(g.user["id"], sess["store_id"], RATING_POINTS)
+            from d20.db.loyalty import add_points, get_point_rule
+            add_points(g.user["id"], sess["store_id"], int(get_point_rule(sess["store_id"], "game_rating")))
             flash("Ratings submitted! You earned loyalty points.")
         else:
             flash("Please select at least one rating (1–5).")
@@ -300,7 +300,7 @@ def view_loyalty():
     db = get_db()
     points_rows = db.execute(
         """
-        SELECT lp.store_id, s.name as store_name, lp.points
+        SELECT lp.store_id, s.name as store_name, lp.points, lp.tier_code
         FROM LoyaltyPoint lp
         JOIN Store s ON lp.store_id = s.id
         WHERE lp.user_id = %s
