@@ -18,6 +18,8 @@ from werkzeug.utils import secure_filename
 
 from d20.db import get_db
 from d20.db.game import (
+    FileTypeError,
+    ImageTooLargeError,
     create_game,
     create_game_copy,
     delete_game_copy,
@@ -34,6 +36,7 @@ from d20.db.game import (
     get_unavailable_games_during,
     get_user_rating,
     rate_game,
+    update_game_image,
     update_game_image_url,
 )
 from d20.db.session import (
@@ -54,10 +57,9 @@ from d20.db.stores import (
     get_tables,
     update_table,
 )
+from d20.routes import ALLOWED_IMAGE_EXTENSIONS, MAX_IMAGE_SIZE_BYTES
 
 bp = Blueprint("stores", __name__)
-ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
-MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 
 
 @bp.before_app_request
@@ -400,39 +402,14 @@ def upload_game_image(game_id):
         flash("Please choose an image to upload.")
         return redirect(url_for("stores.edit_store_game", game_id=game_id))
 
-    filename = secure_filename(image.filename)
-    if "." not in filename:
+    try:
+        update_game_image(game["id"], image)
+    except FileTypeError:
         flash("Invalid file type. Use jpg, jpeg, png, or webp.")
         return redirect(url_for("stores.edit_store_game", game_id=game_id))
-
-    ext = filename.rsplit(".", 1)[1].lower()
-    if ext not in ALLOWED_IMAGE_EXTENSIONS:
-        flash("Invalid file type. Use jpg, jpeg, png, or webp.")
-        return redirect(url_for("stores.edit_store_game", game_id=game_id))
-
-    image.seek(0, 2)
-    size = image.tell()
-    image.seek(0)
-    if size > MAX_IMAGE_SIZE_BYTES:
+    except ImageTooLargeError:
         flash("Image is too large. Maximum size is 5MB.")
         return redirect(url_for("stores.edit_store_game", game_id=game_id))
-
-    bucket = current_app.config["MINIO_BUCKET"]
-    object_name = f"{game_id}-{uuid4().hex[:8]}.{ext}"
-    try:
-        current_app.extensions["minio"].put_object(
-            bucket_name=bucket,
-            object_name=object_name,
-            data=image.stream,
-            length=size,
-            content_type=image.mimetype or "application/octet-stream",
-        )
-        scheme = "https" if current_app.config["MINIO_SECURE"] else "http"
-        image_url = (
-            f"{scheme}://{current_app.config['MINIO_ENDPOINT']}/{bucket}/{object_name}"
-        )
-        update_game_image_url(game_id, image_url)
-        flash("Game image uploaded successfully.")
     except Exception as exc:
         flash(f"Error uploading image: {exc}")
 

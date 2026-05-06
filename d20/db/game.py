@@ -1,4 +1,11 @@
+from uuid import uuid4
+
+from flask import current_app
+from werkzeug.datastructures import FileStorage
+from werkzeug.utils import secure_filename
+
 from d20.db import get_db
+from d20.routes import ALLOWED_IMAGE_EXTENSIONS, MAX_IMAGE_SIZE_BYTES
 
 
 # Game Functions
@@ -411,6 +418,46 @@ def update_game_image_url(game_id, url):
     db = get_db()
     db.execute("UPDATE Game SET image_url = %s WHERE id = %s", (url, game_id))
     db.commit()
+
+
+def update_game_image(game_id, image: FileStorage):
+    assert image.filename != None
+    filename = secure_filename(image.filename)
+    if "." not in filename:
+        raise FileTypeError
+    ext = filename.rsplit(".", 1)[1].lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise FileTypeError
+    image.seek(0, 2)
+    size = image.tell()
+    image.seek(0)
+    if size > MAX_IMAGE_SIZE_BYTES:
+        raise ImageTooLargeError
+    bucket = current_app.config["MINIO_BUCKET"]
+    object_name = f"{game_id}-{uuid4().hex[:8]}.{ext}"
+    try:
+        current_app.extensions["minio"].put_object(
+            bucket_name=bucket,
+            object_name=object_name,
+            data=image.stream,
+            length=size,
+            content_type=image.mimetype or "application/octet-stream",
+        )
+        scheme = "https" if current_app.config["MINIO_SECURE"] else "http"
+        image_url = (
+            f"{scheme}://{current_app.config['MINIO_ENDPOINT']}/{bucket}/{object_name}"
+        )
+        update_game_image_url(game_id, image_url)
+    except Exception as exc:
+        raise exc
+
+
+class FileTypeError(Exception):
+    pass
+
+
+class ImageTooLargeError(Exception):
+    pass
 
 
 def _rating_similarity(game, other, column, weight):

@@ -1,13 +1,18 @@
+import mimetypes
+import os
 import random
 from datetime import date, datetime, timedelta
+from io import BytesIO
 
 import click
+from werkzeug.datastructures import FileStorage
 
 from d20.db.game import (
     create_game,
     create_game_copy,
     rate_game,
     refresh_game_similarities,
+    update_game_image,
 )
 from d20.db.market.market_participant import (
     get_market_participant,
@@ -41,6 +46,18 @@ def seed_stores():
         for _ in range(3):
             create_table(store_id, 5)
     return store_ids
+
+
+def create_filestorage_from_file(file_path):
+    """Create a FileStorage object from a local file path."""
+    with open(file_path, "rb") as f:
+        file_bytes = f.read()
+
+    file_stream = BytesIO(file_bytes)
+    filename = file_path.split("/")[-1]  # Get filename
+    mime_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+
+    return FileStorage(stream=file_stream, filename=filename, content_type=mime_type)
 
 
 def seed_games():
@@ -88,7 +105,7 @@ def seed_games():
             "description": "A hilarious party word game for all ages.",
         },
     ]
-    return [
+    ids = [
         create_game(
             g["name"],
             g["symbol"],
@@ -105,6 +122,14 @@ def seed_games():
         )
         for g in games
     ]
+    game_image_paths = [
+        "./d20/static/monopoly.png",
+        "./d20/static/catan.png",
+        "./d20/static/codenames.png",
+    ]
+    for game_id, path in zip(ids, game_image_paths):
+        update_game_image(game_id, create_filestorage_from_file(path))
+    return ids
 
 
 def seed_game_copies(store_ids, game_ids):
