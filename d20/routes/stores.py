@@ -471,12 +471,26 @@ def checkout_session_form(session_id):
     food_orders = get_session_orders(session_id)
     food_total = sum(float(o["total_amount"]) for o in food_orders)
 
+    # Calculate potential loyalty discount (unused redemptions)
+    from d20.db.loyalty import REDEMPTION_RATE
+    db = get_db()
+    discount_row = db.execute(
+        """
+        SELECT COALESCE(SUM(points_spent), 0) as total_points 
+        FROM LoyaltyRedemption 
+        WHERE user_id = %s AND store_id = %s AND bill_id IS NULL
+        """,
+        (sess["user_id"], sess["store_id"])
+    ).fetchone()
+    loyalty_discount = round(float(discount_row["total_points"] * REDEMPTION_RATE), 2)
+
     return render_template(
         "stores/checkout.html",
         sess=sess,
         game_copies=game_copies,
         food_orders=food_orders,
         food_total=food_total,
+        loyalty_discount=loyalty_discount,
     )
 
 

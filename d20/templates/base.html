@@ -29,23 +29,23 @@
         <ul class="navbar-nav d-flex flex-row gap-3 me-auto">
             {% if g.user %}
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for("market.portfolio") }}">Market</a>
+                    <a class="nav-link" href="{{ url_for('market.portfolio') }}">Market</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for("stores.stores") }}">Stores</a>
+                    <a class="nav-link" href="{{ url_for('stores.stores') }}">Stores</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for("auth.view_sessions") }}">My Sessions</a>
+                    <a class="nav-link" href="{{ url_for('auth.view_sessions') }}">My Sessions</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for("auth.view_loyalty") }}">Loyalty</a>
+                    <a class="nav-link" href="{{ url_for('auth.view_loyalty') }}">Loyalty</a>
                 </li>
             {% elif g.store %}
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for("market.portfolio") }}">Market</a>
+                    <a class="nav-link" href="{{ url_for('market.portfolio') }}">Market</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for("stores.my_store_overview") }}">My Store</a>
+                    <a class="nav-link" href="{{ url_for('stores.my_store_overview') }}">My Store</a>
                 </li>
             {% endif %}
         </ul>
@@ -55,21 +55,21 @@
                     <span class="navbar-text fw-bold text-primary">{{ g.user['username'] }}</span>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for("auth.logout") }}">Log Out</a>
+                    <a class="nav-link" href="{{ url_for('auth.logout') }}">Log Out</a>
                 </li>
             {% elif g.store %}
                 <li class="nav-item d-flex align-items-center">
                     <span class="navbar-text fw-bold text-primary">{{ g.store['name'] }}</span>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for("auth.logout") }}">Log Out</a>
+                    <a class="nav-link" href="{{ url_for('auth.logout') }}">Log Out</a>
                 </li>
             {% else %}
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for("auth.register") }}">Register</a>
+                    <a class="nav-link" href="{{ url_for('auth.register') }}">Register</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for("auth.login") }}">Log In</a>
+                    <a class="nav-link" href="{{ url_for('auth.login') }}">Log In</a>
                 </li>
             {% endif %}
         </ul>
@@ -97,16 +97,12 @@
         });
 
         // Display flashed messages as toasts
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                {% for message in messages %}
-                    Toast.fire({
-                        icon: 'info',
-                        title: "{{ message }}"
-                    });
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+        {% for message in get_flashed_messages() %}
+            Toast.fire({
+                icon: 'info',
+                title: {{ message|tojson }}
+            });
+        {% endfor %}
 
         // Generic click handler for data-confirm
         document.addEventListener('click', function(e) {

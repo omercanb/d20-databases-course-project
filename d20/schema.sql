@@ -193,6 +193,7 @@ CREATE TABLE Bill (
     table_fee       NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     food_total      NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     damage_fee      NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    loyalty_discount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     grand_total     NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     generated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -330,6 +331,7 @@ CREATE TABLE LoyaltyRedemption (
     id           SERIAL PRIMARY KEY,
     user_id      INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
     store_id     INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
+    bill_id      INTEGER REFERENCES Bill(id) ON DELETE SET NULL,
     points_spent INTEGER NOT NULL,
     redeemed_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     description  TEXT
