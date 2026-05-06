@@ -10,8 +10,8 @@ from d20.db.session import MAX_RESERVATIONS, get_reservation_count
 def _insert_store_and_table(db):
     """Insert a test store and table, return (store_id, table_num)."""
     db.execute(
-        "INSERT INTO Store (username, password, name) VALUES (%s, %s, %s)",
-        ("storeuser", "storehash", "Test Store"),
+        "INSERT INTO Store (username, password, name, address) VALUES (%s, %s, %s, %s)",
+        ("storeuser", "storehash", "Test Store", "Test Address"),
     )
     db.commit()
     store_id = db.execute(

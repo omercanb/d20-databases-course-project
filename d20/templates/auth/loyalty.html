@@ -21,6 +21,7 @@
                                 <thead class="table-light">
                                     <tr>
                                         <th class="ps-4">Store</th>
+                                        <th class="text-center">Tier</th>
                                         <th class="text-center">Points</th>
                                         <th class="text-center">Equivalent Discount</th>
                                         <th class="text-end pe-4">Actions</th>
@@ -33,6 +34,9 @@
                                                 <a href="{{ url_for('stores.store', store_id=row.store_id) }}" class="text-decoration-none fw-bold">
                                                     {{ row.store_name }}
                                                 </a>
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="badge bg-secondary">{{ row.tier_code }}</span>
                                             </td>
                                             <td class="text-center">
                                                 <span class="badge bg-primary rounded-pill">{{ row.points }}</span>

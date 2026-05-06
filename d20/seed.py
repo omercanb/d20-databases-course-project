@@ -7,6 +7,7 @@ from io import BytesIO
 import click
 from werkzeug.datastructures import FileStorage
 
+from d20.db import get_db
 from d20.db.game import (
     create_game,
     create_game_copy,
@@ -25,6 +26,13 @@ from d20.db.menu import create_beverage, create_food, create_menu_item
 from d20.db.session import create_session
 from d20.db.stores import create_store, create_table
 from d20.db.user import create_user
+from d20.db.loyalty import (
+    REDEMPTION_RATE,
+    add_points,
+    get_point_rule,
+    update_store_loyalty_point_rules,
+    update_store_loyalty_tiers,
+)
 
 
 def seed_users():
@@ -234,6 +242,118 @@ def seed_menus(store_ids):
         create_beverage(coffee_id, size="Regular", temperature="Hot")
 
 
+def seed_loyalty_program(user_ids, store_ids):
+    """Create visible loyalty tier, points, top-holder, and redemption examples."""
+    tier_configs = [
+        [
+            {"code": "Bronze", "min_points": 0, "discount_percent": 0, "reservation_advance_days": 0, "free_tournament_entries": 0},
+            {"code": "Silver", "min_points": 300, "discount_percent": 5, "reservation_advance_days": 2, "free_tournament_entries": 0},
+            {"code": "Gold", "min_points": 800, "discount_percent": 10, "reservation_advance_days": 5, "free_tournament_entries": 1},
+        ],
+        [
+            {"code": "Bronze", "min_points": 0, "discount_percent": 0, "reservation_advance_days": 0, "free_tournament_entries": 0},
+            {"code": "Silver", "min_points": 500, "discount_percent": 7, "reservation_advance_days": 3, "free_tournament_entries": 0},
+            {"code": "Gold", "min_points": 1200, "discount_percent": 15, "reservation_advance_days": 7, "free_tournament_entries": 2},
+        ],
+        [
+            {"code": "Bronze", "min_points": 0, "discount_percent": 0, "reservation_advance_days": 0, "free_tournament_entries": 0},
+            {"code": "Silver", "min_points": 400, "discount_percent": 5, "reservation_advance_days": 1, "free_tournament_entries": 0},
+            {"code": "Gold", "min_points": 900, "discount_percent": 12, "reservation_advance_days": 6, "free_tournament_entries": 1},
+        ],
+    ]
+    rule_configs = [
+        {"session_hour": 6, "food_dollar": 1.5, "game_rating": 8, "tournament_participation": 25},
+        {"session_hour": 5, "food_dollar": 1, "game_rating": 5, "tournament_participation": 20},
+        {"session_hour": 7, "food_dollar": 2, "game_rating": 10, "tournament_participation": 30},
+    ]
+
+    for index, store_id in enumerate(store_ids):
+        update_store_loyalty_tiers(store_id, tier_configs[index % len(tier_configs)])
+        update_store_loyalty_point_rules(
+            store_id,
+            [
+                {"action_code": action_code, "points_per_unit": points_per_unit}
+                for action_code, points_per_unit in rule_configs[index % len(rule_configs)].items()
+            ],
+        )
+
+    sample_activity = [
+        (user_ids[0], store_ids[0], 180),
+        (user_ids[1], store_ids[0], 520),
+        (user_ids[2], store_ids[0], 980),
+        (user_ids[0], store_ids[1], 275),
+        (user_ids[1], store_ids[1], 760),
+        (user_ids[2], store_ids[1], 1325),
+        (user_ids[0], store_ids[2], 410),
+        (user_ids[1], store_ids[2], 930),
+        (user_ids[2], store_ids[2], 125),
+    ]
+    for user_id, store_id, base_points in sample_activity:
+        add_points(user_id, store_id, base_points)
+        add_points(user_id, store_id, int(2 * get_point_rule(store_id, "session_hour")))
+        add_points(user_id, store_id, int(get_point_rule(store_id, "game_rating")))
+        add_points(user_id, store_id, int(get_point_rule(store_id, "tournament_participation")))
+
+    applied_redemptions = [
+        (user_ids[2], store_ids[0], 120, "Seeded food voucher redemption"),
+        (user_ids[1], store_ids[1], 75, "Seeded table-fee discount redemption"),
+    ]
+    for index, (user_id, store_id, points_spent, description) in enumerate(applied_redemptions, start=1):
+        _create_applied_loyalty_redemption(user_id, store_id, points_spent, description, index)
+
+
+def _create_applied_loyalty_redemption(user_id, store_id, points_spent, description, index):
+    db = get_db()
+    discount = round(float(points_spent * REDEMPTION_RATE), 2)
+    table_fee = 20.00
+    grand_total = round(max(0.0, table_fee - discount), 2)
+    day = date.today() - timedelta(days=30 + index)
+
+    db.execute(
+        """
+        INSERT INTO "Table" (store_id, table_num, capacity)
+        VALUES (%s, 1, 5)
+        ON CONFLICT (store_id, table_num) DO NOTHING
+        """,
+        (store_id,),
+    )
+    session_id = db.execute(
+        """
+        INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time, checkout_status)
+        VALUES (%s, %s, 1, %s, 10, 14, 'checked_out')
+        RETURNING id
+        """,
+        (user_id, store_id, day),
+    ).fetchone()["id"]
+    bill_id = db.execute(
+        """
+        INSERT INTO Bill (session_id, table_fee, food_total, damage_fee, loyalty_discount, grand_total)
+        VALUES (%s, %s, 0, 0, %s, %s)
+        RETURNING id
+        """,
+        (session_id, table_fee, discount, grand_total),
+    ).fetchone()["id"]
+    updated = db.execute(
+        """
+        UPDATE LoyaltyPoint
+        SET points = points - %s
+        WHERE user_id = %s AND store_id = %s AND points >= %s
+        RETURNING points
+        """,
+        (points_spent, user_id, store_id, points_spent),
+    ).fetchone()
+    if updated is None:
+        raise RuntimeError("Seeded loyalty redemption exceeds the available point balance.")
+    db.execute(
+        """
+        INSERT INTO LoyaltyRedemption (user_id, store_id, bill_id, points_spent, description)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        (user_id, store_id, bill_id, points_spent, description),
+    )
+    db.commit()
+
+
 def seed_historical_price_data(user_ids, game_ids):
     """Generate 14 days of historical price data for games."""
     user2_id = user_ids[1]
@@ -310,6 +430,7 @@ def seed_the_universe():
     seed_session(user_ids, store_ids, store_to_game_copy)
     seed_orders(user_ids, game_ids)
     seed_menus(store_ids)
+    seed_loyalty_program(user_ids, store_ids)
     seed_historical_price_data(user_ids, game_ids)
 
 

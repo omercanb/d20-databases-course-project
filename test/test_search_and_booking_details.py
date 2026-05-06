@@ -16,8 +16,8 @@ from d20.db.game import (
 
 def _insert_store(db, name="Search Store", username="searchstore_sb"):
     db.execute(
-        "INSERT INTO Store (username, password, name) VALUES (%s, 'x', %s)",
-        (username, name),
+        "INSERT INTO Store (username, password, name, address) VALUES (%s, 'x', %s, %s)",
+        (username, name, "Test Address"),
     )
     db.commit()
     return db.execute("SELECT id FROM Store WHERE name = %s", (name,)).fetchone()["id"]
