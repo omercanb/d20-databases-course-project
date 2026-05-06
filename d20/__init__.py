@@ -105,3 +105,10 @@ def add_date_prettify(app):
 
         dt = datetime.fromisoformat(value)
         return dt.strftime("%d %b %Y, %H:%M:%S")
+
+    @app.template_filter("pretty_day")
+    def pretty_day(value):
+        from datetime import datetime
+
+        dt = datetime.fromisoformat(value)
+        return dt.strftime("%d %b %Y")

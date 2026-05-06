@@ -243,30 +243,39 @@ def my_store_tables():
 @bp.route("/mystore/sessions")
 @store_login_required
 def my_store_sessions():
+    from datetime import datetime
+
     store_id = g.store["id"]
     today = str(date.today())
+    current_hour = datetime.now().hour
     from_day = request.args.get("from_day") or ""
     to_day = request.args.get("to_day") or ""
     upcoming_sessions_raw = get_upcoming_sessions_with_user_and_games_by_store(
         store_id, today
     )
 
-    upcoming_sessions = []
+    all_sessions = []
     for sess in upcoming_sessions_raw:
         if from_day and sess["day"] < from_day:
             continue
         if to_day and sess["day"] > to_day:
             continue
-        upcoming_sessions.append(dict(sess))
+        all_sessions.append(dict(sess))
 
-    sessions_by_day = {}
-    for sess in upcoming_sessions:
-        sessions_by_day.setdefault(sess["day"], []).append(sess)
+    # Split into active (started today) and pending (not started yet)
+    active_sessions = []
+    pending_sessions = []
+
+    for sess in all_sessions:
+        if sess["day"] == today and sess["start_time"] <= current_hour:
+            active_sessions.append(sess)
+        else:
+            pending_sessions.append(sess)
 
     return render_template(
         "stores/mystore_sessions.html",
-        upcoming_sessions=upcoming_sessions,
-        sessions_by_day=sessions_by_day,
+        active_sessions=active_sessions,
+        pending_sessions=pending_sessions,
         from_day=from_day,
         to_day=to_day,
     )

@@ -8,7 +8,7 @@
     {% set active_tab = "sessions" %}
     {% include 'stores/_mystore_nav.html' %}
     <section class="card-section">
-        <h2 class="card-section-title">Upcoming Sessions</h2>
+        <h2 class="card-section-title">Sessions</h2>
         <form method="get"
               action="{{ url_for("stores.my_store_sessions") }}"
               class="row g-2 mb-3 align-items-end">
@@ -34,63 +34,158 @@
                    class="btn btn-outline-secondary">Clear</a>
             </div>
         </form>
-        {% if sessions_by_day %}
-            {% for day, sessions in sessions_by_day|dictsort %}
-                <div class="d-flex align-items-center mt-4 mb-2">
-                    <strong class="me-3">{{ day }}</strong>
-                    <hr class="flex-grow-1 m-0">
-                </div>
-                <div class="session-list">
-                    <div class="session-header">
-                        <div>Customer</div>
-                        <div>Time</div>
-                        <div>Table</div>
-                        <div>Games</div>
-                        <div></div>
-                    </div>
-                    {% for sess in sessions %}
-                        <div class="session-row">
-                            <div>
-                                <strong>{{ sess['username'] }}</strong>
+        <!-- Tabs -->
+        <ul class="nav nav-tabs mb-4" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active"
+                        id="active-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#active"
+                        type="button"
+                        role="tab"
+                        aria-controls="active"
+                        aria-selected="true">Active Sessions ({{ active_sessions|length }})</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link"
+                        id="pending-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#pending"
+                        type="button"
+                        role="tab"
+                        aria-controls="pending"
+                        aria-selected="false">Pending Sessions ({{ pending_sessions|length }})</button>
+            </li>
+        </ul>
+        <div class="tab-content">
+            <!-- Active Sessions Tab -->
+            <div class="tab-pane fade show active"
+                 id="active"
+                 role="tabpanel"
+                 aria-labelledby="active-tab">
+                {% if active_sessions %}
+                    {% set active_by_day = {} %}
+                    {% for sess in active_sessions %}
+                        {% if sess['day'] not in active_by_day %}
+                            {% set _ = active_by_day.update({sess['day']: []}) %}
+                        {% endif %}
+                        {% set _ = active_by_day[sess['day']].append(sess) %}
+                    {% endfor %}
+                    {% for day in active_by_day|sort %}
+                        <div class="d-flex align-items-center mt-4 mb-2">
+                            <strong class="me-3">{{ day | pretty_day }}</strong>
+                            <hr class="flex-grow-1 m-0">
+                        </div>
+                        <div class="session-list">
+                            <div class="session-header">
+                                <div>Customer</div>
+                                <div>Time</div>
+                                <div>Table</div>
+                                <div>Games</div>
+                                <div></div>
                             </div>
-                            <div>{{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
-                            <div>Table {{ sess['table_num'] }}</div>
-                            <div>
-                                {% if sess['games'] %}
-                                    {% for game in sess['games'] %}
-                                        {{ game['name'] }}
-                                        {% if not loop.last %},{% endif %}
-                                    {% endfor %}
-                                {% else %}
-                                    No games
-                                {% endif %}
-                            </div>
-                            <div>
-                                {% if sess['checkout_status'] == 'checked_out' %}
-                                    <span class="badge bg-success me-1">Checked Out</span>
-                                    <a href="{{ url_for('stores.view_bill', session_id=sess['id']) }}"
-                                       class="btn btn-sm btn-outline-success">View Bill</a>
-                                {% else %}
-                                    <span class="badge bg-warning text-dark me-1">Active</span>
-                                    <form method="post"
-                                          action="{{ url_for('stores.cancel_store_session', session_id=sess['id']) }}"
-                                          style="display: inline">
-                                        <button type="submit"
-                                                class="btn btn-sm btn-danger"
-                                                data-confirm="Cancel this session?">
-                                            Cancel
-                                        </button>
-                                    </form>
-                                    <a href="{{ url_for('stores.checkout_session_form', session_id=sess['id']) }}"
-                                       class="btn btn-sm btn-success ms-1">Checkout</a>
-                                {% endif %}
-                            </div>
+                            {% for sess in active_by_day[day] %}
+                                <div class="session-row">
+                                    <div>
+                                        <strong>{{ sess['username'] }}</strong>
+                                    </div>
+                                    <div>{{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
+                                    <div>Table {{ sess['table_num'] }}</div>
+                                    <div>
+                                        {% if sess['games'] %}
+                                            {% for game in sess['games'] %}
+                                                {{ game['name'] }}
+                                                {% if not loop.last %},{% endif %}
+                                            {% endfor %}
+                                        {% else %}
+                                            No games
+                                        {% endif %}
+                                    </div>
+                                    <div class="d-flex flex-column gap-2">
+                                        {% if sess['checkout_status'] == 'checked_out' %}
+                                            <span class="badge bg-success me-1">Checked Out</span>
+                                            <a href="{{ url_for('stores.view_bill', session_id=sess['id']) }}"
+                                               class="btn btn-sm btn-outline-success">View Bill</a>
+                                        {% else %}
+                                            <form method="post"
+                                                  action="{{ url_for('stores.cancel_store_session', session_id=sess['id']) }}"
+                                                  style="display: inline">
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-danger w-100"
+                                                        data-confirm="Cancel this session?">Cancel</button>
+                                            </form>
+                                            <a href="{{ url_for('stores.checkout_session_form', session_id=sess['id']) }}"
+                                               class="btn btn-sm btn-success w-100">Checkout</a>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
                         </div>
                     {% endfor %}
-                </div>
-            {% endfor %}
-        {% else %}
-            <p class="text-muted">No upcoming sessions.</p>
-        {% endif %}
+                {% else %}
+                    <p class="text-muted">No active sessions.</p>
+                {% endif %}
+            </div>
+            <!-- Pending Sessions Tab -->
+            <div class="tab-pane fade"
+                 id="pending"
+                 role="tabpanel"
+                 aria-labelledby="pending-tab">
+                {% if pending_sessions %}
+                    {% set pending_by_day = {} %}
+                    {% for sess in pending_sessions %}
+                        {% if sess['day'] not in pending_by_day %}
+                            {% set _ = pending_by_day.update({sess['day']: []}) %}
+                        {% endif %}
+                        {% set _ = pending_by_day[sess['day']].append(sess) %}
+                    {% endfor %}
+                    {% for day in pending_by_day|sort %}
+                        <div class="d-flex align-items-center mt-4 mb-2">
+                            <strong class="me-3">{{ day | pretty_day }}</strong>
+                            <hr class="flex-grow-1 m-0">
+                        </div>
+                        <div class="session-list">
+                            <div class="session-header">
+                                <div>Customer</div>
+                                <div>Time</div>
+                                <div>Table</div>
+                                <div>Games</div>
+                                <div></div>
+                            </div>
+                            {% for sess in pending_by_day[day] %}
+                                <div class="session-row">
+                                    <div>
+                                        <strong>{{ sess['username'] }}</strong>
+                                    </div>
+                                    <div>{{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
+                                    <div>Table {{ sess['table_num'] }}</div>
+                                    <div>
+                                        {% if sess['games'] %}
+                                            {% for game in sess['games'] %}
+                                                {{ game['name'] }}
+                                                {% if not loop.last %},{% endif %}
+                                            {% endfor %}
+                                        {% else %}
+                                            No games
+                                        {% endif %}
+                                    </div>
+                                    <div>
+                                        <form method="post"
+                                              action="{{ url_for('stores.cancel_store_session', session_id=sess['id']) }}"
+                                              style="display: inline">
+                                            <button type="submit"
+                                                    class="btn btn-sm btn-danger w-100"
+                                                    data-confirm="Cancel this session?">Cancel</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No pending sessions.</p>
+                {% endif %}
+            </div>
+        </div>
     </section>
 {% endblock %}
