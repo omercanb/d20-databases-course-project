@@ -511,7 +511,14 @@ def do_checkout(session_id):
 
     try:
         do_checkout_session(session_id, game_conditions)
-        flash("Session checked out successfully!")
+        
+        # Award loyalty points
+        from d20.db.loyalty import add_points, SESSION_POINTS_PER_HOUR
+        duration = sess["end_time"] - sess["start_time"]
+        if duration > 0:
+            add_points(sess["user_id"], sess["store_id"], duration * SESSION_POINTS_PER_HOUR)
+            
+        flash("Session checked out successfully! Loyalty points awarded.")
         return redirect(url_for("stores.view_bill", session_id=session_id))
     except ValueError as e:
         flash(str(e))
@@ -830,7 +837,11 @@ def rate_game_route(store_id, game_id):
         )
 
     rate_game(g.user["id"], game_id, rating, comment)
-    flash("Rating submitted successfully.")
+    
+    from d20.db.loyalty import add_points, RATING_POINTS
+    add_points(g.user["id"], store_id, RATING_POINTS)
+    
+    flash("Rating submitted successfully. You earned loyalty points!")
     return redirect(url_for("stores.game_detail", store_id=store_id, game_id=game_id))
 
 
@@ -871,6 +882,14 @@ def my_store_menu():
         "stores/mystore_menu.html",
         menu_items=menu_items,
     )
+
+
+@bp.route("/mystore/loyalty")
+@store_login_required
+def my_store_loyalty():
+    from d20.db.loyalty import get_store_loyalty_stats
+    stats = get_store_loyalty_stats(g.store["id"])
+    return render_template("stores/mystore_loyalty.html", stats=stats)
 
 
 @bp.route("/mystore/menu/add", methods=("POST",))

@@ -1,4 +1,6 @@
 DROP TABLE IF EXISTS Bill CASCADE;
+DROP TABLE IF EXISTS LoyaltyRedemption CASCADE;
+DROP TABLE IF EXISTS LoyaltyPoint CASCADE;
 DROP TABLE IF EXISTS GameDamage CASCADE;
 DROP TABLE IF EXISTS SessionGameCopy CASCADE;
 DROP TABLE IF EXISTS DynamicGamePrice CASCADE;
@@ -314,6 +316,26 @@ CREATE TABLE SessionOrderItem (
     quantity INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (order_id, item_id)
 );
+
+CREATE TABLE LoyaltyPoint (
+    id          SERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    store_id    INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
+    points      INTEGER NOT NULL DEFAULT 0,
+    updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, store_id)
+);
+
+CREATE TABLE LoyaltyRedemption (
+    id           SERIAL PRIMARY KEY,
+    user_id      INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    store_id     INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
+    points_spent INTEGER NOT NULL,
+    redeemed_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    description  TEXT
+);
+
+CREATE INDEX idx_loyalty_point_user_store ON LoyaltyPoint(user_id, store_id);
 
 CREATE VIEW historical_game_price AS
 SELECT
