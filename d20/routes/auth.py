@@ -1,5 +1,6 @@
 import functools
 from datetime import date
+from operator import add
 
 from flask import (
     Blueprint,
@@ -111,6 +112,7 @@ def registerstore():
         username = request.form["username"]
         store_name = request.form["store_name"]
         password = request.form["password"]
+        address = request.form["address"]
         db = get_db()
         error = None
 
@@ -120,10 +122,12 @@ def registerstore():
             error = "Store name is required."
         elif not password:
             error = "Password is required."
+        elif not address:
+            error = "Address is required."
 
         if error is None:
             try:
-                create_store(username, store_name, password)
+                create_store(username, store_name, password, address)
             except db.IntegrityError:
                 error = f"Store {username}/{store_name} is already registered."
             else:
