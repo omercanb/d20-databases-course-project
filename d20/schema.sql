@@ -390,10 +390,13 @@ CREATE TABLE LoyaltyPoint (
     user_id     INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
     store_id    INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
     points      INTEGER NOT NULL DEFAULT 0,
+    lifetime_points INTEGER NOT NULL DEFAULT 0,
     tier_code   TEXT NOT NULL DEFAULT 'Bronze',
     updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, store_id),
     CONSTRAINT loyaltypoint_points_nonnegative CHECK (points >= 0),
+    CONSTRAINT loyaltypoint_lifetime_points_nonnegative CHECK (lifetime_points >= 0),
+    CONSTRAINT loyaltypoint_lifetime_not_less_than_balance CHECK (lifetime_points >= points),
     FOREIGN KEY (store_id, tier_code) REFERENCES LoyaltyTier(store_id, code)
 );
 
@@ -411,7 +414,7 @@ CREATE TABLE LoyaltyRedemption (
 CREATE OR REPLACE FUNCTION fn_recalculate_loyalty_tier()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF NEW.points < 0 THEN
+    IF NEW.points < 0 OR NEW.lifetime_points < 0 THEN
         RETURN NEW;
     END IF;
 
@@ -419,12 +422,12 @@ BEGIN
     INTO NEW.tier_code
     FROM LoyaltyTier
     WHERE store_id = NEW.store_id
-      AND min_points <= NEW.points
+      AND min_points <= NEW.lifetime_points
     ORDER BY min_points DESC
     LIMIT 1;
 
     IF NEW.tier_code IS NULL THEN
-        RAISE EXCEPTION 'No loyalty tier configured for store % and % points', NEW.store_id, NEW.points;
+        RAISE EXCEPTION 'No loyalty tier configured for store % and % lifetime points', NEW.store_id, NEW.lifetime_points;
     END IF;
 
     NEW.updated_at = CURRENT_TIMESTAMP;
@@ -436,15 +439,15 @@ CREATE TRIGGER recalculate_loyalty_tier_before_insert
 BEFORE INSERT ON LoyaltyPoint
 FOR EACH ROW EXECUTE FUNCTION fn_recalculate_loyalty_tier();
 
-CREATE TRIGGER recalculate_loyalty_tier_before_points_update
-BEFORE UPDATE OF points ON LoyaltyPoint
+CREATE TRIGGER recalculate_loyalty_tier_before_lifetime_points_update
+BEFORE UPDATE OF lifetime_points ON LoyaltyPoint
 FOR EACH ROW EXECUTE FUNCTION fn_recalculate_loyalty_tier();
 
 CREATE OR REPLACE FUNCTION fn_recalculate_store_loyalty_points()
 RETURNS TRIGGER AS $$
 BEGIN
     UPDATE LoyaltyPoint
-    SET points = points
+    SET lifetime_points = lifetime_points
     WHERE store_id = NEW.store_id;
     RETURN NEW;
 END;
@@ -503,11 +506,11 @@ FROM (
         u.username,
         lp.tier_code,
         lp.points AS current_points,
+        lp.lifetime_points,
         COALESCE(SUM(lr.points_spent), 0) AS redeemed_points,
-        lp.points + COALESCE(SUM(lr.points_spent), 0) AS lifetime_points,
         ROW_NUMBER() OVER (
             PARTITION BY lp.store_id
-            ORDER BY lp.points + COALESCE(SUM(lr.points_spent), 0) DESC,
+            ORDER BY lp.lifetime_points DESC,
                      lp.points DESC,
                      u.username ASC
         ) AS store_rank
@@ -516,7 +519,7 @@ FROM (
     LEFT JOIN LoyaltyRedemption lr
       ON lr.user_id = lp.user_id
      AND lr.store_id = lp.store_id
-    GROUP BY lp.store_id, lp.user_id, u.username, lp.tier_code, lp.points
+    GROUP BY lp.store_id, lp.user_id, u.username, lp.tier_code, lp.points, lp.lifetime_points
 ) ranked
 WHERE store_rank <= 5;
 

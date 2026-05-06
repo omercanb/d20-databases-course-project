@@ -45,7 +45,7 @@ def get_loyalty_row(user_id, store_id):
     db = get_db()
     return db.execute(
         """
-        SELECT points, tier_code
+        SELECT points, lifetime_points, tier_code
         FROM LoyaltyPoint
         WHERE user_id = %s AND store_id = %s
         """,
@@ -64,20 +64,23 @@ def test_loyalty_tier_recalculates_when_points_cross_thresholds(app):
         add_points(1, store_id, 499)
         row = get_loyalty_row(1, store_id)
         assert row["points"] == 499
+        assert row["lifetime_points"] == 499
         assert row["tier_code"] == "Bronze"
 
         add_points(1, store_id, 1)
         row = get_loyalty_row(1, store_id)
         assert row["points"] == 500
+        assert row["lifetime_points"] == 500
         assert row["tier_code"] == "Silver"
 
         add_points(1, store_id, 500)
         row = get_loyalty_row(1, store_id)
         assert row["points"] == 1000
+        assert row["lifetime_points"] == 1000
         assert row["tier_code"] == "Gold"
 
 
-def test_redemption_decreases_points_and_downgrades_tier(app):
+def test_redemption_decreases_balance_without_downgrading_lifetime_tier(app):
     with app.app_context():
         store_id = create_store()
 
@@ -87,7 +90,8 @@ def test_redemption_decreases_points_and_downgrades_tier(app):
         row = get_loyalty_row(1, store_id)
         assert discount == pytest.approx(60.0)
         assert row["points"] == 400
-        assert row["tier_code"] == "Bronze"
+        assert row["lifetime_points"] == 1000
+        assert row["tier_code"] == "Gold"
 
 
 def test_loyalty_points_cannot_go_negative_in_sql(app):
@@ -107,6 +111,26 @@ def test_loyalty_points_cannot_go_negative_in_sql(app):
             )
             db.commit()
         assert_check_constraint(exc_info, "loyaltypoint_points_nonnegative")
+        db.rollback()
+
+
+def test_loyalty_lifetime_points_cannot_go_below_current_balance(app):
+    with app.app_context():
+        store_id = create_store()
+        add_points(1, store_id, 10)
+
+        db = get_db()
+        with pytest.raises(errors.CheckViolation) as exc_info:
+            db.execute(
+                """
+                UPDATE LoyaltyPoint
+                SET lifetime_points = 9
+                WHERE user_id = %s AND store_id = %s
+                """,
+                (1, store_id),
+            )
+            db.commit()
+        assert_check_constraint(exc_info, "loyaltypoint_lifetime_not_less_than_balance")
         db.rollback()
 
 
@@ -190,6 +214,45 @@ def test_store_specific_tier_threshold_update_recalculates_existing_customers(ap
         assert silver["reservation_advance_days"] == 2
 
 
+def test_tier_threshold_update_uses_lifetime_points_not_current_balance(app):
+    with app.app_context():
+        store_id = create_store()
+        add_points(1, store_id, 1000)
+        redeem_points(1, store_id, 600, "Spend down balance")
+
+        update_store_loyalty_tiers(
+            store_id,
+            [
+                {
+                    "code": "Bronze",
+                    "min_points": 0,
+                    "discount_percent": 0,
+                    "reservation_advance_days": 0,
+                    "free_tournament_entries": 0,
+                },
+                {
+                    "code": "Silver",
+                    "min_points": 500,
+                    "discount_percent": 5,
+                    "reservation_advance_days": 2,
+                    "free_tournament_entries": 0,
+                },
+                {
+                    "code": "Gold",
+                    "min_points": 900,
+                    "discount_percent": 10,
+                    "reservation_advance_days": 7,
+                    "free_tournament_entries": 1,
+                },
+            ],
+        )
+
+        row = get_loyalty_row(1, store_id)
+        assert row["points"] == 400
+        assert row["lifetime_points"] == 1000
+        assert row["tier_code"] == "Gold"
+
+
 def test_loyalty_sql_functions_triggers_and_views_exist(app):
     with app.app_context():
         db = get_db()
@@ -224,7 +287,7 @@ def test_loyalty_sql_functions_triggers_and_views_exist(app):
                 'seed_default_loyalty_tiers_after_store_insert',
                 'seed_default_loyalty_point_rules_after_store_insert',
                 'recalculate_loyalty_tier_before_insert',
-                'recalculate_loyalty_tier_before_points_update',
+                'recalculate_loyalty_tier_before_lifetime_points_update',
                 'recalculate_store_loyalty_points_after_tier_update',
                 'validate_loyalty_tier_threshold_order_after_insert_update'
               )
@@ -234,7 +297,7 @@ def test_loyalty_sql_functions_triggers_and_views_exist(app):
             "seed_default_loyalty_tiers_after_store_insert",
             "seed_default_loyalty_point_rules_after_store_insert",
             "recalculate_loyalty_tier_before_insert",
-            "recalculate_loyalty_tier_before_points_update",
+            "recalculate_loyalty_tier_before_lifetime_points_update",
             "recalculate_store_loyalty_points_after_tier_update",
             "validate_loyalty_tier_threshold_order_after_insert_update",
         }
@@ -275,6 +338,7 @@ def test_store_top_loyalty_point_holders_view_ranks_top_five_by_lifetime_points(
         assert [row["lifetime_points"] for row in rows] == [700, 600, 500, 400, 300]
         assert rows[0]["current_points"] == 450
         assert rows[0]["redeemed_points"] == 250
+        assert get_loyalty_row(user_ids[-1], store_id)["tier_code"] == "Silver"
         assert [row["store_rank"] for row in rows] == [1, 2, 3, 4, 5]
 
         stats = get_store_loyalty_stats(store_id)

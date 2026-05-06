@@ -21,13 +21,14 @@ def add_points(user_id, store_id, amount):
     db = get_db()
     db.execute(
         """
-        INSERT INTO LoyaltyPoint (user_id, store_id, points)
-        VALUES (%s, %s, %s)
+        INSERT INTO LoyaltyPoint (user_id, store_id, points, lifetime_points)
+        VALUES (%s, %s, %s, %s)
         ON CONFLICT (user_id, store_id) DO UPDATE
         SET points = LoyaltyPoint.points + EXCLUDED.points,
+            lifetime_points = LoyaltyPoint.lifetime_points + EXCLUDED.lifetime_points,
             updated_at = CURRENT_TIMESTAMP
         """,
-        (user_id, store_id, int(amount)),
+        (user_id, store_id, int(amount), int(amount)),
     )
     db.commit()
 
@@ -65,7 +66,8 @@ def redeem_points(user_id, store_id, amount, description=None):
     updated = db.execute(
         """
         UPDATE LoyaltyPoint
-        SET points = points - %s
+        SET points = points - %s,
+            updated_at = CURRENT_TIMESTAMP
         WHERE user_id = %s AND store_id = %s AND points >= %s
         RETURNING points
         """,
@@ -151,6 +153,12 @@ def get_store_loyalty_stats(store_id, tier_code=None):
     """Get aggregate loyalty stats for a store."""
     db = get_db()
     
+    # Total points earned over customer lifetimes
+    total_awarded = db.execute(
+        "SELECT SUM(lifetime_points) as total FROM LoyaltyPoint WHERE store_id = %s",
+        (store_id,),
+    ).fetchone()["total"] or 0
+
     # Total points active
     total_active_points = db.execute(
         "SELECT SUM(points) as total FROM LoyaltyPoint WHERE store_id = %s",
@@ -162,8 +170,6 @@ def get_store_loyalty_stats(store_id, tier_code=None):
         "SELECT SUM(points_spent) as total FROM LoyaltyRedemption WHERE store_id = %s",
         (store_id,),
     ).fetchone()["total"] or 0
-    
-    total_awarded = total_active_points + total_spent_points
     
     # Average points per user
     avg_points = db.execute(
@@ -214,11 +220,7 @@ def get_store_loyalty_stats(store_id, tier_code=None):
     customers = db.execute(
         """
         SELECT u.username, lp.tier_code, lp.points AS current_points,
-               (lp.points + COALESCE((
-                    SELECT SUM(points_spent)
-                    FROM LoyaltyRedemption lr
-                    WHERE lr.user_id = lp.user_id AND lr.store_id = lp.store_id
-               ), 0)) as lifetime_points
+               lp.lifetime_points
         FROM LoyaltyPoint lp
         JOIN "User" u ON lp.user_id = u.id
         WHERE lp.store_id = %s
