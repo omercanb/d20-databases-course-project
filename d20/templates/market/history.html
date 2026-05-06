@@ -76,8 +76,8 @@
                                         <td>{{ item['quantity'] }}</td>
                                         <td>${{ 'Market' if item['execution_price'] == None else item['execution_price'] }}</td>
                                         <td>${{ 'Market' if item['execution_price'] == None else (item['execution_price'] * item['quantity']) }}</td>
-                                        <td>ID_{{ item['buyer_id'] }}</td>
-                                        <td>ID_{{ item['seller_id'] }}</td>
+                                        <td>{{ 'ID_' ~ item['buyer_id'] ~ (' (You)' if item['buyer_id'] == g.market_participant['id'] else '') }}</td>
+                                        <td>{{ 'ID_' ~ item['seller_id'] ~ (' (You)' if item['seller_id'] == g.market_participant['id'] else '') }}</td>
                                         <td>{{ item['executed_at'] | pretty_date }}</td>
                                     </tr>
                                 {% endfor %}
