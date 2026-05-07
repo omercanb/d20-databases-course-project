@@ -47,20 +47,20 @@ def get_store_tables(store_id):
 # ---------------------------------------------------------------------------
 
 def create_tournament(store_id, game_id, name, fmt, max_participants,
-                      entry_fee_points, sponsor_name, start_date, end_date,
-                      prize_description, table_nums):
+                      players_per_match, entry_fee_points, sponsor_name,
+                      start_date, end_date, prize_description, table_nums):
     """Create a tournament and assign the given tables to it."""
     db = get_db()
     row = _row(db.execute(
         """
         INSERT INTO Tournament
-            (store_id, game_id, name, format, max_participants, entry_fee_points,
-             sponsor_name, start_date, end_date, prize_description)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            (store_id, game_id, name, format, max_participants, players_per_match,
+             entry_fee_points, sponsor_name, start_date, end_date, prize_description)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING id
         """,
-        (store_id, game_id, name, fmt, max_participants, entry_fee_points,
-         sponsor_name, start_date, end_date, prize_description),
+        (store_id, game_id, name, fmt, max_participants, players_per_match,
+         entry_fee_points, sponsor_name, start_date, end_date, prize_description),
     ))
     t_id = row["id"]
     for tnum in table_nums:
@@ -304,7 +304,7 @@ def generate_single_elimination_bracket(tournament_id):
 
 
 def generate_round_robin_bracket(tournament_id):
-    """Generate a full round-robin schedule."""
+    """Generate a full round-robin schedule for 1v1."""
     db = get_db()
     participants = get_participants(tournament_id)
     tables = _get_allocated_tables(tournament_id)
@@ -314,7 +314,6 @@ def generate_round_robin_bracket(tournament_id):
         raise ValueError("Need at least 2 participants to generate a bracket.")
 
     players = [p["user_id"] for p in participants]
-    # Add dummy for odd count (bye)
     if len(players) % 2 == 1:
         players.append(None)
 
@@ -328,7 +327,7 @@ def generate_round_robin_bracket(tournament_id):
         pairs = [(players[i], players[n - 1 - i]) for i in range(half)]
         for p1, p2 in pairs:
             if p1 is None or p2 is None:
-                continue  # skip bye rounds
+                continue
             match_num += 1
             t = tables[table_cycle % len(tables)]
             table_cycle += 1
@@ -341,9 +340,167 @@ def generate_round_robin_bracket(tournament_id):
                 """,
                 (tournament_id, rnd + 1, match_num, p1, p2, t["store_id"], t["table_num"]),
             )
-        # Rotate players keeping index 0 fixed
         players = [players[0]] + [players[-1]] + players[1:-1]
 
+    db.commit()
+
+
+def generate_ffa_single_elimination_bracket(tournament_id, players_per_match):
+    """
+    Single-elimination bracket where each match has `players_per_match` players.
+    Winner of each match advances. No player1_id/player2_id — uses TournamentMatchParticipant.
+    """
+    db = get_db()
+    participants = get_participants(tournament_id)
+    tables = _get_allocated_tables(tournament_id)
+    if not tables:
+        raise ValueError("No tables assigned to this tournament.")
+    K = players_per_match
+    random.shuffle(participants)
+    players = [p["user_id"] for p in participants]
+
+    # Pad to the next power of K
+    size = 1
+    while size < len(players):
+        size *= K
+    # Pad with byes (None)
+    while len(players) < size:
+        players.append(None)
+
+    table_cycle = 0
+
+    def _create_round(player_groups, rnd):
+        nonlocal table_cycle
+        match_ids = []
+        for m_idx, group in enumerate(player_groups):
+            real_players = [p for p in group if p is not None]
+            if len(real_players) == 0:
+                match_ids.append(None)
+                continue
+            t = tables[table_cycle % len(tables)]
+            table_cycle += 1
+            row = _row(db.execute(
+                """
+                INSERT INTO TournamentMatch
+                    (tournament_id, round_number, match_number, store_id, table_num, is_bye)
+                VALUES (%s,%s,%s,%s,%s,%s)
+                RETURNING id
+                """,
+                (tournament_id, rnd, m_idx + 1, t["store_id"], t["table_num"],
+                 len(real_players) == 1),
+            ))
+            mid = row["id"]
+            match_ids.append(mid)
+            # Insert participants
+            for uid in real_players:
+                db.execute(
+                    "INSERT INTO TournamentMatchParticipant (match_id, user_id) VALUES (%s,%s)",
+                    (mid, uid),
+                )
+        return match_ids
+
+    # Build rounds iteratively
+    rnd = 1
+    current_players = players
+    prev_match_ids = None
+
+    all_round_match_ids = []
+    while len(current_players) > K or (len(current_players) > 1 and rnd == 1):
+        groups = [current_players[i:i+K] for i in range(0, len(current_players), K)]
+        match_ids = _create_round(groups, rnd)
+        all_round_match_ids.append(match_ids)
+        # Next round will have one slot per match (winner advances)
+        current_players = [None] * len([m for m in match_ids if m is not None])
+        prev_match_ids = match_ids
+        rnd += 1
+        if len(current_players) <= 1:
+            break
+
+    # Wire next_match_id
+    for i, round_match_ids in enumerate(all_round_match_ids[:-1]):
+        next_round = all_round_match_ids[i + 1]
+        for j, mid in enumerate(round_match_ids):
+            if mid is not None:
+                next_mid = next_round[j // K] if j // K < len(next_round) else None
+                if next_mid:
+                    db.execute(
+                        "UPDATE TournamentMatch SET next_match_id=%s WHERE id=%s",
+                        (next_mid, mid),
+                    )
+
+    # Auto-advance single-player byes (only one real player in the group)
+    for round_match_ids in all_round_match_ids:
+        for mid in round_match_ids:
+            if mid is None:
+                continue
+            m = _row(db.execute("SELECT * FROM TournamentMatch WHERE id=%s", (mid,)))
+            if m and m["is_bye"]:
+                parts = _rows(db.execute(
+                    "SELECT user_id FROM TournamentMatchParticipant WHERE match_id=%s", (mid,)
+                ))
+                if parts:
+                    winner_uid = parts[0]["user_id"]
+                    db.execute(
+                        "UPDATE TournamentMatch SET winner_id=%s, is_played=TRUE WHERE id=%s",
+                        (winner_uid, mid),
+                    )
+                    if m["next_match_id"]:
+                        db.execute(
+                            "INSERT INTO TournamentMatchParticipant (match_id, user_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                            (m["next_match_id"], winner_uid),
+                        )
+    db.commit()
+
+
+def generate_ffa_round_robin_bracket(tournament_id, players_per_match):
+    """
+    Round-robin FFA: each round randomly assigns all players to tables of K.
+    Number of rounds = ceil((N-1) / (K-1)) to approximate full coverage.
+    Uses TournamentMatchParticipant (no player1_id/player2_id).
+    """
+    db = get_db()
+    participants = get_participants(tournament_id)
+    tables = _get_allocated_tables(tournament_id)
+    if not tables:
+        raise ValueError("No tables assigned to this tournament.")
+    K = players_per_match
+    N = len(participants)
+    players = [p["user_id"] for p in participants]
+
+    # Number of rounds: enough that each player faces ~N-1 others
+    num_rounds = max(2, math.ceil((N - 1) / (K - 1)))
+    table_cycle = 0
+    match_num = 0
+
+    for rnd in range(1, num_rounds + 1):
+        shuffled = players[:]
+        random.shuffle(shuffled)
+        # Pad to multiple of K
+        while len(shuffled) % K != 0:
+            shuffled.append(None)
+        groups = [shuffled[i:i+K] for i in range(0, len(shuffled), K)]
+        for group in groups:
+            real = [u for u in group if u is not None]
+            if len(real) < 2:
+                continue
+            match_num += 1
+            t = tables[table_cycle % len(tables)]
+            table_cycle += 1
+            row = _row(db.execute(
+                """
+                INSERT INTO TournamentMatch
+                    (tournament_id, round_number, match_number, store_id, table_num)
+                VALUES (%s,%s,%s,%s,%s)
+                RETURNING id
+                """,
+                (tournament_id, rnd, match_num, t["store_id"], t["table_num"]),
+            ))
+            mid = row["id"]
+            for uid in real:
+                db.execute(
+                    "INSERT INTO TournamentMatchParticipant (match_id, user_id) VALUES (%s,%s)",
+                    (mid, uid),
+                )
     db.commit()
 
 
@@ -371,8 +528,8 @@ def get_matches(tournament_id):
 
 
 def record_match_result(match_id, winner_id, score_p1, score_p2, tournament_id, store_id):
+    """Record result for a 1v1 match. The DB trigger handles advancement."""
     db = get_db()
-    # Verify ownership
     t = _row(db.execute("SELECT store_id FROM Tournament WHERE id=%s", (tournament_id,)))
     if not t or t["store_id"] != store_id:
         raise PermissionError("Not your tournament.")
@@ -385,6 +542,92 @@ def record_match_result(match_id, winner_id, score_p1, score_p2, tournament_id, 
         (winner_id, score_p1, score_p2, match_id, tournament_id),
     )
     db.commit()
+
+
+def record_ffa_match_result(match_id, participant_ranks, tournament_id, store_id):
+    """
+    Record results for a free-for-all match.
+    participant_ranks: list of {user_id, score, rank_in_match} sorted by rank.
+    The player with rank_in_match=1 becomes winner_id.
+    For single elimination: winner advances to next match; all others get sessions deleted.
+    """
+    db = get_db()
+    t = _row(db.execute(
+        "SELECT store_id, format FROM Tournament WHERE id=%s", (tournament_id,)
+    ))
+    if not t or t["store_id"] != store_id:
+        raise PermissionError("Not your tournament.")
+
+    match = _row(db.execute(
+        "SELECT * FROM TournamentMatch WHERE id=%s AND tournament_id=%s",
+        (match_id, tournament_id),
+    ))
+    if not match:
+        raise ValueError("Match not found.")
+
+    winner = next((p for p in participant_ranks if p["rank_in_match"] == 1), None)
+    if not winner:
+        raise ValueError("No winner (rank 1) provided.")
+
+    # Upsert TournamentMatchParticipant rows
+    for p in participant_ranks:
+        db.execute(
+            """
+            INSERT INTO TournamentMatchParticipant (match_id, user_id, score, rank_in_match)
+            VALUES (%s,%s,%s,%s)
+            ON CONFLICT (match_id, user_id) DO UPDATE
+              SET score=EXCLUDED.score, rank_in_match=EXCLUDED.rank_in_match
+            """,
+            (match_id, p["user_id"], p.get("score"), p["rank_in_match"]),
+        )
+
+    # Mark match played and set winner_id
+    db.execute(
+        "UPDATE TournamentMatch SET winner_id=%s, is_played=TRUE WHERE id=%s",
+        (winner["user_id"], match_id),
+    )
+
+    # For single elimination: advance winner to next match participant slot
+    if match["next_match_id"] and t["format"] == "single_elimination":
+        db.execute(
+            """
+            INSERT INTO TournamentMatchParticipant (match_id, user_id)
+            VALUES (%s, %s)
+            ON CONFLICT (match_id, user_id) DO NOTHING
+            """,
+            (match["next_match_id"], winner["user_id"]),
+        )
+
+    # Delete loser sessions (single elimination only) and winner if this is the final
+    losers = [p["user_id"] for p in participant_ranks if p["rank_in_match"] != 1]
+    if t["format"] == "single_elimination":
+        for uid in losers:
+            db.execute(
+                "DELETE FROM Session WHERE user_id=%s AND is_tournament=TRUE AND tournament_id=%s",
+                (uid, tournament_id),
+            )
+        # If final match (no next_match_id), also free the winner
+        if not match["next_match_id"]:
+            db.execute(
+                "DELETE FROM Session WHERE user_id=%s AND is_tournament=TRUE AND tournament_id=%s",
+                (winner["user_id"], tournament_id),
+            )
+
+    db.commit()
+
+
+def get_match_participants(match_id):
+    db = get_db()
+    return _rows(db.execute(
+        """
+        SELECT tmp.*, u.username
+        FROM TournamentMatchParticipant tmp
+        JOIN "User" u ON u.id = tmp.user_id
+        WHERE tmp.match_id = %s
+        ORDER BY tmp.rank_in_match NULLS LAST, u.username
+        """,
+        (match_id,),
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -424,9 +667,10 @@ def record_result(tournament_id, user_id, place, prize_text, points_awarded, sto
 
 
 def all_matches_done(tournament_id):
-    """Return True if every match (that has both players) has a recorded winner."""
+    """Return True if every non-bye match (1v1 and FFA) has a recorded winner."""
     db = get_db()
-    row = db.execute(
+    # 1v1 matches: both players must be present and winner set
+    row1 = db.execute(
         """
         SELECT COUNT(*) AS pending
         FROM TournamentMatch
@@ -438,83 +682,178 @@ def all_matches_done(tournament_id):
         """,
         (tournament_id,),
     ).fetchone()
-    return row["pending"] == 0
+    # FFA matches: player1_id IS NULL, must have >=2 participants and winner set
+    row2 = db.execute(
+        """
+        SELECT COUNT(*) AS pending
+        FROM TournamentMatch tm
+        WHERE tm.tournament_id = %s
+          AND tm.player1_id IS NULL
+          AND tm.is_bye = FALSE
+          AND tm.is_played = FALSE
+          AND (SELECT COUNT(*) FROM TournamentMatchParticipant WHERE match_id = tm.id) >= 2
+        """,
+        (tournament_id,),
+    ).fetchone()
+    return (row1["pending"] + row2["pending"]) == 0
 
 
 def compute_standings_single_elimination(tournament_id):
     """
     Auto-compute final standings for a single-elimination tournament.
-    Returns list of {user_id, username, place} sorted by place.
-    1st  = winner of the final match
-    2nd  = loser of the final match
-    3rd+ = losers from semi-finals, quarter-finals, etc.
+    Works for both 1v1 (uses player1_id/player2_id) and FFA (uses TournamentMatchParticipant).
     """
     db = get_db()
     matches = _rows(db.execute(
         """
-        SELECT tm.*, u1.username AS player1_name, u2.username AS player2_name,
+        SELECT tm.id, tm.round_number, tm.match_number,
+               tm.player1_id, tm.player2_id, tm.winner_id,
+               u1.username AS player1_name,
+               u2.username AS player2_name,
                uw.username AS winner_name
         FROM TournamentMatch tm
         LEFT JOIN "User" u1 ON u1.id = tm.player1_id
         LEFT JOIN "User" u2 ON u2.id = tm.player2_id
         LEFT JOIN "User" uw ON uw.id = tm.winner_id
-        WHERE tm.tournament_id = %s AND tm.is_bye = FALSE AND tm.player1_id IS NOT NULL
+        WHERE tm.tournament_id = %s
+          AND tm.is_bye = FALSE
+          AND tm.winner_id IS NOT NULL
         ORDER BY tm.round_number DESC, tm.match_number
         """,
         (tournament_id,),
     ))
 
-    max_round = max((m["round_number"] for m in matches), default=0)
-    # place starts at 1 for the champion
-    place = 1
+    if not matches:
+        return []
+
+    is_ffa = (matches[0]["player1_id"] is None)
+    max_round = max(m["round_number"] for m in matches)
     standings = []
-    for rnd in range(max_round, 0, -1):
-        rnd_matches = [m for m in matches if m["round_number"] == rnd]
-        for m in rnd_matches:
-            loser_id = m["player1_id"] if m["winner_id"] == m["player2_id"] else m["player2_id"]
-            loser_name = m["player1_name"] if m["winner_id"] == m["player2_id"] else m["player2_name"]
+    placed_ids = set()
+    place = 1
+
+    if is_ffa:
+        # Load per-match participants for all matches
+        all_parts = {}
+        for m in matches:
+            parts = _rows(db.execute(
+                """
+                SELECT tmp.user_id, tmp.rank_in_match, u.username
+                FROM TournamentMatchParticipant tmp
+                JOIN "User" u ON u.id = tmp.user_id
+                WHERE tmp.match_id = %s
+                ORDER BY tmp.rank_in_match NULLS LAST
+                """,
+                (m["id"],),
+            ))
+            all_parts[m["id"]] = parts
+
+        for rnd in range(max_round, 0, -1):
+            rnd_matches = [m for m in matches if m["round_number"] == rnd]
+            if not rnd_matches:
+                continue
             if rnd == max_round:
-                # Final: winner is 1st, loser is 2nd
-                standings.append({"user_id": m["winner_id"], "username": m["winner_name"], "place": 1})
-                standings.append({"user_id": loser_id, "username": loser_name, "place": 2})
+                # Final: all participants ordered by rank_in_match
+                m = rnd_matches[0]
+                for p in all_parts.get(m["id"], []):
+                    if p["user_id"] not in placed_ids:
+                        standings.append({"user_id": p["user_id"], "username": p["username"], "place": place})
+                        placed_ids.add(p["user_id"])
+                        place += 1
+            else:
+                # Earlier rounds: only the losers (rank != 1) are eliminated here
+                for m in rnd_matches:
+                    losers = [p for p in all_parts.get(m["id"], []) if p["rank_in_match"] != 1]
+                    for p in sorted(losers, key=lambda x: x["rank_in_match"] or 999):
+                        if p["user_id"] not in placed_ids:
+                            standings.append({"user_id": p["user_id"], "username": p["username"], "place": place})
+                            placed_ids.add(p["user_id"])
+                            place += 1
+    else:
+        # 1v1 path
+        for rnd in range(max_round, 0, -1):
+            rnd_matches = [m for m in matches if m["round_number"] == rnd]
+            if not rnd_matches:
+                continue
+            if rnd == max_round:
+                m = rnd_matches[0]
+                winner_id  = m["winner_id"]
+                loser_id   = m["player2_id"] if m["winner_id"] == m["player1_id"] else m["player1_id"]
+                winner_name = m["winner_name"]
+                loser_name  = m["player2_name"] if m["winner_id"] == m["player1_id"] else m["player1_name"]
+                standings.append({"user_id": winner_id, "username": winner_name, "place": 1})
+                standings.append({"user_id": loser_id,  "username": loser_name,  "place": 2})
+                placed_ids.add(winner_id)
+                placed_ids.add(loser_id)
                 place = 3
             else:
-                standings.append({"user_id": loser_id, "username": loser_name, "place": place})
-                place += 1
-    return standings
+                for m in rnd_matches:
+                    loser_id   = m["player2_id"] if m["winner_id"] == m["player1_id"] else m["player1_id"]
+                    loser_name = m["player2_name"] if m["winner_id"] == m["player1_id"] else m["player1_name"]
+                    if loser_id and loser_id not in placed_ids:
+                        standings.append({"user_id": loser_id, "username": loser_name, "place": place})
+                        placed_ids.add(loser_id)
+                place += len(rnd_matches)
+
+    return sorted(standings, key=lambda x: x["place"])
 
 
 def compute_standings_round_robin(tournament_id):
     """
-    Auto-compute standings for round robin: rank by wins, then by point differential.
+    Auto-compute standings for round robin.
+    For FFA (players_per_match > 2): rank by wins (rank_in_match=1) then score sum.
+    For 1v1: rank by wins then point differential.
     """
     db = get_db()
-    matches = _rows(db.execute(
-        """
-        SELECT player1_id, player2_id, winner_id, score_player1, score_player2
-        FROM TournamentMatch
-        WHERE tournament_id = %s AND winner_id IS NOT NULL
-        """,
-        (tournament_id,),
-    ))
     participants = get_participants(tournament_id)
-    stats = {p["user_id"]: {"user_id": p["user_id"], "username": p["username"], "wins": 0, "diff": 0} for p in participants}
+    stats = {p["user_id"]: {"user_id": p["user_id"], "username": p["username"], "wins": 0, "diff": 0}
+             for p in participants}
 
-    for m in matches:
-        w, l = m["winner_id"], (m["player2_id"] if m["winner_id"] == m["player1_id"] else m["player1_id"])
-        if w in stats:
-            stats[w]["wins"] += 1
-        try:
-            s1 = int(m["score_player1"] or 0)
-            s2 = int(m["score_player2"] or 0)
-            if m["winner_id"] == m["player1_id"]:
-                if m["player1_id"] in stats: stats[m["player1_id"]]["diff"] += s1 - s2
-                if m["player2_id"] in stats: stats[m["player2_id"]]["diff"] += s2 - s1
-            else:
-                if m["player2_id"] in stats: stats[m["player2_id"]]["diff"] += s2 - s1
-                if m["player1_id"] in stats: stats[m["player1_id"]]["diff"] += s1 - s2
-        except (ValueError, TypeError):
-            pass
+    t = _row(db.execute("SELECT players_per_match FROM Tournament WHERE id=%s", (tournament_id,)))
+    is_ffa = t and t["players_per_match"] > 2
+
+    if is_ffa:
+        parts = _rows(db.execute(
+            """
+            SELECT tmp.user_id, tmp.rank_in_match, tmp.score
+            FROM TournamentMatchParticipant tmp
+            JOIN TournamentMatch tm ON tm.id = tmp.match_id
+            WHERE tm.tournament_id = %s AND tm.winner_id IS NOT NULL
+            """,
+            (tournament_id,),
+        ))
+        for p in parts:
+            if p["user_id"] in stats:
+                if p["rank_in_match"] == 1:
+                    stats[p["user_id"]]["wins"] += 1
+                try:
+                    stats[p["user_id"]]["diff"] += int(p["score"] or 0)
+                except (ValueError, TypeError):
+                    pass
+    else:
+        matches = _rows(db.execute(
+            """
+            SELECT player1_id, player2_id, winner_id, score_player1, score_player2
+            FROM TournamentMatch
+            WHERE tournament_id = %s AND winner_id IS NOT NULL
+            """,
+            (tournament_id,),
+        ))
+        for m in matches:
+            w = m["winner_id"]
+            if w in stats:
+                stats[w]["wins"] += 1
+            try:
+                s1 = int(m["score_player1"] or 0)
+                s2 = int(m["score_player2"] or 0)
+                if m["winner_id"] == m["player1_id"]:
+                    if m["player1_id"] in stats: stats[m["player1_id"]]["diff"] += s1 - s2
+                    if m["player2_id"] in stats: stats[m["player2_id"]]["diff"] += s2 - s1
+                else:
+                    if m["player2_id"] in stats: stats[m["player2_id"]]["diff"] += s2 - s1
+                    if m["player1_id"] in stats: stats[m["player1_id"]]["diff"] += s1 - s2
+            except (ValueError, TypeError):
+                pass
 
     ranked = sorted(stats.values(), key=lambda x: (-x["wins"], -x["diff"]))
     return [{"user_id": r["user_id"], "username": r["username"], "place": i + 1} for i, r in enumerate(ranked)]

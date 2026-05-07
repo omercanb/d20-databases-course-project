@@ -28,7 +28,7 @@
         </div>
 
         {# Format #}
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="form-label fw-medium">Format <span class="text-danger">*</span></label>
           <select name="format" class="form-select" required>
             <option value="single_elimination">Single Elimination</option>
@@ -36,8 +36,15 @@
           </select>
         </div>
 
+        {# Players per match #}
+        <div class="col-md-3">
+          <label class="form-label fw-medium">Players per Match <span class="text-danger">*</span></label>
+          <input type="number" name="players_per_match" class="form-control" min="2" value="2" required>
+          <div class="form-text">2 = 1v1. 3+ = free-for-all (any group size).</div>
+        </div>
+
         {# Max participants #}
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="form-label fw-medium">Max Participants <span class="text-danger">*</span></label>
           <input type="number" name="max_participants" class="form-control" min="2" value="8" required>
         </div>

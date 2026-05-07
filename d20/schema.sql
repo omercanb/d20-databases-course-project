@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS TournamentMatchParticipant CASCADE;
 DROP TABLE IF EXISTS TournamentResult CASCADE;
 DROP TABLE IF EXISTS TournamentMatch CASCADE;
 DROP TABLE IF EXISTS TournamentParticipant CASCADE;
@@ -556,6 +557,7 @@ CREATE TABLE Tournament (
     name                 TEXT NOT NULL,
     format               TEXT NOT NULL CHECK (format IN ('single_elimination', 'round_robin')),
     max_participants     INTEGER NOT NULL CHECK (max_participants >= 2),
+    players_per_match    INTEGER NOT NULL DEFAULT 2 CHECK (players_per_match >= 2),
     entry_fee_points     INTEGER NOT NULL DEFAULT 0 CHECK (entry_fee_points >= 0),
     sponsor_name         TEXT,
     registration_open    BOOLEAN NOT NULL DEFAULT TRUE,
@@ -620,8 +622,17 @@ CREATE TABLE TournamentResult (
     prize_text      TEXT,
     points_awarded  INTEGER NOT NULL DEFAULT 0 CHECK (points_awarded >= 0),
     awarded_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (tournament_id, user_id),
-    UNIQUE (tournament_id, place)
+    UNIQUE (tournament_id, user_id)
+    -- No UNIQUE on place: tied places (e.g. shared 3rd) are allowed
+);
+
+-- Per-match participant details (used for FFA and optionally 1v1)
+CREATE TABLE TournamentMatchParticipant (
+    match_id        INTEGER NOT NULL REFERENCES TournamentMatch(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL REFERENCES "User"(id),
+    score           TEXT,               -- raw score (points, time, etc.)
+    rank_in_match   INTEGER CHECK (rank_in_match >= 1),  -- 1 = winner
+    PRIMARY KEY (match_id, user_id)
 );
 
 -- =============================================================
@@ -784,6 +795,11 @@ BEGIN
         RETURN NEW;
     END IF;
 
+    -- FFA matches (player1_id IS NULL) are handled entirely in the application layer
+    IF NEW.player1_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
     -- Mark match as played
     UPDATE TournamentMatch SET is_played = TRUE WHERE id = NEW.id;
 
@@ -808,10 +824,18 @@ BEGIN
         WHERE id = NEW.next_match_id;
     END IF;
 
-    -- Delete the eliminated player's tournament session so it no longer shows in their dashboard
+    -- Delete the eliminated player's tournament session
     IF v_loser_id IS NOT NULL THEN
         DELETE FROM Session
         WHERE user_id = v_loser_id
+          AND is_tournament = TRUE
+          AND tournament_id = NEW.tournament_id;
+    END IF;
+
+    -- If this is the final match (no next_match_id), also free the winner's session
+    IF NEW.next_match_id IS NULL THEN
+        DELETE FROM Session
+        WHERE user_id = NEW.winner_id
           AND is_tournament = TRUE
           AND tournament_id = NEW.tournament_id;
     END IF;

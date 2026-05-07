@@ -176,6 +176,7 @@ def get_upcoming_sessions_with_user_by_store(store_id, today):
 
 
 def get_upcoming_sessions_with_user_and_games_by_store(store_id, today):
+    """Upcoming non-tournament sessions at this store (tournament sessions are tracked separately)."""
     return (
         get_db()
         .execute(
@@ -195,7 +196,8 @@ def get_upcoming_sessions_with_user_and_games_by_store(store_id, today):
             LEFT JOIN SessionGameCopy ON (Session.id = SessionGameCopy.session_id)
             LEFT JOIN Game ON (SessionGameCopy.game_id = Game.id)
             WHERE Session.store_id = %s
-            AND Session.day >= %s
+              AND Session.day >= %s
+              AND Session.is_tournament = FALSE
             GROUP BY Session.id, "User".username
             ORDER BY Session.day ASC, Session.start_time ASC
             """,

@@ -19,8 +19,11 @@ from d20.db.tournament import (
     compute_standings_round_robin,
     compute_standings_single_elimination,
     create_tournament,
+    generate_ffa_round_robin_bracket,
+    generate_ffa_single_elimination_bracket,
     generate_round_robin_bracket,
     generate_single_elimination_bracket,
+    get_match_participants,
     get_matches,
     get_open_tournaments,
     get_participants,
@@ -30,6 +33,7 @@ from d20.db.tournament import (
     get_tournament,
     get_tournaments_for_store,
     is_registered,
+    record_ffa_match_result,
     record_match_result,
     record_result,
     register_participant,
@@ -165,16 +169,17 @@ def create_tournament_form():
     tables = get_store_tables(store_id)
 
     if request.method == "POST":
-        name             = request.form.get("name", "").strip()
-        game_id          = request.form.get("game_id", type=int)
-        fmt              = request.form.get("format")
-        max_participants = request.form.get("max_participants", type=int)
-        entry_fee_points = request.form.get("entry_fee_points", 0, type=int)
-        sponsor_name     = request.form.get("sponsor_name", "").strip() or None
-        start_date       = request.form.get("start_date")
-        end_date         = request.form.get("end_date") or None
+        name              = request.form.get("name", "").strip()
+        game_id           = request.form.get("game_id", type=int)
+        fmt               = request.form.get("format")
+        max_participants  = request.form.get("max_participants", type=int)
+        players_per_match = request.form.get("players_per_match", 2, type=int)
+        entry_fee_points  = request.form.get("entry_fee_points", 0, type=int)
+        sponsor_name      = request.form.get("sponsor_name", "").strip() or None
+        start_date        = request.form.get("start_date")
+        end_date          = request.form.get("end_date") or None
         prize_description = request.form.get("prize_description", "").strip() or None
-        table_nums       = request.form.getlist("table_nums", type=int)
+        table_nums        = request.form.getlist("table_nums", type=int)
 
         if not name or not game_id or not fmt or not max_participants or not start_date:
             flash("Name, game, format, max participants, and start date are required.")
@@ -188,6 +193,7 @@ def create_tournament_form():
                     name=name,
                     fmt=fmt,
                     max_participants=max_participants,
+                    players_per_match=players_per_match,
                     entry_fee_points=entry_fee_points,
                     sponsor_name=sponsor_name,
                     start_date=start_date,
@@ -213,10 +219,25 @@ def manage_tournament(tournament_id):
     t = get_tournament(tournament_id)
     if not t or t["store_id"] != g.store["id"]:
         abort(403)
-    participants = get_participants(tournament_id)
-    matches      = get_matches(tournament_id)
-    results      = get_results(tournament_id)
-    matches_done = all_matches_done(tournament_id) if matches else False
+    participants    = get_participants(tournament_id)
+    matches         = get_matches(tournament_id)
+    results         = get_results(tournament_id)
+    matches_done    = all_matches_done(tournament_id) if matches else False
+    is_ffa          = (t["players_per_match"] > 2)
+
+    # Pre-load participants for each FFA match (to show names in result form)
+    match_participants = {}
+    if is_ffa:
+        for m in matches:
+            match_participants[m["id"]] = get_match_participants(m["id"])
+
+    # Pre-compute standings when all matches are done (for the prize form)
+    computed_standings = []
+    if matches_done and not results:
+        if t["format"] == "single_elimination":
+            computed_standings = compute_standings_single_elimination(tournament_id)
+        else:
+            computed_standings = compute_standings_round_robin(tournament_id)
 
     rounds = {}
     for m in matches:
@@ -229,6 +250,9 @@ def manage_tournament(tournament_id):
         rounds=rounds,
         results=results,
         matches_done=matches_done,
+        is_ffa=is_ffa,
+        match_participants=match_participants,
+        computed_standings=computed_standings,
     )
 
 
@@ -252,11 +276,19 @@ def generate_bracket(tournament_id):
     t = get_tournament(tournament_id)
     if not t or t["store_id"] != g.store["id"]:
         abort(403)
+    K = t["players_per_match"]
+    fmt = t["format"]
     try:
-        if t["format"] == "single_elimination":
-            generate_single_elimination_bracket(tournament_id)
+        if K == 2:
+            if fmt == "single_elimination":
+                generate_single_elimination_bracket(tournament_id)
+            else:
+                generate_round_robin_bracket(tournament_id)
         else:
-            generate_round_robin_bracket(tournament_id)
+            if fmt == "single_elimination":
+                generate_ffa_single_elimination_bracket(tournament_id, K)
+            else:
+                generate_ffa_round_robin_bracket(tournament_id, K)
         flash("Bracket generated successfully!")
     except Exception as exc:
         flash(f"Error generating bracket: {exc}")
@@ -269,17 +301,39 @@ def record_result_route(tournament_id, match_id):
     t = get_tournament(tournament_id)
     if not t or t["store_id"] != g.store["id"]:
         abort(403)
-    winner_id  = request.form.get("winner_id", type=int)
-    score_p1   = request.form.get("score_player1", "").strip() or None
-    score_p2   = request.form.get("score_player2", "").strip() or None
-    if not winner_id:
-        flash("Please select a winner.")
-        return redirect(url_for("tournament.manage_tournament", tournament_id=tournament_id))
-    try:
-        record_match_result(match_id, winner_id, score_p1, score_p2, tournament_id, g.store["id"])
-        flash("Result recorded and bracket advanced.")
-    except Exception as exc:
-        flash(f"Error recording result: {exc}")
+
+    if t["players_per_match"] > 2:
+        # FFA path: collect scores and ranks for all participants
+        user_ids = request.form.getlist("user_id", type=int)
+        scores   = request.form.getlist("score")
+        ranks    = request.form.getlist("rank", type=int)
+        if not user_ids:
+            flash("No participants submitted.")
+            return redirect(url_for("tournament.manage_tournament", tournament_id=tournament_id))
+        participant_ranks = [
+            {"user_id": uid, "score": scores[i] if i < len(scores) else None,
+             "rank_in_match": ranks[i] if i < len(ranks) else i + 1}
+            for i, uid in enumerate(user_ids)
+        ]
+        try:
+            record_ffa_match_result(match_id, participant_ranks, tournament_id, g.store["id"])
+            flash("FFA result recorded.")
+        except Exception as exc:
+            flash(f"Error: {exc}")
+    else:
+        # 1v1 path
+        winner_id = request.form.get("winner_id", type=int)
+        score_p1  = request.form.get("score_player1", "").strip() or None
+        score_p2  = request.form.get("score_player2", "").strip() or None
+        if not winner_id:
+            flash("Please select a winner.")
+            return redirect(url_for("tournament.manage_tournament", tournament_id=tournament_id))
+        try:
+            record_match_result(match_id, winner_id, score_p1, score_p2, tournament_id, g.store["id"])
+            flash("Result recorded and bracket advanced.")
+        except Exception as exc:
+            flash(f"Error recording result: {exc}")
+
     return redirect(url_for("tournament.manage_tournament", tournament_id=tournament_id))
 
 
@@ -291,7 +345,6 @@ def award_prizes_auto(tournament_id):
     if not t or t["store_id"] != g.store["id"]:
         abort(403)
 
-    # Compute ordered standings
     if t["format"] == "single_elimination":
         standings = compute_standings_single_elimination(tournament_id)
     else:
@@ -301,14 +354,12 @@ def award_prizes_auto(tournament_id):
         flash("No match results found to compute standings.")
         return redirect(url_for("tournament.manage_tournament", tournament_id=tournament_id))
 
-    # Pull the points-per-place from the form (place_1_pts, place_2_pts, …)
     errors = []
-    for s in standings:
-        place = s["place"]
-        pts = request.form.get(f"pts_{place}", 0, type=int)
-        prize_text = request.form.get(f"prize_{place}", "").strip() or None
+    for idx, s in enumerate(standings, start=1):
+        pts        = request.form.get(f"pts_{idx}", 0, type=int)
+        prize_text = request.form.get(f"prize_{idx}", "").strip() or None
         try:
-            record_result(tournament_id, s["user_id"], place, prize_text, pts, g.store["id"])
+            record_result(tournament_id, s["user_id"], s["place"], prize_text, pts, g.store["id"])
         except Exception as exc:
             errors.append(str(exc))
 
