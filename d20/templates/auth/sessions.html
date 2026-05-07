@@ -26,7 +26,15 @@
                             <div>{{ sess['day'] }} • {{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
                             <div>Table {{ sess['table_num'] }}</div>
                             <div>
-                                {% if sess['games'] %}
+                                {% if sess['is_tournament'] %}
+                                    {% if sess['tournament_id'] %}
+                                        <span class="badge bg-primary me-1">🏆 Tournament</span>
+                                        <a href="{{ url_for('tournament.tournament_detail', tournament_id=sess['tournament_id']) }}"
+                                           class="small text-primary">View tournament</a>
+                                    {% else %}
+                                        <span class="badge bg-primary">🏆 Tournament</span>
+                                    {% endif %}
+                                {% elif sess['games'] %}
                                     {% for game in sess['games'] %}
                                         {{ game['name'] }}
                                         {% if not loop.last %},{% endif %}
@@ -36,7 +44,9 @@
                                 {% endif %}
                             </div>
                             <div>
-                                {% if sess['checkout_status'] == 'checked_out' %}
+                                {% if sess['is_tournament'] %}
+                                    {# Tournament sessions are read-only — no cancel or food order #}
+                                {% elif sess['checkout_status'] == 'checked_out' %}
                                     <span class="badge bg-secondary me-1">Checked Out</span>
                                     <a href="{{ url_for('auth.rate_session_games', session_id=sess['id']) }}"
                                        class="btn btn-sm btn-outline-warning">Rate Games</a>
@@ -80,7 +90,15 @@
                             <div>{{ sess['day'] }} • {{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
                             <div>Table {{ sess['table_num'] }}</div>
                             <div>
-                                {% if sess['games'] %}
+                                {% if sess['is_tournament'] %}
+                                    {% if sess['tournament_id'] %}
+                                        <span class="badge bg-primary me-1">🏆 Tournament</span>
+                                        <a href="{{ url_for('tournament.tournament_detail', tournament_id=sess['tournament_id']) }}"
+                                           class="small text-primary">View tournament</a>
+                                    {% else %}
+                                        <span class="badge bg-primary">🏆 Tournament</span>
+                                    {% endif %}
+                                {% elif sess['games'] %}
                                     {% for game in sess['games'] %}
                                         {{ game['name'] }}
                                         {% if not loop.last %},{% endif %}
@@ -90,7 +108,7 @@
                                 {% endif %}
                             </div>
                             <div>
-                                {% if sess['checkout_status'] == 'checked_out' %}
+                                {% if not sess['is_tournament'] and sess['checkout_status'] == 'checked_out' %}
                                     <a href="{{ url_for('auth.rate_session_games', session_id=sess['id']) }}"
                                        class="btn btn-sm btn-outline-warning">Rate Games</a>
                                 {% endif %}
