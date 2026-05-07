@@ -359,9 +359,9 @@ RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO LoyaltyTier (store_id, code, min_points, discount_percent, reservation_advance_days, free_tournament_entries)
     VALUES
-        (NEW.id, 'Bronze', 0, 0, 0, 0),
-        (NEW.id, 'Silver', 500, 0, 0, 0),
-        (NEW.id, 'Gold', 1000, 0, 0, 0);
+        (NEW.id, 'Bronze', 0, 0, 3, 0),
+        (NEW.id, 'Silver', 500, 0, 7, 0),
+        (NEW.id, 'Gold', 1000, 0, 14, 0);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

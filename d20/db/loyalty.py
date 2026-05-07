@@ -13,6 +13,23 @@ DEFAULT_POINT_RULES = {
     "tournament_participation": TOURNAMENT_PARTICIPATION_POINTS,
 }
 
+def get_user_advance_days(user_id, store_id):
+    db = get_db()
+    row = db.execute(
+        """
+        SELECT lt.reservation_advance_days
+        FROM LoyaltyTier lt
+        WHERE lt.store_id = %s
+          AND lt.code = COALESCE(
+              (SELECT tier_code FROM LoyaltyPoint WHERE user_id = %s AND store_id = %s),
+              'Bronze'
+          )
+        """,
+        (store_id, user_id, store_id),
+    ).fetchone()
+    return row["reservation_advance_days"] if row else 0
+
+
 def add_points(user_id, store_id, amount):
     """UPSERT points for a user at a specific store."""
     if amount <= 0:

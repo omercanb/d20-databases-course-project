@@ -246,19 +246,19 @@ def seed_loyalty_program(user_ids, store_ids):
     """Create visible loyalty tier, points, top-holder, and redemption examples."""
     tier_configs = [
         [
-            {"code": "Bronze", "min_points": 0, "discount_percent": 0, "reservation_advance_days": 0, "free_tournament_entries": 0},
-            {"code": "Silver", "min_points": 300, "discount_percent": 5, "reservation_advance_days": 2, "free_tournament_entries": 0},
-            {"code": "Gold", "min_points": 800, "discount_percent": 10, "reservation_advance_days": 5, "free_tournament_entries": 1},
+            {"code": "Bronze", "min_points": 0, "discount_percent": 0, "reservation_advance_days": 3, "free_tournament_entries": 0},
+            {"code": "Silver", "min_points": 300, "discount_percent": 5, "reservation_advance_days": 7, "free_tournament_entries": 0},
+            {"code": "Gold", "min_points": 800, "discount_percent": 10, "reservation_advance_days": 14, "free_tournament_entries": 1},
         ],
         [
-            {"code": "Bronze", "min_points": 0, "discount_percent": 0, "reservation_advance_days": 0, "free_tournament_entries": 0},
-            {"code": "Silver", "min_points": 500, "discount_percent": 7, "reservation_advance_days": 3, "free_tournament_entries": 0},
-            {"code": "Gold", "min_points": 1200, "discount_percent": 15, "reservation_advance_days": 7, "free_tournament_entries": 2},
+            {"code": "Bronze", "min_points": 0, "discount_percent": 0, "reservation_advance_days": 3, "free_tournament_entries": 0},
+            {"code": "Silver", "min_points": 500, "discount_percent": 7, "reservation_advance_days": 10, "free_tournament_entries": 0},
+            {"code": "Gold", "min_points": 1200, "discount_percent": 15, "reservation_advance_days": 21, "free_tournament_entries": 2},
         ],
         [
-            {"code": "Bronze", "min_points": 0, "discount_percent": 0, "reservation_advance_days": 0, "free_tournament_entries": 0},
-            {"code": "Silver", "min_points": 400, "discount_percent": 5, "reservation_advance_days": 1, "free_tournament_entries": 0},
-            {"code": "Gold", "min_points": 900, "discount_percent": 12, "reservation_advance_days": 6, "free_tournament_entries": 1},
+            {"code": "Bronze", "min_points": 0, "discount_percent": 0, "reservation_advance_days": 3, "free_tournament_entries": 0},
+            {"code": "Silver", "min_points": 400, "discount_percent": 5, "reservation_advance_days": 7, "free_tournament_entries": 0},
+            {"code": "Gold", "min_points": 900, "discount_percent": 12, "reservation_advance_days": 14, "free_tournament_entries": 1},
         ],
     ]
     rule_configs = [
@@ -438,9 +438,9 @@ def seed_tournament_test(game_ids):
 
     # ── 2. Loyalty tiers for this store ─────────────────────────────────────
     update_store_loyalty_tiers(ts_id, [
-        {"code": "Bronze", "min_points": 0,    "discount_percent": 0,  "reservation_advance_days": 0, "free_tournament_entries": 0},
-        {"code": "Silver", "min_points": 300,  "discount_percent": 5,  "reservation_advance_days": 2, "free_tournament_entries": 0},
-        {"code": "Gold",   "min_points": 800,  "discount_percent": 10, "reservation_advance_days": 5, "free_tournament_entries": 1},
+        {"code": "Bronze", "min_points": 0,    "discount_percent": 0,  "reservation_advance_days": 3,  "free_tournament_entries": 0},
+        {"code": "Silver", "min_points": 300,  "discount_percent": 5,  "reservation_advance_days": 7,  "free_tournament_entries": 0},
+        {"code": "Gold",   "min_points": 800,  "discount_percent": 10, "reservation_advance_days": 14, "free_tournament_entries": 1},
     ])
     update_store_loyalty_point_rules(ts_id, [
         {"action_code": "session_hour",             "points_per_unit": 6},
