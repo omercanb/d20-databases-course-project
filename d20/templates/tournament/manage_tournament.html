@@ -38,6 +38,12 @@
 
 {# ── Action buttons ────────────────────────────────────────────────────── #}
 <div class="d-flex flex-wrap gap-2 mb-4">
+  {% if not rounds %}
+    <a href="{{ url_for('tournament.edit_tournament_form', tournament_id=tournament.id) }}" class="btn btn-outline-primary">
+      <i class="bi bi-pencil"></i> Edit Tournament
+    </a>
+  {% endif %}
+
   {% if tournament.status == 'registration_open' %}
   <form method="POST" action="{{ url_for('tournament.close_tournament_registration', tournament_id=tournament.id) }}">
     <button type="submit" class="btn btn-warning"

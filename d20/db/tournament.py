@@ -72,6 +72,46 @@ def create_tournament(store_id, game_id, name, fmt, max_participants,
     return t_id
 
 
+def update_tournament(tournament_id, store_id, name, max_participants, sponsor_name, start_date, end_date, prize_description):
+    """Update editable tournament fields and sync related Session dates."""
+    db = get_db()
+    
+    t = _row(db.execute("SELECT * FROM Tournament WHERE id=%s AND store_id=%s", (tournament_id, store_id)))
+    if not t:
+        raise ValueError("Tournament not found or not owned by this store.")
+
+    db.execute(
+        """
+        UPDATE Tournament
+        SET name = %s,
+            max_participants = %s,
+            sponsor_name = %s,
+            start_date = %s,
+            end_date = %s,
+            prize_description = %s
+        WHERE id = %s AND store_id = %s
+        """,
+        (name, max_participants, sponsor_name, start_date, end_date, prize_description, tournament_id, store_id)
+    )
+    
+    db.execute(
+        """
+        UPDATE Session
+        SET day = TO_CHAR(%s::TIMESTAMP, 'YYYY-MM-DD'),
+            start_time = EXTRACT(HOUR FROM %s::TIMESTAMP)::INTEGER,
+            end_time = CASE 
+                WHEN %s::TIMESTAMP IS NOT NULL AND EXTRACT(HOUR FROM %s::TIMESTAMP) > EXTRACT(HOUR FROM %s::TIMESTAMP)
+                THEN EXTRACT(HOUR FROM %s::TIMESTAMP)::INTEGER
+                ELSE EXTRACT(HOUR FROM %s::TIMESTAMP)::INTEGER + 4
+            END
+        WHERE is_tournament = TRUE AND tournament_id = %s
+        """,
+        (start_date, start_date, end_date, end_date, start_date, end_date, start_date, tournament_id)
+    )
+
+    db.commit()
+
+
 def get_tournament(tournament_id):
     db = get_db()
     return _row(db.execute(

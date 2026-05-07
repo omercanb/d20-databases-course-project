@@ -23,6 +23,7 @@ from d20.db.tournament import (
     generate_ffa_single_elimination_bracket,
     generate_round_robin_bracket,
     generate_single_elimination_bracket,
+    update_tournament,
     get_match_participants,
     get_matches,
     get_open_tournaments,
@@ -213,6 +214,73 @@ def create_tournament_form():
         "tournament/create_tournament.html",
         games=games,
         tables=tables,
+    )
+
+
+@bp.route("/mystore/tournaments/<int:tournament_id>/edit", methods=("GET", "POST"))
+@_store_required
+def edit_tournament_form(tournament_id):
+    t = get_tournament(tournament_id)
+    if not t or t["store_id"] != g.store["id"]:
+        abort(403)
+        
+    # Edit is only allowed before bracket is generated (no matches exist)
+    matches = get_matches(tournament_id)
+    if matches:
+        flash("Cannot edit a tournament after the bracket has been generated.")
+        return redirect(url_for("tournament.manage_tournament", tournament_id=tournament_id))
+
+    if request.method == "POST":
+        name              = request.form.get("name", "").strip()
+        max_participants  = request.form.get("max_participants", type=int)
+        sponsor_name      = request.form.get("sponsor_name", "").strip() or None
+        start_date        = request.form.get("start_date")
+        end_date          = request.form.get("end_date") or None
+        prize_description = request.form.get("prize_description", "").strip() or None
+
+        if not name or not max_participants or not start_date:
+            flash("Name, max participants, and start date are required.")
+        else:
+            # Check if max_participants is at least the current number of participants
+            participants = get_participants(tournament_id)
+            if max_participants < len(participants):
+                flash(f"Max participants cannot be less than the current number of registered players ({len(participants)}).")
+            else:
+                try:
+                    update_tournament(
+                        tournament_id=tournament_id,
+                        store_id=g.store["id"],
+                        name=name,
+                        max_participants=max_participants,
+                        sponsor_name=sponsor_name,
+                        start_date=start_date,
+                        end_date=end_date,
+                        prize_description=prize_description,
+                    )
+                    flash("Tournament updated successfully!")
+                    return redirect(url_for("tournament.manage_tournament", tournament_id=tournament_id))
+                except Exception as exc:
+                    msg = str(exc).split('\n')[0].replace('ERROR:', '').strip()
+                    flash(f"Error updating tournament: {msg}")
+
+    # Format dates for datetime-local input
+    if t["start_date"]:
+        # PostgreSQL returns datetime objects for TIMESTAMP fields usually, or strings depending on driver.
+        # Ensure we convert to the correct format for the input field: YYYY-MM-DDTHH:MM
+        if hasattr(t["start_date"], 'strftime'):
+            t["start_date_formatted"] = t["start_date"].strftime('%Y-%m-%dT%H:%M')
+        else:
+            t["start_date_formatted"] = str(t["start_date"]).replace(' ', 'T')[:16]
+            
+    if t.get("end_date"):
+        if hasattr(t["end_date"], 'strftime'):
+            t["end_date_formatted"] = t["end_date"].strftime('%Y-%m-%dT%H:%M')
+        else:
+            t["end_date_formatted"] = str(t["end_date"]).replace(' ', 'T')[:16]
+
+    return render_template(
+        "tournament/edit_tournament.html",
+        tournament=t,
     )
 
 
