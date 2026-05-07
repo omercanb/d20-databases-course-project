@@ -1,3 +1,8 @@
+DROP TABLE IF EXISTS TournamentResult CASCADE;
+DROP TABLE IF EXISTS TournamentMatch CASCADE;
+DROP TABLE IF EXISTS TournamentParticipant CASCADE;
+DROP TABLE IF EXISTS TournamentTable CASCADE;
+DROP TABLE IF EXISTS Tournament CASCADE;
 DROP TABLE IF EXISTS Bill CASCADE;
 DROP TABLE IF EXISTS LoyaltyRedemption CASCADE;
 DROP TABLE IF EXISTS LoyaltyPoint CASCADE;
@@ -33,11 +38,16 @@ DROP FUNCTION IF EXISTS fn_seed_default_loyalty_point_rules() CASCADE;
 DROP FUNCTION IF EXISTS fn_recalculate_loyalty_tier() CASCADE;
 DROP FUNCTION IF EXISTS fn_recalculate_store_loyalty_points() CASCADE;
 DROP FUNCTION IF EXISTS fn_validate_loyalty_tier_threshold_order() CASCADE;
+DROP FUNCTION IF EXISTS fn_register_tournament() CASCADE;
+DROP FUNCTION IF EXISTS fn_advance_tournament_bracket() CASCADE;
+DROP FUNCTION IF EXISTS fn_award_tournament_prizes() CASCADE;
 
 CREATE TABLE "User" (
     id       SERIAL PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL
+    password TEXT NOT NULL,
+    tournament_wins INTEGER NOT NULL DEFAULT 0,
+    tournament_losses INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE Store (
@@ -138,6 +148,8 @@ CREATE TABLE Session (
     start_time      INTEGER NOT NULL,
     end_time        INTEGER NOT NULL,
     checkout_status TEXT NOT NULL DEFAULT 'active' CHECK (checkout_status IN ('active', 'checked_out')),
+    is_tournament   BOOLEAN NOT NULL DEFAULT FALSE,
+    tournament_id   INTEGER,  -- set after Tournament table is created; FK added via ALTER TABLE below
     FOREIGN KEY (store_id, table_num) REFERENCES "Table"(store_id, table_num),
     FOREIGN KEY (user_id) REFERENCES "User"(id)
 );
@@ -386,17 +398,19 @@ AFTER INSERT ON Store
 FOR EACH ROW EXECUTE FUNCTION fn_seed_default_loyalty_point_rules();
 
 CREATE TABLE LoyaltyPoint (
-    id          SERIAL PRIMARY KEY,
-    user_id     INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
-    store_id    INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
-    points      INTEGER NOT NULL DEFAULT 0,
-    lifetime_points INTEGER NOT NULL DEFAULT 0,
-    tier_code   TEXT NOT NULL DEFAULT 'Bronze',
-    updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id                           SERIAL PRIMARY KEY,
+    user_id                      INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    store_id                     INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
+    points                       INTEGER NOT NULL DEFAULT 0,
+    lifetime_points              INTEGER NOT NULL DEFAULT 0,
+    used_free_tournament_entries INTEGER NOT NULL DEFAULT 0,
+    tier_code                    TEXT NOT NULL DEFAULT 'Bronze',
+    updated_at                   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, store_id),
     CONSTRAINT loyaltypoint_points_nonnegative CHECK (points >= 0),
     CONSTRAINT loyaltypoint_lifetime_points_nonnegative CHECK (lifetime_points >= 0),
     CONSTRAINT loyaltypoint_lifetime_not_less_than_balance CHECK (lifetime_points >= points),
+    CONSTRAINT loyaltypoint_used_free_entries_nonnegative CHECK (used_free_tournament_entries >= 0),
     FOREIGN KEY (store_id, tier_code) REFERENCES LoyaltyTier(store_id, code)
 );
 
@@ -408,7 +422,7 @@ CREATE TABLE LoyaltyRedemption (
     points_spent INTEGER NOT NULL,
     redeemed_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     description  TEXT,
-    CONSTRAINT loyaltyredemption_points_spent_positive CHECK (points_spent > 0)
+    CONSTRAINT loyaltyredemption_points_spent_nonzero CHECK (points_spent <> 0)
 );
 
 CREATE OR REPLACE FUNCTION fn_recalculate_loyalty_tier()
@@ -530,3 +544,396 @@ SELECT
     mh.execution_price AS price
 FROM MarketHistory mh
 JOIN Orders o ON mh.buy_order_id = o.id;
+
+-- =============================================================
+-- TOURNAMENT TABLES
+-- =============================================================
+
+CREATE TABLE Tournament (
+    id                   SERIAL PRIMARY KEY,
+    store_id             INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
+    game_id              INTEGER NOT NULL REFERENCES Game(id),
+    name                 TEXT NOT NULL,
+    format               TEXT NOT NULL CHECK (format IN ('single_elimination', 'round_robin')),
+    max_participants     INTEGER NOT NULL CHECK (max_participants >= 2),
+    entry_fee_points     INTEGER NOT NULL DEFAULT 0 CHECK (entry_fee_points >= 0),
+    sponsor_name         TEXT,
+    registration_open    BOOLEAN NOT NULL DEFAULT TRUE,
+    status               TEXT NOT NULL DEFAULT 'registration_open'
+                         CHECK (status IN ('registration_open', 'in_progress', 'completed')),
+    start_date           TIMESTAMP NOT NULL,
+    end_date             TIMESTAMP,
+    prize_description    TEXT,
+    created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Wire the Session.tournament_id FK now that Tournament exists
+ALTER TABLE Session
+    ADD CONSTRAINT session_tournament_id_fk
+    FOREIGN KEY (tournament_id) REFERENCES Tournament(id) ON DELETE SET NULL;
+
+-- Tables allocated to a tournament by the store owner
+CREATE TABLE TournamentTable (
+    tournament_id INTEGER NOT NULL REFERENCES Tournament(id) ON DELETE CASCADE,
+    store_id      INTEGER NOT NULL,
+    table_num     INTEGER NOT NULL,
+    FOREIGN KEY (store_id, table_num) REFERENCES "Table"(store_id, table_num),
+    PRIMARY KEY (tournament_id, store_id, table_num)
+);
+
+-- Registered participants
+CREATE TABLE TournamentParticipant (
+    tournament_id    INTEGER NOT NULL REFERENCES Tournament(id) ON DELETE CASCADE,
+    user_id          INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    registered_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    used_free_entry  BOOLEAN NOT NULL DEFAULT FALSE,
+    session_id       INTEGER REFERENCES Session(id) ON DELETE SET NULL,
+    PRIMARY KEY (tournament_id, user_id)
+);
+
+-- Individual matches within a tournament
+CREATE TABLE TournamentMatch (
+    id             SERIAL PRIMARY KEY,
+    tournament_id  INTEGER NOT NULL REFERENCES Tournament(id) ON DELETE CASCADE,
+    round_number   INTEGER NOT NULL CHECK (round_number >= 1),
+    match_number   INTEGER NOT NULL,  -- position within the round
+    player1_id     INTEGER REFERENCES "User"(id) ON DELETE SET NULL,
+    player2_id     INTEGER REFERENCES "User"(id) ON DELETE SET NULL,
+    winner_id      INTEGER REFERENCES "User"(id) ON DELETE SET NULL,
+    score_player1  TEXT,
+    score_player2  TEXT,
+    is_bye         BOOLEAN NOT NULL DEFAULT FALSE,  -- true when player2 is absent (single elim)
+    is_played      BOOLEAN NOT NULL DEFAULT FALSE,
+    next_match_id  INTEGER REFERENCES TournamentMatch(id) ON DELETE SET NULL,
+    store_id       INTEGER,
+    table_num      INTEGER,
+    FOREIGN KEY (store_id, table_num) REFERENCES "Table"(store_id, table_num),
+    UNIQUE (tournament_id, round_number, match_number)
+);
+
+-- Final standings / prizes per tournament
+CREATE TABLE TournamentResult (
+    id              SERIAL PRIMARY KEY,
+    tournament_id   INTEGER NOT NULL REFERENCES Tournament(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    place           INTEGER NOT NULL CHECK (place >= 1),
+    prize_text      TEXT,
+    points_awarded  INTEGER NOT NULL DEFAULT 0 CHECK (points_awarded >= 0),
+    awarded_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (tournament_id, user_id),
+    UNIQUE (tournament_id, place)
+);
+
+-- =============================================================
+-- TRIGGER: REGISTRATION ELIGIBILITY
+-- Fires BEFORE INSERT on TournamentParticipant.
+-- Checks: tournament open, capacity, no overlap, and handles
+-- free entry OR point deduction (normal points only).
+-- =============================================================
+CREATE OR REPLACE FUNCTION fn_register_tournament()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_tournament        Tournament%ROWTYPE;
+    v_current_count     INTEGER;
+    v_lp                LoyaltyPoint%ROWTYPE;
+    v_free_allowed      INTEGER;
+    v_overlap           INTEGER;
+    v_table_store_id    INTEGER;
+    v_table_num         INTEGER;
+    v_session_id        INTEGER;
+    v_session_day       TEXT;
+    v_start_hour        INTEGER;
+    v_end_hour          INTEGER;
+BEGIN
+    -- 1. Load tournament
+    SELECT * INTO v_tournament FROM Tournament WHERE id = NEW.tournament_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Tournament % does not exist', NEW.tournament_id;
+    END IF;
+
+    -- 2. Registration must be open
+    IF NOT v_tournament.registration_open OR v_tournament.status <> 'registration_open' THEN
+        RAISE EXCEPTION 'Registration for tournament % is closed', NEW.tournament_id;
+    END IF;
+
+    -- 3. Capacity check
+    SELECT COUNT(*) INTO v_current_count
+    FROM TournamentParticipant
+    WHERE tournament_id = NEW.tournament_id;
+    IF v_current_count >= v_tournament.max_participants THEN
+        RAISE EXCEPTION 'Tournament % is full', NEW.tournament_id;
+    END IF;
+
+    -- 4. Overlap check: user must not be in another active tournament at the same store
+    --    whose date range actually conflicts with this one.
+    SELECT COUNT(*) INTO v_overlap
+    FROM TournamentParticipant tp
+    JOIN Tournament t ON t.id = tp.tournament_id
+    WHERE tp.user_id = NEW.user_id
+      AND t.store_id = v_tournament.store_id
+      AND t.status <> 'completed'
+      AND t.id <> NEW.tournament_id
+      AND (
+          t.start_date < COALESCE(v_tournament.end_date, v_tournament.start_date + INTERVAL '8 hours')
+          AND COALESCE(t.end_date, t.start_date + INTERVAL '8 hours') > v_tournament.start_date
+      );
+    IF v_overlap > 0 THEN
+        RAISE EXCEPTION 'User % is already registered in an overlapping tournament at this store', NEW.user_id;
+    END IF;
+
+    -- 5. Auto-create loyalty record if the user has never visited this store.
+    --    This allows new users to enter free (or 0-fee) tournaments without error.
+    INSERT INTO LoyaltyPoint (user_id, store_id, points, lifetime_points)
+    VALUES (NEW.user_id, v_tournament.store_id, 0, 0)
+    ON CONFLICT (user_id, store_id) DO NOTHING;
+
+    SELECT * INTO v_lp
+    FROM LoyaltyPoint
+    WHERE user_id = NEW.user_id AND store_id = v_tournament.store_id;
+
+    -- 6. Determine entry payment
+    SELECT lt.free_tournament_entries INTO v_free_allowed
+    FROM LoyaltyTier lt
+    WHERE lt.store_id = v_tournament.store_id AND lt.code = v_lp.tier_code;
+
+    IF v_lp.used_free_tournament_entries < v_free_allowed THEN
+        -- Use a free entry
+        NEW.used_free_entry := TRUE;
+        UPDATE LoyaltyPoint
+        SET used_free_tournament_entries = used_free_tournament_entries + 1
+        WHERE user_id = NEW.user_id AND store_id = v_tournament.store_id;
+    ELSE
+        -- Deduct entry fee from normal points only (lifetime_points unchanged)
+        IF v_lp.points < v_tournament.entry_fee_points THEN
+            RAISE EXCEPTION 'User % does not have enough points to enter tournament % (needs %, has %)',
+                NEW.user_id, NEW.tournament_id, v_tournament.entry_fee_points, v_lp.points;
+        END IF;
+        IF v_tournament.entry_fee_points > 0 THEN
+            UPDATE LoyaltyPoint
+            SET points = points - v_tournament.entry_fee_points
+            WHERE user_id = NEW.user_id AND store_id = v_tournament.store_id;
+
+            INSERT INTO LoyaltyRedemption (user_id, store_id, points_spent, description)
+            VALUES (NEW.user_id, v_tournament.store_id, v_tournament.entry_fee_points,
+                    'Tournament entry fee for tournament ID ' || NEW.tournament_id);
+        END IF;
+    END IF;
+
+    -- 7. Allocate a session on the first allocated tournament table.
+    --    All registrants share the same placeholder table; per-match table
+    --    assignments happen later during bracket generation.
+    SELECT tt.store_id, tt.table_num
+    INTO v_table_store_id, v_table_num
+    FROM TournamentTable tt
+    WHERE tt.tournament_id = NEW.tournament_id
+    ORDER BY tt.table_num
+    LIMIT 1;
+
+    IF v_table_store_id IS NULL THEN
+        RAISE EXCEPTION 'No tables have been allocated to tournament %', NEW.tournament_id;
+    END IF;
+
+    -- Day label derived from the tournament start_date
+    v_session_day    := TO_CHAR(v_tournament.start_date, 'YYYY-MM-DD');
+    v_start_hour     := EXTRACT(HOUR FROM v_tournament.start_date)::INTEGER;
+    IF v_tournament.end_date IS NOT NULL
+       AND EXTRACT(HOUR FROM v_tournament.end_date) > v_start_hour THEN
+        v_end_hour := EXTRACT(HOUR FROM v_tournament.end_date)::INTEGER;
+    ELSE
+        v_end_hour := v_start_hour + 4;
+    END IF;
+
+    INSERT INTO Session (
+        user_id, store_id, table_num, day,
+        start_time, end_time, checkout_status, is_tournament, tournament_id
+    )
+    VALUES (
+        NEW.user_id,
+        v_table_store_id,
+        v_table_num,
+        v_session_day,
+        v_start_hour,
+        v_end_hour,
+        'active',
+        TRUE,
+        NEW.tournament_id
+    )
+    RETURNING id INTO v_session_id;
+
+    NEW.session_id := v_session_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER register_tournament_before_insert
+BEFORE INSERT ON TournamentParticipant
+FOR EACH ROW EXECUTE FUNCTION fn_register_tournament();
+
+-- =============================================================
+-- TRIGGER: ADVANCE BRACKET ON MATCH RESULT
+-- Fires AFTER UPDATE OF winner_id ON TournamentMatch.
+-- Advances the winner to next_match_id and updates global stats.
+-- =============================================================
+CREATE OR REPLACE FUNCTION fn_advance_tournament_bracket()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_loser_id INTEGER;
+BEGIN
+    -- Only act when a winner is newly recorded
+    IF NEW.winner_id IS NULL OR NEW.winner_id = OLD.winner_id THEN
+        RETURN NEW;
+    END IF;
+
+    -- Mark match as played
+    UPDATE TournamentMatch SET is_played = TRUE WHERE id = NEW.id;
+
+    -- Determine loser
+    IF NEW.player1_id = NEW.winner_id THEN
+        v_loser_id := NEW.player2_id;
+    ELSE
+        v_loser_id := NEW.player1_id;
+    END IF;
+
+    -- Update global win/loss counters on User
+    UPDATE "User" SET tournament_wins   = tournament_wins   + 1 WHERE id = NEW.winner_id;
+    IF v_loser_id IS NOT NULL THEN
+        UPDATE "User" SET tournament_losses = tournament_losses + 1 WHERE id = v_loser_id;
+    END IF;
+
+    -- Advance winner into the next match slot (single elimination)
+    IF NEW.next_match_id IS NOT NULL THEN
+        UPDATE TournamentMatch
+        SET player1_id = CASE WHEN player1_id IS NULL THEN NEW.winner_id ELSE player1_id END,
+            player2_id = CASE WHEN player1_id IS NOT NULL AND player2_id IS NULL THEN NEW.winner_id ELSE player2_id END
+        WHERE id = NEW.next_match_id;
+    END IF;
+
+    -- Delete the eliminated player's tournament session so it no longer shows in their dashboard
+    IF v_loser_id IS NOT NULL THEN
+        DELETE FROM Session
+        WHERE user_id = v_loser_id
+          AND is_tournament = TRUE
+          AND tournament_id = NEW.tournament_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER advance_tournament_bracket_after_winner_set
+AFTER UPDATE OF winner_id ON TournamentMatch
+FOR EACH ROW EXECUTE FUNCTION fn_advance_tournament_bracket();
+
+-- =============================================================
+-- TRIGGER: AWARD PRIZES ON TOURNAMENT RESULT INSERT
+-- Fires AFTER INSERT on TournamentResult.
+-- Awards loyalty points (points + lifetime_points) to finishers.
+-- =============================================================
+CREATE OR REPLACE FUNCTION fn_award_tournament_prizes()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_store_id INTEGER;
+BEGIN
+    SELECT store_id INTO v_store_id FROM Tournament WHERE id = NEW.tournament_id;
+
+    IF NEW.points_awarded > 0 THEN
+        -- Add to both spendable points AND lifetime points
+        UPDATE LoyaltyPoint
+        SET points          = points          + NEW.points_awarded,
+            lifetime_points = lifetime_points + NEW.points_awarded
+        WHERE user_id = NEW.user_id AND store_id = v_store_id;
+
+        -- Log as a redemption-like credit (negative spend = award)
+        INSERT INTO LoyaltyRedemption (user_id, store_id, points_spent, description)
+        VALUES (NEW.user_id, v_store_id, -NEW.points_awarded,
+                'Tournament prize: place ' || NEW.place || ' in tournament ID ' || NEW.tournament_id);
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER award_tournament_prizes_after_result_insert
+AFTER INSERT ON TournamentResult
+FOR EACH ROW EXECUTE FUNCTION fn_award_tournament_prizes();
+
+-- =============================================================
+-- REPORTING VIEWS
+-- =============================================================
+
+-- Most popular tournament games
+CREATE VIEW vw_popular_tournament_games AS
+SELECT
+    g.id   AS game_id,
+    g.name AS game_name,
+    COUNT(DISTINCT t.id) AS total_tournaments,
+    COUNT(tp.user_id)    AS total_participants
+FROM Tournament t
+JOIN Game g ON g.id = t.game_id
+LEFT JOIN TournamentParticipant tp ON tp.tournament_id = t.id
+GROUP BY g.id, g.name
+ORDER BY total_tournaments DESC, total_participants DESC;
+
+-- Average participation and format breakdown per store
+CREATE VIEW vw_tournament_participation_stats AS
+SELECT
+    t.store_id,
+    s.name AS store_name,
+    t.format,
+    COUNT(DISTINCT t.id)                                         AS num_tournaments,
+    ROUND(AVG(participant_counts.cnt), 2)                        AS avg_participants
+FROM Tournament t
+JOIN Store s ON s.id = t.store_id
+LEFT JOIN (
+    SELECT tournament_id, COUNT(*) AS cnt
+    FROM TournamentParticipant
+    GROUP BY tournament_id
+) participant_counts ON participant_counts.tournament_id = t.id
+GROUP BY t.store_id, s.name, t.format
+ORDER BY t.store_id, t.format;
+
+-- Revenue from entry fees per tournament and store
+CREATE VIEW vw_tournament_revenue AS
+SELECT
+    t.id         AS tournament_id,
+    t.name       AS tournament_name,
+    t.store_id,
+    s.name       AS store_name,
+    t.entry_fee_points,
+    COUNT(tp.user_id)                                       AS total_registrations,
+    COUNT(tp.user_id) FILTER (WHERE NOT tp.used_free_entry) AS paid_registrations,
+    COUNT(tp.user_id) FILTER (WHERE tp.used_free_entry)     AS free_registrations,
+    (COUNT(tp.user_id) FILTER (WHERE NOT tp.used_free_entry)) * t.entry_fee_points AS total_points_collected
+FROM Tournament t
+JOIN Store s ON s.id = t.store_id
+LEFT JOIN TournamentParticipant tp ON tp.tournament_id = t.id
+GROUP BY t.id, t.name, t.store_id, s.name, t.entry_fee_points
+ORDER BY total_points_collected DESC;
+
+-- Top-ranked players across all tournaments (global)
+CREATE VIEW vw_top_tournament_players AS
+SELECT
+    u.id       AS user_id,
+    u.username,
+    u.tournament_wins,
+    u.tournament_losses,
+    (u.tournament_wins + u.tournament_losses) AS total_matches,
+    CASE
+        WHEN (u.tournament_wins + u.tournament_losses) = 0 THEN 0
+        ELSE ROUND(
+            u.tournament_wins::NUMERIC / (u.tournament_wins + u.tournament_losses) * 100, 2
+        )
+    END AS win_rate_pct,
+    COALESCE((
+        SELECT SUM(tr.points_awarded)
+        FROM TournamentResult tr
+        WHERE tr.user_id = u.id
+    ), 0) AS total_prize_points,
+    COALESCE((
+        SELECT MIN(tr.place)
+        FROM TournamentResult tr
+        WHERE tr.user_id = u.id
+    ), NULL) AS best_finish
+FROM "User" u
+WHERE u.tournament_wins > 0 OR u.tournament_losses > 0
+ORDER BY u.tournament_wins DESC, win_rate_pct DESC;
