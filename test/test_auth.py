@@ -66,8 +66,8 @@ def test_cancel_session_with_game_copies(client, auth, app):
     with app.app_context():
         db = get_db()
         db.execute(
-            "INSERT INTO Store (username, password, name) VALUES (%s, %s, %s)",
-            ("cancel_store_u", "x", "Cancel Store"),
+            "INSERT INTO Store (username, password, name, address) VALUES (%s, %s, %s, %s)",
+            ("cancel_store_u", "x", "Cancel Store", "Test Address"),
         )
         store_id = db.execute(
             "SELECT id FROM Store WHERE username = %s", ("cancel_store_u",)

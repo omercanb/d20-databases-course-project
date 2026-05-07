@@ -26,8 +26,8 @@ from d20.db.session import create_session
 
 def _insert_store(db, name="Test Store", username="storeuser", password="x"):
     db.execute(
-        "INSERT INTO Store (username, password, name) VALUES (%s, %s, %s)",
-        (username, password, name),
+        "INSERT INTO Store (username, password, name, address) VALUES (%s, %s, %s, %s)",
+        (username, password, name, "Test Address"),
     )
     db.commit()
     return db.execute("SELECT id FROM Store WHERE name = %s", (name,)).fetchone()["id"]

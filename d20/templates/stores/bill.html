@@ -37,6 +37,12 @@
                                 <td class="text-end">${{ "%.2f"|format(bill['damage_fee']) }}</td>
                             </tr>
                             {% endif %}
+                            {% if bill['loyalty_discount'] > 0 %}
+                            <tr class="table-success">
+                                <td>Loyalty Discount</td>
+                                <td class="text-end">-${{ "%.2f"|format(bill['loyalty_discount']) }}</td>
+                            </tr>
+                            {% endif %}
                         </tbody>
                         <tfoot>
                             <tr class="table-primary fw-bold fs-5">

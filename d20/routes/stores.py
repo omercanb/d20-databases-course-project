@@ -480,12 +480,26 @@ def checkout_session_form(session_id):
     food_orders = get_session_orders(session_id)
     food_total = sum(float(o["total_amount"]) for o in food_orders)
 
+    # Calculate potential loyalty discount (unused redemptions)
+    from d20.db.loyalty import REDEMPTION_RATE
+    db = get_db()
+    discount_row = db.execute(
+        """
+        SELECT COALESCE(SUM(points_spent), 0) as total_points 
+        FROM LoyaltyRedemption 
+        WHERE user_id = %s AND store_id = %s AND bill_id IS NULL
+        """,
+        (sess["user_id"], sess["store_id"])
+    ).fetchone()
+    loyalty_discount = round(float(discount_row["total_points"] * REDEMPTION_RATE), 2)
+
     return render_template(
         "stores/checkout.html",
         sess=sess,
         game_copies=game_copies,
         food_orders=food_orders,
         food_total=food_total,
+        loyalty_discount=loyalty_discount,
     )
 
 
@@ -520,7 +534,15 @@ def do_checkout(session_id):
 
     try:
         do_checkout_session(session_id, game_conditions)
-        flash("Session checked out successfully!")
+        
+        # Award loyalty points
+        from d20.db.loyalty import add_points, get_point_rule
+        duration = sess["end_time"] - sess["start_time"]
+        if duration > 0:
+            points = int(duration * get_point_rule(sess["store_id"], "session_hour"))
+            add_points(sess["user_id"], sess["store_id"], points)
+            
+        flash("Session checked out successfully! Loyalty points awarded.")
         return redirect(url_for("stores.view_bill", session_id=session_id))
     except ValueError as e:
         flash(str(e))
@@ -839,7 +861,11 @@ def rate_game_route(store_id, game_id):
         )
 
     rate_game(g.user["id"], game_id, rating, comment)
-    flash("Rating submitted successfully.")
+    
+    from d20.db.loyalty import add_points, get_point_rule
+    add_points(g.user["id"], store_id, int(get_point_rule(store_id, "game_rating")))
+    
+    flash("Rating submitted successfully. You earned loyalty points!")
     return redirect(url_for("stores.game_detail", store_id=store_id, game_id=game_id))
 
 
@@ -880,6 +906,100 @@ def my_store_menu():
         "stores/mystore_menu.html",
         menu_items=menu_items,
     )
+
+
+@bp.route("/mystore/loyalty")
+@store_login_required
+def my_store_loyalty():
+    from d20.db.loyalty import get_store_loyalty_stats
+    selected_tier = request.args.get("tier") or None
+    stats = get_store_loyalty_stats(g.store["id"], selected_tier)
+    valid_tiers = {tier["code"] for tier in stats["tiers"]}
+    if selected_tier and selected_tier not in valid_tiers:
+        flash("Unknown loyalty tier.")
+        return redirect(url_for("stores.my_store_loyalty"))
+    return render_template(
+        "stores/mystore_loyalty.html",
+        stats=stats,
+        selected_tier=selected_tier,
+    )
+
+
+@bp.route("/mystore/loyalty/tiers", methods=("POST",))
+@store_login_required
+def update_my_store_loyalty_tiers():
+    from d20.db.loyalty import update_store_loyalty_tiers
+
+    tiers = []
+    for code in ("Bronze", "Silver", "Gold"):
+        min_points = request.form.get(f"{code}_min_points", type=int)
+        discount_percent = request.form.get(f"{code}_discount_percent", type=float)
+        reservation_advance_days = request.form.get(f"{code}_reservation_advance_days", type=int)
+        free_tournament_entries = request.form.get(f"{code}_free_tournament_entries", type=int)
+        if (
+            min_points is None
+            or discount_percent is None
+            or reservation_advance_days is None
+            or free_tournament_entries is None
+        ):
+            flash("All loyalty tier fields are required.")
+            return redirect(url_for("stores.my_store_loyalty"))
+        if min_points < 0 or discount_percent < 0 or reservation_advance_days < 0 or free_tournament_entries < 0:
+            flash("Loyalty tier values cannot be negative.")
+            return redirect(url_for("stores.my_store_loyalty"))
+        if discount_percent > 100:
+            flash("Discount percent cannot exceed 100.")
+            return redirect(url_for("stores.my_store_loyalty"))
+        tiers.append(
+            {
+                "code": code,
+                "min_points": min_points,
+                "discount_percent": discount_percent,
+                "reservation_advance_days": reservation_advance_days,
+                "free_tournament_entries": free_tournament_entries,
+            }
+        )
+
+    try:
+        update_store_loyalty_tiers(g.store["id"], tiers)
+        flash("Loyalty tiers updated.")
+    except ValueError as e:
+        flash(str(e))
+    except Exception as e:
+        flash(f"Error updating loyalty tiers: {str(e)}")
+    return redirect(url_for("stores.my_store_loyalty"))
+
+
+@bp.route("/mystore/loyalty/point-rules", methods=("POST",))
+@store_login_required
+def update_my_store_loyalty_point_rules():
+    from d20.db.loyalty import update_store_loyalty_point_rules
+
+    rule_labels = {
+        "session_hour": "session hour",
+        "food_dollar": "food dollar",
+        "game_rating": "game rating",
+        "tournament_participation": "tournament participation",
+    }
+    rules = []
+    for action_code in rule_labels:
+        points_per_unit = request.form.get(action_code, type=float)
+        if points_per_unit is None:
+            flash("All loyalty point earning rules are required.")
+            return redirect(url_for("stores.my_store_loyalty"))
+        if points_per_unit < 0:
+            flash("Point earning rules cannot be negative.")
+            return redirect(url_for("stores.my_store_loyalty"))
+        rules.append({"action_code": action_code, "points_per_unit": points_per_unit})
+
+    try:
+        update_store_loyalty_point_rules(g.store["id"], rules)
+        flash("Loyalty point earning rules updated.")
+    except ValueError as e:
+        flash(str(e))
+    except Exception as e:
+        flash(f"Error updating loyalty point earning rules: {str(e)}")
+    return redirect(url_for("stores.my_store_loyalty"))
 
 
 @bp.route("/mystore/menu/add", methods=("POST",))

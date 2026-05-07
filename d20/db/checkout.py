@@ -60,17 +60,35 @@ def checkout_session(session_id, game_conditions):
     ).fetchone()
     food_total = round(float(food_row["food_total"]), 2)
 
-    grand_total = round(table_fee + food_total + damage_fee, 2)
+    # 5. Calculate loyalty discount (unused redemptions)
+    from d20.db.loyalty import REDEMPTION_RATE
+    discount_row = db.execute(
+        """
+        SELECT COALESCE(SUM(points_spent), 0) as total_points 
+        FROM LoyaltyRedemption 
+        WHERE user_id = %s AND store_id = %s AND bill_id IS NULL
+        """,
+        (sess["user_id"], sess["store_id"])
+    ).fetchone()
+    loyalty_discount = round(float(discount_row["total_points"] * REDEMPTION_RATE), 2)
 
-    # 5. Generate bill
+    grand_total = round(max(0.0, table_fee + food_total + damage_fee - loyalty_discount), 2)
+
+    # 6. Generate bill
     bill = db.execute(
         """
-        INSERT INTO Bill (session_id, table_fee, food_total, damage_fee, grand_total)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO Bill (session_id, table_fee, food_total, damage_fee, loyalty_discount, grand_total)
+        VALUES (%s, %s, %s, %s, %s, %s)
         RETURNING *
         """,
-        (session_id, table_fee, food_total, damage_fee, grand_total)
+        (session_id, table_fee, food_total, damage_fee, loyalty_discount, grand_total)
     ).fetchone()
+
+    # 7. Mark redemptions as applied
+    db.execute(
+        "UPDATE LoyaltyRedemption SET bill_id = %s WHERE user_id = %s AND store_id = %s AND bill_id IS NULL",
+        (bill["id"], sess["user_id"], sess["store_id"])
+    )
 
     # 6. Mark session as checked out
     db.execute(

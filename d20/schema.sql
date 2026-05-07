@@ -1,4 +1,8 @@
 DROP TABLE IF EXISTS Bill CASCADE;
+DROP TABLE IF EXISTS LoyaltyRedemption CASCADE;
+DROP TABLE IF EXISTS LoyaltyPoint CASCADE;
+DROP TABLE IF EXISTS LoyaltyPointRule CASCADE;
+DROP TABLE IF EXISTS LoyaltyTier CASCADE;
 DROP TABLE IF EXISTS GameDamage CASCADE;
 DROP TABLE IF EXISTS SessionGameCopy CASCADE;
 DROP TABLE IF EXISTS DynamicGamePrice CASCADE;
@@ -24,6 +28,11 @@ DROP TABLE IF EXISTS "User" CASCADE;
 DROP FUNCTION IF EXISTS fn_set_game_copy_availability() CASCADE;
 DROP FUNCTION IF EXISTS fn_update_dynamic_price_after_session() CASCADE;
 DROP FUNCTION IF EXISTS fn_release_reserved_on_cancel() CASCADE;
+DROP FUNCTION IF EXISTS fn_seed_default_loyalty_tiers() CASCADE;
+DROP FUNCTION IF EXISTS fn_seed_default_loyalty_point_rules() CASCADE;
+DROP FUNCTION IF EXISTS fn_recalculate_loyalty_tier() CASCADE;
+DROP FUNCTION IF EXISTS fn_recalculate_store_loyalty_points() CASCADE;
+DROP FUNCTION IF EXISTS fn_validate_loyalty_tier_threshold_order() CASCADE;
 
 CREATE TABLE "User" (
     id       SERIAL PRIMARY KEY,
@@ -191,6 +200,7 @@ CREATE TABLE Bill (
     table_fee       NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     food_total      NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     damage_fee      NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    loyalty_discount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     grand_total     NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     generated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -314,6 +324,204 @@ CREATE TABLE SessionOrderItem (
     quantity INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (order_id, item_id)
 );
+
+CREATE TABLE LoyaltyTier (
+    store_id                 INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
+    code                     TEXT NOT NULL,
+    min_points               INTEGER NOT NULL,
+    discount_percent         NUMERIC(5, 2) NOT NULL DEFAULT 0,
+    reservation_advance_days INTEGER NOT NULL DEFAULT 0,
+    free_tournament_entries  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (store_id, code),
+    CONSTRAINT loyaltytier_valid_code CHECK (code IN ('Bronze', 'Silver', 'Gold')),
+    CONSTRAINT loyaltytier_min_points_nonnegative CHECK (min_points >= 0),
+    CONSTRAINT loyaltytier_discount_percent_range CHECK (discount_percent >= 0 AND discount_percent <= 100),
+    CONSTRAINT loyaltytier_reservation_advance_days_nonnegative CHECK (reservation_advance_days >= 0),
+    CONSTRAINT loyaltytier_free_tournament_entries_nonnegative CHECK (free_tournament_entries >= 0),
+    CONSTRAINT loyaltytier_store_min_points_unique UNIQUE (store_id, min_points) DEFERRABLE INITIALLY IMMEDIATE
+);
+
+CREATE OR REPLACE FUNCTION fn_seed_default_loyalty_tiers()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO LoyaltyTier (store_id, code, min_points, discount_percent, reservation_advance_days, free_tournament_entries)
+    VALUES
+        (NEW.id, 'Bronze', 0, 0, 0, 0),
+        (NEW.id, 'Silver', 500, 0, 0, 0),
+        (NEW.id, 'Gold', 1000, 0, 0, 0);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER seed_default_loyalty_tiers_after_store_insert
+AFTER INSERT ON Store
+FOR EACH ROW EXECUTE FUNCTION fn_seed_default_loyalty_tiers();
+
+CREATE TABLE LoyaltyPointRule (
+    store_id        INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
+    action_code     TEXT NOT NULL,
+    points_per_unit NUMERIC(10, 2) NOT NULL,
+    PRIMARY KEY (store_id, action_code),
+    CONSTRAINT loyaltypointrule_valid_action CHECK (
+        action_code IN ('session_hour', 'food_dollar', 'game_rating', 'tournament_participation')
+    ),
+    CONSTRAINT loyaltypointrule_points_nonnegative CHECK (points_per_unit >= 0)
+);
+
+CREATE OR REPLACE FUNCTION fn_seed_default_loyalty_point_rules()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO LoyaltyPointRule (store_id, action_code, points_per_unit)
+    VALUES
+        (NEW.id, 'session_hour', 5),
+        (NEW.id, 'food_dollar', 1),
+        (NEW.id, 'game_rating', 5),
+        (NEW.id, 'tournament_participation', 20);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER seed_default_loyalty_point_rules_after_store_insert
+AFTER INSERT ON Store
+FOR EACH ROW EXECUTE FUNCTION fn_seed_default_loyalty_point_rules();
+
+CREATE TABLE LoyaltyPoint (
+    id          SERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    store_id    INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
+    points      INTEGER NOT NULL DEFAULT 0,
+    lifetime_points INTEGER NOT NULL DEFAULT 0,
+    tier_code   TEXT NOT NULL DEFAULT 'Bronze',
+    updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, store_id),
+    CONSTRAINT loyaltypoint_points_nonnegative CHECK (points >= 0),
+    CONSTRAINT loyaltypoint_lifetime_points_nonnegative CHECK (lifetime_points >= 0),
+    CONSTRAINT loyaltypoint_lifetime_not_less_than_balance CHECK (lifetime_points >= points),
+    FOREIGN KEY (store_id, tier_code) REFERENCES LoyaltyTier(store_id, code)
+);
+
+CREATE TABLE LoyaltyRedemption (
+    id           SERIAL PRIMARY KEY,
+    user_id      INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    store_id     INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
+    bill_id      INTEGER REFERENCES Bill(id) ON DELETE SET NULL,
+    points_spent INTEGER NOT NULL,
+    redeemed_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    description  TEXT,
+    CONSTRAINT loyaltyredemption_points_spent_positive CHECK (points_spent > 0)
+);
+
+CREATE OR REPLACE FUNCTION fn_recalculate_loyalty_tier()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.points < 0 OR NEW.lifetime_points < 0 THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT code
+    INTO NEW.tier_code
+    FROM LoyaltyTier
+    WHERE store_id = NEW.store_id
+      AND min_points <= NEW.lifetime_points
+    ORDER BY min_points DESC
+    LIMIT 1;
+
+    IF NEW.tier_code IS NULL THEN
+        RAISE EXCEPTION 'No loyalty tier configured for store % and % lifetime points', NEW.store_id, NEW.lifetime_points;
+    END IF;
+
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER recalculate_loyalty_tier_before_insert
+BEFORE INSERT ON LoyaltyPoint
+FOR EACH ROW EXECUTE FUNCTION fn_recalculate_loyalty_tier();
+
+CREATE TRIGGER recalculate_loyalty_tier_before_lifetime_points_update
+BEFORE UPDATE OF lifetime_points ON LoyaltyPoint
+FOR EACH ROW EXECUTE FUNCTION fn_recalculate_loyalty_tier();
+
+CREATE OR REPLACE FUNCTION fn_recalculate_store_loyalty_points()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE LoyaltyPoint
+    SET lifetime_points = lifetime_points
+    WHERE store_id = NEW.store_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER recalculate_store_loyalty_points_after_tier_update
+AFTER UPDATE OF min_points ON LoyaltyTier
+FOR EACH ROW EXECUTE FUNCTION fn_recalculate_store_loyalty_points();
+
+CREATE OR REPLACE FUNCTION fn_validate_loyalty_tier_threshold_order()
+RETURNS TRIGGER AS $$
+DECLARE
+    bronze_points INTEGER;
+    silver_points INTEGER;
+    gold_points INTEGER;
+BEGIN
+    SELECT min_points INTO bronze_points
+    FROM LoyaltyTier
+    WHERE store_id = NEW.store_id AND code = 'Bronze';
+
+    SELECT min_points INTO silver_points
+    FROM LoyaltyTier
+    WHERE store_id = NEW.store_id AND code = 'Silver';
+
+    SELECT min_points INTO gold_points
+    FROM LoyaltyTier
+    WHERE store_id = NEW.store_id AND code = 'Gold';
+
+    IF bronze_points IS NOT NULL
+       AND silver_points IS NOT NULL
+       AND gold_points IS NOT NULL
+       AND NOT (bronze_points < silver_points AND silver_points < gold_points) THEN
+        RAISE EXCEPTION 'Loyalty tier thresholds must satisfy Bronze < Silver < Gold for store %', NEW.store_id
+            USING ERRCODE = '23514',
+                  CONSTRAINT = 'loyaltytier_threshold_order';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE CONSTRAINT TRIGGER validate_loyalty_tier_threshold_order_after_insert_update
+AFTER INSERT OR UPDATE OF min_points ON LoyaltyTier
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION fn_validate_loyalty_tier_threshold_order();
+
+CREATE INDEX idx_loyalty_point_user_store ON LoyaltyPoint(user_id, store_id);
+CREATE INDEX idx_loyalty_point_store_tier ON LoyaltyPoint(store_id, tier_code);
+
+CREATE VIEW store_top_loyalty_point_holders AS
+SELECT *
+FROM (
+    SELECT
+        lp.store_id,
+        lp.user_id,
+        u.username,
+        lp.tier_code,
+        lp.points AS current_points,
+        lp.lifetime_points,
+        COALESCE(SUM(lr.points_spent), 0) AS redeemed_points,
+        ROW_NUMBER() OVER (
+            PARTITION BY lp.store_id
+            ORDER BY lp.lifetime_points DESC,
+                     lp.points DESC,
+                     u.username ASC
+        ) AS store_rank
+    FROM LoyaltyPoint lp
+    JOIN "User" u ON u.id = lp.user_id
+    LEFT JOIN LoyaltyRedemption lr
+      ON lr.user_id = lp.user_id
+     AND lr.store_id = lp.store_id
+    GROUP BY lp.store_id, lp.user_id, u.username, lp.tier_code, lp.points, lp.lifetime_points
+) ranked
+WHERE store_rank <= 5;
 
 CREATE VIEW historical_game_price AS
 SELECT

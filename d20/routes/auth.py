@@ -283,7 +283,9 @@ def rate_session_games(session_id):
                 except Exception:
                     pass  # Already rated — ignore duplicate
         if any_rated:
-            flash("Ratings submitted! Thank you.")
+            from d20.db.loyalty import add_points, get_point_rule
+            add_points(g.user["id"], sess["store_id"], int(get_point_rule(sess["store_id"], "game_rating")))
+            flash("Ratings submitted! You earned loyalty points.")
         else:
             flash("Please select at least one rating (1–5).")
         return redirect(url_for("auth.view_sessions"))
@@ -293,3 +295,45 @@ def rate_session_games(session_id):
         sess=sess,
         games=games,
     )
+
+
+@bp.route("/loyalty")
+@login_required
+def view_loyalty():
+    from d20.db.loyalty import REDEMPTION_RATE
+    db = get_db()
+    points_rows = db.execute(
+        """
+        SELECT lp.store_id, s.name as store_name, lp.points, lp.tier_code
+        FROM LoyaltyPoint lp
+        JOIN Store s ON lp.store_id = s.id
+        WHERE lp.user_id = %s
+        ORDER BY s.name ASC
+        """,
+        (g.user["id"],)
+    ).fetchall()
+    
+    return render_template("auth/loyalty.html", points=points_rows, redemption_rate=REDEMPTION_RATE)
+
+
+@bp.route("/loyalty/redeem", methods=("POST",))
+@login_required
+def redeem_loyalty_points():
+    from d20.db.loyalty import redeem_points
+    store_id = request.form.get("store_id", type=int)
+    points = request.form.get("points", type=int)
+    description = request.form.get("description", "Discount")
+    
+    if not store_id or not points or points <= 0:
+        flash("Invalid request. Please provide a valid store and points amount.")
+        return redirect(url_for("auth.view_loyalty"))
+        
+    try:
+        discount = redeem_points(g.user["id"], store_id, points, description)
+        flash(f"Redeemed {points} points for a ${discount:.2f} discount!")
+    except ValueError as e:
+        flash(str(e))
+    except Exception as e:
+        flash(f"An error occurred: {str(e)}")
+        
+    return redirect(url_for("auth.view_loyalty"))

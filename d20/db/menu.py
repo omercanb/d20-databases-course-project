@@ -79,6 +79,16 @@ def create_session_order(session_id, items_quantities):
             (order_id, item_id, qty)
         )
     db.commit()
+    
+    # Award loyalty points
+    from d20.db.session import get_session
+    from d20.db.loyalty import add_points, get_point_rule
+    sess = get_session(session_id)
+    if sess:
+        points = int(total * get_point_rule(sess["store_id"], "food_dollar"))
+        if points > 0:
+            add_points(sess["user_id"], sess["store_id"], points)
+            
     return order_id
 
 def get_session_orders(session_id):
