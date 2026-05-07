@@ -21,6 +21,10 @@ def _insert_store_and_table(db):
         'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, %s, %s)',
         (store_id, 1, 4),
     )
+    db.execute(
+        "UPDATE LoyaltyTier SET reservation_advance_days = 365 WHERE store_id = %s",
+        (store_id,),
+    )
     db.commit()
     return store_id, 1
 
