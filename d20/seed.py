@@ -420,6 +420,124 @@ def seed_historical_price_data(user_ids, game_ids):
             )
 
 
+def seed_tournament_test(game_ids):
+    """
+    Creates a dedicated TournamentTest store, 7 tour users with varied loyalty,
+    and registers them in two ready-to-bracket tournaments (round robin + FFA single elim).
+    Uses direct DB inserts to bypass the eligibility trigger for seeding purposes.
+    """
+    db = get_db()
+
+    # ── 1. Store ────────────────────────────────────────────────────────────
+    ts_id = create_store("TournamentTest", "TournamentTest Arena", "pass", "Test/Venue")
+    # Create 4 tables (capacity 8 so everyone fits)
+    for _ in range(4):
+        create_table(ts_id, 8)
+    # Add game copies for Catan (game_ids[1])
+    create_game_copy(game_ids[1], ts_id)
+
+    # ── 2. Loyalty tiers for this store ─────────────────────────────────────
+    update_store_loyalty_tiers(ts_id, [
+        {"code": "Bronze", "min_points": 0,    "discount_percent": 0,  "reservation_advance_days": 0, "free_tournament_entries": 0},
+        {"code": "Silver", "min_points": 300,  "discount_percent": 5,  "reservation_advance_days": 2, "free_tournament_entries": 0},
+        {"code": "Gold",   "min_points": 800,  "discount_percent": 10, "reservation_advance_days": 5, "free_tournament_entries": 1},
+    ])
+    update_store_loyalty_point_rules(ts_id, [
+        {"action_code": "session_hour",             "points_per_unit": 6},
+        {"action_code": "food_dollar",              "points_per_unit": 1},
+        {"action_code": "game_rating",              "points_per_unit": 8},
+        {"action_code": "tournament_participation", "points_per_unit": 25},
+    ])
+
+    # ── 3. Tour users (tour1 … tour13) with varied loyalty ──────────────────
+    tour_names = [f"tour{i}" for i in range(1, 14)]
+    # 0 pts (Bronze), low Bronze, mid Bronze, Silver×3, high Silver, Gold×3, high Gold×3
+    loyalty_points = [0, 50, 150, 300, 450, 600, 750, 800, 950, 1100, 1200, 1400, 1600]
+
+    tour_ids = []
+    for name in tour_names:
+        uid = create_user(name, name)
+        tour_ids.append(uid)
+
+    # Ensure LoyaltyPoint rows exist and set the desired balances directly
+    for uid, pts in zip(tour_ids, loyalty_points):
+        db.execute(
+            """
+            INSERT INTO LoyaltyPoint (user_id, store_id, points, lifetime_points)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (user_id, store_id) DO UPDATE
+              SET points = EXCLUDED.points,
+                  lifetime_points = EXCLUDED.lifetime_points
+            """,
+            (uid, ts_id, pts, pts),
+        )
+    db.commit()
+
+    # ── 4. Two tournaments ───────────────────────────────────────────────────
+    start_rr  = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d %H:%M")
+    end_rr    = (datetime.now() + timedelta(days=3, hours=6)).strftime("%Y-%m-%d %H:%M")
+    start_se  = (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
+    end_se    = (datetime.now() + timedelta(days=10, hours=4)).strftime("%Y-%m-%d %H:%M")
+
+    # Round-Robin  (1v1, all 13 players)
+    rr = db.execute(
+        """
+        INSERT INTO Tournament
+            (store_id, game_id, name, format, max_participants, players_per_match,
+             entry_fee_points, start_date, end_date, prize_description)
+        VALUES (%s,%s,%s,'round_robin',16,2, 0,%s,%s,'Top 3 win store credit')
+        RETURNING id
+        """,
+        (ts_id, game_ids[1], "TournamentTest Round Robin", start_rr, end_rr),
+    ).fetchone()["id"]
+
+    # Single Elimination FFA (4 players per match, all 13 players)
+    se = db.execute(
+        """
+        INSERT INTO Tournament
+            (store_id, game_id, name, format, max_participants, players_per_match,
+             entry_fee_points, start_date, end_date, prize_description)
+        VALUES (%s,%s,%s,'single_elimination',16,4, 0,%s,%s,'Champion gets 500 pts')
+        RETURNING id
+        """,
+        (ts_id, game_ids[1], "TournamentTest FFA Elimination", start_se, end_se),
+    ).fetchone()["id"]
+
+    # Assign tables to both tournaments
+    tables = db.execute(
+        "SELECT table_num FROM \"Table\" WHERE store_id=%s ORDER BY table_num", (ts_id,)
+    ).fetchall()
+    for t in tables:
+        for tid in (rr, se):
+            db.execute(
+                "INSERT INTO TournamentTable (tournament_id, store_id, table_num) VALUES (%s,%s,%s)",
+                (tid, ts_id, t["table_num"]),
+            )
+
+    # ── 5. Register all 7 users while registration is still open ────────────
+    for uid in tour_ids:
+        for tid in (rr, se):
+            db.execute(
+                """
+                INSERT INTO TournamentParticipant (tournament_id, user_id)
+                VALUES (%s, %s)
+                ON CONFLICT DO NOTHING
+                """,
+                (tid, uid),
+            )
+    db.commit()
+
+    # ── 6. Close registration so tournaments are ready to bracket ───────────
+    for tid in (rr, se):
+        db.execute(
+            "UPDATE Tournament SET registration_open=FALSE, status='in_progress' WHERE id=%s",
+            (tid,),
+        )
+    db.commit()
+
+    return ts_id, rr, se
+
+
 def seed_the_universe():
     user_ids = seed_users()
     store_ids = seed_stores()
@@ -432,6 +550,7 @@ def seed_the_universe():
     seed_menus(store_ids)
     seed_loyalty_program(user_ids, store_ids)
     seed_historical_price_data(user_ids, game_ids)
+    seed_tournament_test(game_ids)
 
 
 @click.command("seed")
