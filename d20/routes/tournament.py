@@ -143,7 +143,9 @@ def register_for_tournament(tournament_id):
         register_participant(tournament_id, g.user["id"])
         flash("Successfully registered for the tournament!")
     except Exception as exc:
-        flash(f"Registration failed: {exc}")
+        # Clean up Postgres error message (remove CONTEXT and ERROR prefix)
+        msg = str(exc).split('\n')[0].replace('ERROR:', '').strip()
+        flash(f"Registration failed: {msg}")
     return redirect(url_for("tournament.tournament_detail", tournament_id=tournament_id))
 
 
@@ -204,7 +206,8 @@ def create_tournament_form():
                 flash("Tournament created successfully!")
                 return redirect(url_for("tournament.manage_tournament", tournament_id=t_id))
             except Exception as exc:
-                flash(f"Error creating tournament: {exc}")
+                msg = str(exc).split('\n')[0].replace('ERROR:', '').strip()
+                flash(f"Error creating tournament: {msg}")
 
     return render_template(
         "tournament/create_tournament.html",
@@ -266,7 +269,8 @@ def close_tournament_registration(tournament_id):
         close_registration(tournament_id, g.store["id"])
         flash("Registration closed. You can now generate the bracket.")
     except Exception as exc:
-        flash(f"Error: {exc}")
+        msg = str(exc).split('\n')[0].replace('ERROR:', '').strip()
+        flash(f"Error: {msg}")
     return redirect(url_for("tournament.manage_tournament", tournament_id=tournament_id))
 
 
@@ -291,7 +295,8 @@ def generate_bracket(tournament_id):
                 generate_ffa_round_robin_bracket(tournament_id, K)
         flash("Bracket generated successfully!")
     except Exception as exc:
-        flash(f"Error generating bracket: {exc}")
+        msg = str(exc).split('\n')[0].replace('ERROR:', '').strip()
+        flash(f"Error generating bracket: {msg}")
     return redirect(url_for("tournament.manage_tournament", tournament_id=tournament_id))
 
 
@@ -319,7 +324,8 @@ def record_result_route(tournament_id, match_id):
             record_ffa_match_result(match_id, participant_ranks, tournament_id, g.store["id"])
             flash("FFA result recorded.")
         except Exception as exc:
-            flash(f"Error: {exc}")
+            msg = str(exc).split('\n')[0].replace('ERROR:', '').strip()
+            flash(f"Error: {msg}")
     else:
         # 1v1 path
         winner_id = request.form.get("winner_id", type=int)
@@ -332,7 +338,8 @@ def record_result_route(tournament_id, match_id):
             record_match_result(match_id, winner_id, score_p1, score_p2, tournament_id, g.store["id"])
             flash("Result recorded and bracket advanced.")
         except Exception as exc:
-            flash(f"Error recording result: {exc}")
+            msg = str(exc).split('\n')[0].replace('ERROR:', '').strip()
+            flash(f"Error recording result: {msg}")
 
     return redirect(url_for("tournament.manage_tournament", tournament_id=tournament_id))
 
@@ -380,7 +387,8 @@ def complete_tournament_route(tournament_id):
         complete_tournament(tournament_id, g.store["id"])
         flash("Tournament marked as completed and archived.")
     except Exception as exc:
-        flash(f"Error: {exc}")
+        msg = str(exc).split('\n')[0].replace('ERROR:', '').strip()
+        flash(f"Error: {msg}")
     return redirect(url_for("tournament.manage_tournament", tournament_id=tournament_id))
 
 

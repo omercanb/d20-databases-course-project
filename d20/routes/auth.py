@@ -212,7 +212,8 @@ def cancel_session(session_id):
         delete_session(session_id)
         flash("Session cancelled successfully.")
     except Exception as e:
-        flash(f"Error cancelling session: {str(e)}")
+        msg = str(e).split('\n')[0].replace('ERROR:', '').strip()
+        flash(f"Could not cancel session: {msg}")
 
     return redirect(url_for("auth.view_sessions"))
 

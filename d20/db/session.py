@@ -218,6 +218,17 @@ def update_session(session_id, day, start_time, end_time):
 
 def delete_session(session_id):
     db = get_db()
+    
+    # Check if there are any orders associated with this session
+    order = db.execute("SELECT 1 FROM SessionOrder WHERE session_id = %s", (session_id,)).fetchone()
+    if order:
+        raise ValueError("Cannot cancel session because there are active food or drink orders. Please contact the cafe staff.")
+    
+    # Check if a bill has already been generated
+    bill = db.execute("SELECT 1 FROM Bill WHERE session_id = %s", (session_id,)).fetchone()
+    if bill:
+        raise ValueError("Cannot cancel session because a bill has already been generated.")
+
     db.execute("DELETE FROM SessionGameCopy WHERE session_id = %s", (session_id,))
     db.execute("DELETE FROM Session WHERE id = %s", (session_id,))
     db.commit()

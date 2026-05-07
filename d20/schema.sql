@@ -160,7 +160,7 @@ CREATE TABLE SessionGameCopy (
     game_id    INTEGER NOT NULL,
     store_id   INTEGER NOT NULL,
     copy_num   INTEGER NOT NULL,
-    FOREIGN KEY (session_id) REFERENCES Session(id),
+    FOREIGN KEY (session_id) REFERENCES Session(id) ON DELETE CASCADE,
     FOREIGN KEY (game_id, store_id, copy_num) REFERENCES GameCopy(game_id, store_id, copy_num),
     PRIMARY KEY (session_id, game_id, store_id, copy_num)
 );
@@ -202,14 +202,14 @@ CREATE TABLE GameDamage (
     store_id    INTEGER NOT NULL,
     copy_num    INTEGER NOT NULL,
     description TEXT,
-    FOREIGN KEY (session_id) REFERENCES Session(id),
+    FOREIGN KEY (session_id) REFERENCES Session(id) ON DELETE CASCADE,
     FOREIGN KEY (game_id, store_id, copy_num) REFERENCES GameCopy(game_id, store_id, copy_num),
     PRIMARY KEY (session_id, game_id, store_id, copy_num)
 );
 
 CREATE TABLE Bill (
     id              SERIAL PRIMARY KEY,
-    session_id      INTEGER NOT NULL UNIQUE REFERENCES Session(id),
+    session_id      INTEGER NOT NULL UNIQUE REFERENCES Session(id) ON DELETE CASCADE,
     table_fee       NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     food_total      NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     damage_fee      NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
@@ -325,14 +325,14 @@ CREATE TABLE Beverage (
 
 CREATE TABLE SessionOrder (
     id SERIAL PRIMARY KEY,
-    session_id INTEGER NOT NULL REFERENCES Session(id),
+    session_id INTEGER NOT NULL REFERENCES Session(id) ON DELETE CASCADE,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'cancelled')),
     total_amount NUMERIC(10, 2) DEFAULT 0.00
 );
 
 CREATE TABLE SessionOrderItem (
-    order_id INTEGER NOT NULL REFERENCES SessionOrder(id),
+    order_id INTEGER NOT NULL REFERENCES SessionOrder(id) ON DELETE CASCADE,
     item_id INTEGER NOT NULL REFERENCES MenuItem(id),
     quantity INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (order_id, item_id)
@@ -659,12 +659,12 @@ BEGIN
     -- 1. Load tournament
     SELECT * INTO v_tournament FROM Tournament WHERE id = NEW.tournament_id;
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Tournament % does not exist', NEW.tournament_id;
+        RAISE EXCEPTION 'This tournament does not exist.';
     END IF;
 
     -- 2. Registration must be open
     IF NOT v_tournament.registration_open OR v_tournament.status <> 'registration_open' THEN
-        RAISE EXCEPTION 'Registration for tournament % is closed', NEW.tournament_id;
+        RAISE EXCEPTION 'Registration for this tournament is currently closed.';
     END IF;
 
     -- 3. Capacity check
@@ -672,7 +672,7 @@ BEGIN
     FROM TournamentParticipant
     WHERE tournament_id = NEW.tournament_id;
     IF v_current_count >= v_tournament.max_participants THEN
-        RAISE EXCEPTION 'Tournament % is full', NEW.tournament_id;
+        RAISE EXCEPTION 'This tournament is already full.';
     END IF;
 
     -- 4. Overlap check: user must not be in another active tournament at the same store
@@ -689,7 +689,7 @@ BEGIN
           AND COALESCE(t.end_date, t.start_date + INTERVAL '8 hours') > v_tournament.start_date
       );
     IF v_overlap > 0 THEN
-        RAISE EXCEPTION 'User % is already registered in an overlapping tournament at this store', NEW.user_id;
+        RAISE EXCEPTION 'You are already registered for another tournament during this time at this store.';
     END IF;
 
     -- 5. Auto-create loyalty record if the user has never visited this store.
@@ -716,8 +716,8 @@ BEGIN
     ELSE
         -- Deduct entry fee from normal points only (lifetime_points unchanged)
         IF v_lp.points < v_tournament.entry_fee_points THEN
-            RAISE EXCEPTION 'User % does not have enough points to enter tournament % (needs %, has %)',
-                NEW.user_id, NEW.tournament_id, v_tournament.entry_fee_points, v_lp.points;
+            RAISE EXCEPTION 'You do not have enough loyalty points to enter this tournament (Entry Fee: % pts, Your Balance: % pts).',
+                v_tournament.entry_fee_points, v_lp.points;
         END IF;
         IF v_tournament.entry_fee_points > 0 THEN
             UPDATE LoyaltyPoint
