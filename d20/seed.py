@@ -449,10 +449,10 @@ def seed_tournament_test(game_ids):
         {"action_code": "tournament_participation", "points_per_unit": 25},
     ])
 
-    # ── 3. Tour users (tour1 … tour13) with varied loyalty ──────────────────
-    tour_names = [f"tour{i}" for i in range(1, 14)]
-    # 0 pts (Bronze), low Bronze, mid Bronze, Silver×3, high Silver, Gold×3, high Gold×3
-    loyalty_points = [0, 50, 150, 300, 450, 600, 750, 800, 950, 1100, 1200, 1400, 1600]
+    # ── 3. Tour users (tour1 … tour7) with varied loyalty ───────────────────
+    tour_names = [f"tour{i}" for i in range(1, 8)]
+    # Points to seed (0, 50, 150, 300, 500, 800, 1200) → Bronze×3, Silver×2, Gold×2
+    loyalty_points = [0, 50, 150, 300, 500, 800, 1200]
 
     tour_ids = []
     for name in tour_names:
@@ -479,25 +479,25 @@ def seed_tournament_test(game_ids):
     start_se  = (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
     end_se    = (datetime.now() + timedelta(days=10, hours=4)).strftime("%Y-%m-%d %H:%M")
 
-    # Round-Robin  (1v1, all 13 players)
+    # Round-Robin  (1v1, all 7 players)
     rr = db.execute(
         """
         INSERT INTO Tournament
             (store_id, game_id, name, format, max_participants, players_per_match,
              entry_fee_points, start_date, end_date, prize_description)
-        VALUES (%s,%s,%s,'round_robin',16,2, 0,%s,%s,'Top 3 win store credit')
+        VALUES (%s,%s,%s,'round_robin',8,2, 0,%s,%s,'Top 3 win store credit')
         RETURNING id
         """,
         (ts_id, game_ids[1], "TournamentTest Round Robin", start_rr, end_rr),
     ).fetchone()["id"]
 
-    # Single Elimination FFA (4 players per match, all 13 players)
+    # Single Elimination FFA (4 players per match, all 7 players)
     se = db.execute(
         """
         INSERT INTO Tournament
             (store_id, game_id, name, format, max_participants, players_per_match,
              entry_fee_points, start_date, end_date, prize_description)
-        VALUES (%s,%s,%s,'single_elimination',16,4, 0,%s,%s,'Champion gets 500 pts')
+        VALUES (%s,%s,%s,'single_elimination',8,4, 0,%s,%s,'Champion gets 500 pts')
         RETURNING id
         """,
         (ts_id, game_ids[1], "TournamentTest FFA Elimination", start_se, end_se),
@@ -530,7 +530,7 @@ def seed_tournament_test(game_ids):
     # ── 6. Close registration so tournaments are ready to bracket ───────────
     for tid in (rr, se):
         db.execute(
-            "UPDATE Tournament SET registration_open=FALSE, status='in_progress' WHERE id=%s",
+            "UPDATE Tournament SET registration_open=FALSE, status='registration_open' WHERE id=%s",
             (tid,),
         )
     db.commit()
