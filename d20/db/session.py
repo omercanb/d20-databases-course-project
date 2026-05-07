@@ -176,6 +176,7 @@ def get_upcoming_sessions_with_user_by_store(store_id, today):
 
 
 def get_upcoming_sessions_with_user_and_games_by_store(store_id, today):
+    """Upcoming non-tournament sessions at this store (tournament sessions are tracked separately)."""
     return (
         get_db()
         .execute(
@@ -195,7 +196,8 @@ def get_upcoming_sessions_with_user_and_games_by_store(store_id, today):
             LEFT JOIN SessionGameCopy ON (Session.id = SessionGameCopy.session_id)
             LEFT JOIN Game ON (SessionGameCopy.game_id = Game.id)
             WHERE Session.store_id = %s
-            AND Session.day >= %s
+              AND Session.day >= %s
+              AND Session.is_tournament = FALSE
             GROUP BY Session.id, "User".username
             ORDER BY Session.day ASC, Session.start_time ASC
             """,
@@ -216,6 +218,17 @@ def update_session(session_id, day, start_time, end_time):
 
 def delete_session(session_id):
     db = get_db()
+    
+    # Check if there are any orders associated with this session
+    order = db.execute("SELECT 1 FROM SessionOrder WHERE session_id = %s", (session_id,)).fetchone()
+    if order:
+        raise ValueError("Cannot cancel session because there are active food or drink orders. Please contact the cafe staff.")
+    
+    # Check if a bill has already been generated
+    bill = db.execute("SELECT 1 FROM Bill WHERE session_id = %s", (session_id,)).fetchone()
+    if bill:
+        raise ValueError("Cannot cancel session because a bill has already been generated.")
+
     db.execute("DELETE FROM SessionGameCopy WHERE session_id = %s", (session_id,))
     db.execute("DELETE FROM Session WHERE id = %s", (session_id,))
     db.commit()

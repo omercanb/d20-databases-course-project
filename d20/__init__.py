@@ -64,6 +64,9 @@ def create_app(test_config=None):
     from .routes import market
 
     app.register_blueprint(market.bp)
+    from .routes import tournament
+
+    app.register_blueprint(tournament.bp)
     app.add_url_rule("/", endpoint="index")
 
     return app

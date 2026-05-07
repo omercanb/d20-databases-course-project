@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% block title %}Create Tournament{% endblock %}
+{% block header %}<h1>Create Tournament</h1>{% endblock %}
+
+{% block content %}
+{% set active_tab = 'tournaments' %}
+{% include 'stores/_mystore_nav.html' %}
+
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('tournament.create_tournament_form') }}">
+      <div class="row g-3">
+        {# Name #}
+        <div class="col-md-8">
+          <label class="form-label fw-medium">Tournament Name <span class="text-danger">*</span></label>
+          <input type="text" name="name" class="form-control" placeholder="e.g. Spring Chess Championship" required>
+        </div>
+
+        {# Game #}
+        <div class="col-md-4">
+          <label class="form-label fw-medium">Game <span class="text-danger">*</span></label>
+          <select name="game_id" class="form-select" required>
+            <option value="">Select a game…</option>
+            {% for game in games %}
+              <option value="{{ game.id }}">{{ game.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# Format #}
+        <div class="col-md-3">
+          <label class="form-label fw-medium">Format <span class="text-danger">*</span></label>
+          <select name="format" class="form-select" required>
+            <option value="single_elimination">Single Elimination</option>
+            <option value="round_robin">Round Robin</option>
+          </select>
+        </div>
+
+        {# Players per match #}
+        <div class="col-md-3">
+          <label class="form-label fw-medium">Players per Match <span class="text-danger">*</span></label>
+          <input type="number" name="players_per_match" class="form-control" min="2" value="2" required>
+          <div class="form-text">2 = 1v1. 3+ = free-for-all (any group size).</div>
+        </div>
+
+        {# Max participants #}
+        <div class="col-md-3">
+          <label class="form-label fw-medium">Max Participants <span class="text-danger">*</span></label>
+          <input type="number" name="max_participants" class="form-control" min="2" value="8" required>
+        </div>
+
+        {# Entry fee #}
+        <div class="col-md-4">
+          <label class="form-label fw-medium">Entry Fee (points)</label>
+          <input type="number" name="entry_fee_points" class="form-control" min="0" value="0">
+          <div class="form-text">0 = free to join (subject to tier free entries).</div>
+        </div>
+
+        {# Sponsor #}
+        <div class="col-md-6">
+          <label class="form-label fw-medium">Sponsor Name</label>
+          <input type="text" name="sponsor_name" class="form-control" placeholder="Optional">
+        </div>
+
+        {# Start date #}
+        <div class="col-md-3">
+          <label class="form-label fw-medium">Start Date/Time <span class="text-danger">*</span></label>
+          <input type="datetime-local" name="start_date" class="form-control" required>
+        </div>
+
+        {# End date #}
+        <div class="col-md-3">
+          <label class="form-label fw-medium">End Date/Time</label>
+          <input type="datetime-local" name="end_date" class="form-control">
+        </div>
+
+        {# Prize description #}
+        <div class="col-12">
+          <label class="form-label fw-medium">Prize Description</label>
+          <textarea name="prize_description" class="form-control" rows="2"
+                    placeholder="e.g. 1st: 500 pts + store credit, 2nd: 200 pts…"></textarea>
+        </div>
+
+        {# Table allocation #}
+        <div class="col-12">
+          <label class="form-label fw-medium">Allocated Tables <span class="text-danger">*</span></label>
+          <div class="form-text mb-2">Select which tables will be used for tournament matches. Players will be automatically assigned to these tables when they register.</div>
+          {% if tables %}
+            <div class="d-flex flex-wrap gap-2">
+              {% for tbl in tables %}
+                <div class="form-check form-check-inline border rounded px-3 py-2">
+                  <input class="form-check-input" type="checkbox" name="table_nums"
+                         id="tbl_{{ tbl.table_num }}" value="{{ tbl.table_num }}">
+                  <label class="form-check-label" for="tbl_{{ tbl.table_num }}">
+                    Table {{ tbl.table_num }}
+                    {% if tbl.capacity %}<span class="text-muted small">(cap {{ tbl.capacity }})</span>{% endif %}
+                  </label>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-warning">No tables found. <a href="{{ url_for('stores.my_store_tables') }}">Add tables first</a>.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <hr class="my-4">
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Create Tournament</button>
+        <a href="{{ url_for('tournament.my_store_tournaments') }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

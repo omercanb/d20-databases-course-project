@@ -34,13 +34,13 @@
                     <a class="nav-link" href="{{ url_for('market.portfolio') }}">Market</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('stores.stores') }}">Stores</a>
-                </li>
-                <li class="nav-item">
                     <a class="nav-link" href="{{ url_for('auth.view_sessions') }}">My Sessions</a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for('auth.view_loyalty') }}">Loyalty</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('tournament.browse_tournaments') }}">Tournaments</a>
                 </li>
             {% elif g.store %}
                 <li class="nav-item">
@@ -48,6 +48,9 @@
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for('stores.my_store_overview') }}">My Store</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('tournament.browse_tournaments') }}">Tournaments</a>
                 </li>
             {% endif %}
         </ul>

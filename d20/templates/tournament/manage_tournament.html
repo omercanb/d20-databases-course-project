@@ -1,0 +1,319 @@
+{% extends 'base.html' %}
+{% block title %}Manage: {{ tournament.name }}{% endblock %}
+{% block header %}
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <a href="{{ url_for('tournament.my_store_tournaments') }}" class="text-muted small">← My Tournaments</a>
+      <h1 class="mb-0">{{ tournament.name }}</h1>
+    </div>
+    <span class="badge fs-6
+      {% if tournament.status == 'registration_open' %}bg-success
+      {% elif tournament.status == 'in_progress' %}bg-warning text-dark
+      {% else %}bg-secondary{% endif %}">
+      {{ tournament.status | replace('_', ' ') | title }}
+    </span>
+  </div>
+{% endblock %}
+
+{% block content %}
+{# ── Info summary ──────────────────────────────────────────────────────── #}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <div class="row g-2 small text-muted">
+      <div class="col-md-3"><strong>Game:</strong> {{ tournament.game_name }}</div>
+      <div class="col-md-3"><strong>Format:</strong> {{ tournament.format | replace('_', ' ') | title }}</div>
+      <div class="col-md-3"><strong>Players/match:</strong>
+        {% if tournament.players_per_match == 2 %}1v1{% else %}{{ tournament.players_per_match }}-player FFA{% endif %}
+      </div>
+      <div class="col-md-3"><strong>Entry fee:</strong> {{ tournament.entry_fee_points }} pts</div>
+      <div class="col-md-3"><strong>Sponsor:</strong> {{ tournament.sponsor_name or '—' }}</div>
+      <div class="col-md-3"><strong>Start:</strong> {{ tournament.start_date.strftime('%d %b %Y, %H:%M') if tournament.start_date else '—' }}</div>
+      <div class="col-md-3"><strong>End:</strong> {{ tournament.end_date.strftime('%d %b %Y, %H:%M') if tournament.end_date else '—' }}</div>
+      <div class="col-md-6"><strong>Prizes:</strong> {{ tournament.prize_description or '—' }}</div>
+    </div>
+  </div>
+</div>
+
+{# ── Action buttons ────────────────────────────────────────────────────── #}
+<div class="d-flex flex-wrap gap-2 mb-4">
+  {% if tournament.status == 'registration_open' %}
+    <form method="POST" action="{{ url_for('tournament.close_tournament_registration', tournament_id=tournament.id) }}">
+      <button type="submit" class="btn btn-warning"
+        data-confirm="Close registration? Players will no longer be able to sign up.">
+        Close Registration
+      </button>
+    </form>
+  {% endif %}
+
+  {% if tournament.status == 'in_progress' and not rounds %}
+    <form method="POST" action="{{ url_for('tournament.generate_bracket', tournament_id=tournament.id) }}">
+      <button type="submit" class="btn btn-primary"
+        data-confirm="Generate the bracket now? This cannot be undone.">
+        Generate Bracket
+      </button>
+    </form>
+  {% endif %}
+
+  {% if tournament.status == 'in_progress' %}
+    <form method="POST" action="{{ url_for('tournament.complete_tournament_route', tournament_id=tournament.id) }}">
+      <button type="submit" class="btn btn-secondary"
+        data-confirm="Mark this tournament as completed and archive it?">
+        Complete & Archive
+      </button>
+    </form>
+  {% endif %}
+</div>
+
+{# ── Participants ──────────────────────────────────────────────────────── #}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-white py-3">
+    <h5 class="mb-0">Participants ({{ participants | length }} / {{ tournament.max_participants }})</h5>
+  </div>
+  <div class="card-body p-0">
+    {% if participants %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-4">#</th><th>Username</th><th>Free Entry</th>
+              <th class="pe-4">Registered At</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in participants %}
+              <tr>
+                <td class="ps-4">{{ loop.index }}</td>
+                <td>{{ p.username }}</td>
+                <td>{% if p.used_free_entry %}<span class="badge bg-success">Yes</span>{% else %}—{% endif %}</td>
+                <td class="pe-4 small text-muted">{{ p.registered_at.strftime('%d %b %Y %H:%M') if p.registered_at else '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted text-center py-3">No participants yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Bracket ───────────────────────────────────────────────────────────── #}
+{% if rounds %}
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3"><h5 class="mb-0">Bracket / Schedule</h5></div>
+    <div class="card-body">
+      {% for round_num, matches in rounds | dictsort %}
+        <h6 class="fw-bold text-primary mb-2">Round {{ round_num }}</h6>
+        <div class="table-responsive mb-4">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>#</th>
+                {% if is_ffa %}
+                  <th>Players</th>
+                {% else %}
+                  <th>Player 1</th><th>Player 2</th><th>Score</th>
+                {% endif %}
+                <th>Winner</th><th>Table</th>
+                {% if tournament.status == 'in_progress' %}<th>Record Result</th>{% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for m in matches %}
+                <tr>
+                  <td>{{ m.match_number }}</td>
+                  {% if is_ffa %}
+                    <td>
+                      {% set mp = match_participants.get(m.id, []) %}
+                      {% if mp %}
+                        {{ mp | map(attribute='username') | join(', ') }}
+                      {% else %}
+                        <span class="text-muted">TBD</span>
+                      {% endif %}
+                    </td>
+                  {% else %}
+                    <td>{{ m.player1_name or '—' }}</td>
+                    <td>{% if m.is_bye %}<em class="text-muted">BYE</em>{% else %}{{ m.player2_name or 'TBD' }}{% endif %}</td>
+                    <td class="small text-muted">
+                      {{ m.score_player1 or '' }}
+                      {% if m.score_player1 and m.score_player2 %} – {% endif %}
+                      {{ m.score_player2 or '' }}
+                    </td>
+                  {% endif %}
+                  <td>
+                    {% if m.winner_name %}<span class="badge bg-success">{{ m.winner_name }}</span>
+                    {% elif m.is_played %}<span class="badge bg-secondary">Done</span>
+                    {% else %}—{% endif %}
+                  </td>
+                  <td class="small text-muted">{{ m.table_num if m.table_num else '—' }}</td>
+                  {% if tournament.status == 'in_progress' %}
+                    <td>
+                      {% if not m.is_played and not m.is_bye %}
+                        {% if is_ffa %}
+                          {# FFA: show all participants with score+rank fields #}
+                          {% set mp = match_participants.get(m.id, []) %}
+                          {% if mp | length >= 2 %}
+                            <button class="btn btn-sm btn-outline-primary" type="button"
+                              data-bs-toggle="collapse"
+                              data-bs-target="#result-form-{{ m.id }}">
+                              Enter Results
+                            </button>
+                            <div class="collapse mt-2" id="result-form-{{ m.id }}">
+                              <form method="POST"
+                                    action="{{ url_for('tournament.record_result_route', tournament_id=tournament.id, match_id=m.id) }}">
+                                <p class="small text-muted mb-1">Rank 1 = winner/first place</p>
+                                <div class="table-responsive">
+                                  <table class="table table-sm mb-2">
+                                    <thead><tr><th>Player</th><th>Score</th><th style="width:80px">Rank</th></tr></thead>
+                                    <tbody>
+                                      {% for p in mp %}
+                                        <tr>
+                                          <td class="fw-medium">{{ p.username }}
+                                            <input type="hidden" name="user_id" value="{{ p.user_id }}">
+                                          </td>
+                                          <td><input type="text" name="score" class="form-control form-control-sm" placeholder="score"></td>
+                                          <td><input type="number" name="rank" min="1" max="{{ mp | length }}" class="form-control form-control-sm" placeholder="rank" required></td>
+                                        </tr>
+                                      {% endfor %}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <button type="submit" class="btn btn-success btn-sm w-100">Save Results</button>
+                              </form>
+                            </div>
+                          {% else %}
+                            <span class="text-muted small">Waiting for players</span>
+                          {% endif %}
+                        {% elif m.player1_id and m.player2_id %}
+                          {# 1v1: show actual player names everywhere #}
+                          <button class="btn btn-sm btn-outline-primary" type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#result-form-{{ m.id }}">
+                            Enter Result
+                          </button>
+                          <div class="collapse mt-2" id="result-form-{{ m.id }}">
+                            <form method="POST"
+                                  action="{{ url_for('tournament.record_result_route', tournament_id=tournament.id, match_id=m.id) }}">
+                              <div class="input-group input-group-sm mb-1">
+                                <span class="input-group-text">Winner</span>
+                                <select name="winner_id" class="form-select form-select-sm" required>
+                                  <option value="">Select…</option>
+                                  <option value="{{ m.player1_id }}">{{ m.player1_name }}</option>
+                                  <option value="{{ m.player2_id }}">{{ m.player2_name }}</option>
+                                </select>
+                              </div>
+                              <div class="input-group input-group-sm mb-1">
+                                <span class="input-group-text">{{ m.player1_name }} score</span>
+                                <input type="text" name="score_player1" class="form-control form-control-sm" placeholder="e.g. 3">
+                              </div>
+                              <div class="input-group input-group-sm mb-2">
+                                <span class="input-group-text">{{ m.player2_name }} score</span>
+                                <input type="text" name="score_player2" class="form-control form-control-sm" placeholder="e.g. 1">
+                              </div>
+                              <button type="submit" class="btn btn-success btn-sm w-100">Save Result</button>
+                            </form>
+                          </div>
+                        {% endif %}
+                      {% endif %}
+                    </td>
+                  {% endif %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+{# ── Final standings & auto-compute prizes ─────────────────────────────── #}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-white py-3">
+    <h5 class="mb-0">Final Standings &amp; Prizes</h5>
+  </div>
+  <div class="card-body p-0">
+    {% if results %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-4">Place</th><th>Player</th>
+              <th>Prize</th><th class="pe-4">Points Awarded</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in results %}
+              <tr>
+                <td class="ps-4 fw-bold">
+                  {% if r.place == 1 %}🥇{% elif r.place == 2 %}🥈{% elif r.place == 3 %}🥉{% else %}{{ r.place }}{% endif %}
+                </td>
+                <td>{{ r.username }}</td>
+                <td>{{ r.prize_text or '—' }}</td>
+                <td class="pe-4"><span class="badge bg-primary">+{{ r.points_awarded }}</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% elif tournament.status == 'in_progress' and not matches_done %}
+      <p class="text-muted text-center py-3">
+        Prizes will be awarded once all matches have been completed.
+      </p>
+    {% elif tournament.status == 'in_progress' and matches_done and not results %}
+      {# All matches done — show the auto-computed standings for prize assignment #}
+      <div class="p-3">
+        <div class="alert alert-success mb-3">
+          ✅ All matches are complete. Standings have been computed automatically.
+          Set optional prize text and loyalty points for each place, then click <strong>Award Prizes</strong>.
+        </div>
+        <form method="POST"
+              action="{{ url_for('tournament.award_prizes_auto', tournament_id=tournament.id) }}">
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-3">
+              <thead class="table-light">
+                <tr>
+                  <th>Place</th>
+                  <th>Player</th>
+                  <th>Prize Description</th>
+                  <th style="width:140px">Loyalty Points</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for s in computed_standings %}
+                  <tr>
+                    <td class="fw-bold">
+                      {% if s.place == 1 %}🥇 1st
+                      {% elif s.place == 2 %}🥈 2nd
+                      {% elif s.place == 3 %}🥉 3rd
+                      {% else %}{{ s.place }}th{% endif %}
+                    </td>
+                    <td class="fw-medium">{{ s.username }}</td>
+                    <td>
+                      <input type="text" name="prize_{{ loop.index }}"
+                             class="form-control form-control-sm"
+                             placeholder="e.g. Store credit $20">
+                      {# pass user_id so award route can match standings by index #}
+                      <input type="hidden" name="uid_{{ loop.index }}" value="{{ s.user_id }}">
+                    </td>
+                    <td>
+                      <input type="number" name="pts_{{ loop.index }}" min="0" value="0"
+                             class="form-control form-control-sm">
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <button type="submit" class="btn btn-success"
+                  data-confirm="Award prizes and record final standings? This cannot be undone.">
+            🏆 Award Prizes &amp; Record Standings
+          </button>
+        </form>
+      </div>
+    {% else %}
+      <p class="text-muted text-center py-3">No final results yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
