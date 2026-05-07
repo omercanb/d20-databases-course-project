@@ -373,10 +373,14 @@ def generate_ffa_single_elimination_bracket(tournament_id, players_per_match):
         nonlocal table_cycle
         match_ids = []
         for m_idx, group in enumerate(player_groups):
-            real_players = [p for p in group if p is not None]
-            if len(real_players) == 0:
+            real_players = [p for p in group if p is not None and p != "TBD"]
+            is_empty = all((p is None) for p in group)
+            if is_empty:
                 match_ids.append(None)
                 continue
+            
+            non_nones = [p for p in group if p is not None]
+            
             t = tables[table_cycle % len(tables)]
             table_cycle += 1
             row = _row(db.execute(
@@ -387,7 +391,7 @@ def generate_ffa_single_elimination_bracket(tournament_id, players_per_match):
                 RETURNING id
                 """,
                 (tournament_id, rnd, m_idx + 1, t["store_id"], t["table_num"],
-                 len(real_players) == 1),
+                 len(non_nones) == 1),
             ))
             mid = row["id"]
             match_ids.append(mid)
@@ -405,15 +409,15 @@ def generate_ffa_single_elimination_bracket(tournament_id, players_per_match):
     prev_match_ids = None
 
     all_round_match_ids = []
-    while len(current_players) > K or (len(current_players) > 1 and rnd == 1):
+    while len([p for p in current_players if p is not None]) > 1:
         groups = [current_players[i:i+K] for i in range(0, len(current_players), K)]
         match_ids = _create_round(groups, rnd)
         all_round_match_ids.append(match_ids)
         # Next round will have one slot per match (winner advances)
-        current_players = [None] * len([m for m in match_ids if m is not None])
+        current_players = ["TBD" if m is not None else None for m in match_ids]
         prev_match_ids = match_ids
         rnd += 1
-        if len(current_players) <= 1:
+        if len([p for p in current_players if p is not None]) <= 1:
             break
 
     # Wire next_match_id
@@ -597,6 +601,16 @@ def record_ffa_match_result(match_id, participant_ranks, tournament_id, store_id
             """,
             (match["next_match_id"], winner["user_id"]),
         )
+        
+        # Auto-cascade if the next match is a bye
+        next_m = _row(db.execute("SELECT is_bye FROM TournamentMatch WHERE id=%s", (match["next_match_id"],)))
+        if next_m and next_m["is_bye"]:
+            record_ffa_match_result(
+                match["next_match_id"],
+                [{"user_id": winner["user_id"], "rank_in_match": 1}],
+                tournament_id,
+                store_id
+            )
 
     # Delete loser sessions (single elimination only) and winner if this is the final
     losers = [p["user_id"] for p in participant_ranks if p["rank_in_match"] != 1]
