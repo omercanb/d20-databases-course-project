@@ -10,6 +10,11 @@
 {% block content %}
     <div class="container">
         <div class="container">
+            {% if max_advance is not none %}
+            <div class="alert alert-info">
+                Your loyalty tier allows booking up to <strong>{{ max_advance }}</strong> day(s) in advance.
+            </div>
+            {% endif %}
             <h2>Browse Available Tables</h2>
             <div class="w-50 py-2">
                 <!-- hidden inputs so the values get submitted with the form -->
@@ -19,6 +24,7 @@
                            name="day"
                            class="form-control mb-4"
                            min="{{ today }}"
+                           {% if max_date %}max="{{ max_date }}"{% endif %}
                            value="{{ day }}" />
                     <input type="hidden" name="start_time" id="start_time" />
                     <input type="hidden" name="end_time" id="end_time" />

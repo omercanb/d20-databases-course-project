@@ -1,5 +1,5 @@
 import functools
-from datetime import date
+from datetime import date, timedelta
 from uuid import uuid4
 
 from flask import (
@@ -39,6 +39,7 @@ from d20.db.game import (
     update_game_image,
     update_game_image_url,
 )
+from d20.db.loyalty import get_user_advance_days
 from d20.db.session import (
     MAX_RESERVATIONS,
     create_session,
@@ -651,6 +652,11 @@ def book_session(store_id):
     if start_time is None or end_time is None or end_time <= start_time:
         flash("End time must be later than start time.")
         start_time, end_time = 9, 20
+    max_advance = None
+    max_date = None
+    if g.user:
+        max_advance = get_user_advance_days(g.user["id"], store_id)
+        max_date = str(date.today() + timedelta(days=max_advance))
     tables = get_available_tables(store_id, day, start_time, end_time)
     unvailable_tables = get_unavailable_tables(store_id, day, start_time, end_time)
     return render_template(
@@ -660,6 +666,8 @@ def book_session(store_id):
         unvailable_tables=unvailable_tables,
         day=day,
         today=str(date.today()),
+        max_date=max_date,
+        max_advance=max_advance,
         start_time=start_time,
         end_time=end_time,
     )
@@ -774,6 +782,24 @@ def confirm_booking(store_id, table_num):
 
     if get_reservation_count(g.user["id"]) >= MAX_RESERVATIONS:
         flash("You have reached the maximum number of active reservations.")
+        return redirect(
+            url_for(
+                "stores.select_games",
+                store_id=store_id,
+                table_num=table_num,
+                day=day,
+                start_time=start_time,
+                end_time=end_time,
+            )
+        )
+
+    booking_date = date.fromisoformat(day)
+    days_ahead = (booking_date - date.today()).days
+    max_advance = get_user_advance_days(g.user["id"], store_id)
+    if days_ahead > max_advance:
+        flash(
+            f"Your loyalty tier allows booking up to {max_advance} day(s) in advance."
+        )
         return redirect(
             url_for(
                 "stores.select_games",

@@ -94,6 +94,45 @@ def test_redemption_decreases_balance_without_downgrading_lifetime_tier(app):
         assert row["tier_code"] == "Gold"
 
 
+def test_checkout_awards_session_hour_loyalty_points_once(client, app):
+    with app.app_context():
+        db = get_db()
+        store_id = create_store("checkout-loyalty-store", "Checkout Loyalty Store")
+        db.execute(
+            'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+            (store_id,),
+        )
+        session_id = db.execute(
+            """
+            INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
+            VALUES (1, %s, 1, '2099-01-01', 10, 12)
+            RETURNING id
+            """,
+            (store_id,),
+        ).fetchone()["id"]
+        db.commit()
+
+    with client.session_transaction() as sess:
+        sess["store_id"] = store_id
+
+    response = client.post(f"/mystore/session/{session_id}/checkout")
+    assert response.status_code == 302
+
+    with app.app_context():
+        row = get_loyalty_row(1, store_id)
+        assert row["points"] == 10
+        assert row["lifetime_points"] == 10
+        assert row["tier_code"] == "Bronze"
+
+    second_response = client.post(f"/mystore/session/{session_id}/checkout")
+    assert second_response.status_code == 302
+
+    with app.app_context():
+        row = get_loyalty_row(1, store_id)
+        assert row["points"] == 10
+        assert row["lifetime_points"] == 10
+
+
 def test_loyalty_points_cannot_go_negative_in_sql(app):
     with app.app_context():
         store_id = create_store()
@@ -447,7 +486,7 @@ def test_loyalty_redemption_points_spent_constraint_is_named(app):
                 (1, store_id, 0, "Invalid redemption"),
             )
             db.commit()
-        assert_check_constraint(exc_info, "loyaltyredemption_points_spent_positive")
+        assert_check_constraint(exc_info, "loyaltyredemption_points_spent_nonzero")
         db.rollback()
 
 

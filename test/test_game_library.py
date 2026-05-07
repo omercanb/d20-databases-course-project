@@ -516,7 +516,8 @@ class TestMyStoreSplitViews:
         self._setup_store_session(client, app, username="split_sessions", name="Split Sessions")
         response = client.get("/mystore/sessions")
         assert response.status_code == 200
-        assert b"Upcoming Sessions" in response.data
+        assert b"Active Sessions" in response.data
+        assert b"Pending Sessions" in response.data
 
     def test_mystore_split_views_require_store_auth(self, client):
         for path in (
@@ -603,16 +604,16 @@ class TestMyStoreSessionsFiltering:
         self._setup_store_with_sessions(client, app)
         response = client.get("/mystore/sessions")
         assert response.status_code == 200
-        assert b"2099-01-01" in response.data
-        assert b"2099-01-02" in response.data
+        assert b"01 Jan 2099" in response.data
+        assert b"02 Jan 2099" in response.data
         assert b"Apply Filter" in response.data
 
     def test_sessions_view_filters_by_from_day(self, client, app):
         self._setup_store_with_sessions(client, app)
         response = client.get("/mystore/sessions?from_day=2099-01-02")
         assert response.status_code == 200
-        assert b"2099-01-01" not in response.data
-        assert b"2099-01-02" in response.data
+        assert b"01 Jan 2099" not in response.data
+        assert b"02 Jan 2099" in response.data
 
 
 # ---------------------------------------------------------------------------
