@@ -26,6 +26,9 @@
         {% if tournament.players_per_match == 2 %}1v1{% else %}{{ tournament.players_per_match }}-player FFA{% endif %}
       </div>
       <div class="col-md-3"><strong>Entry fee:</strong> {{ tournament.entry_fee_points }} pts</div>
+      {% if tournament.min_loyalty_tier %}
+      <div class="col-md-3"><strong>Min Tier:</strong> <span class="badge bg-info text-dark">{{ tournament.min_loyalty_tier }}</span></div>
+      {% endif %}
       <div class="col-md-3"><strong>Sponsor:</strong> {{ tournament.sponsor_name or '—' }}</div>
       <div class="col-md-3"><strong>Start:</strong> {{ tournament.start_date.strftime('%d %b %Y, %H:%M') if
         tournament.start_date else '—' }}</div>
@@ -54,7 +57,13 @@
   {% endif %}
 
   {% if tournament.status == 'in_progress' and not rounds %}
-  <form method="POST" action="{{ url_for('tournament.generate_bracket', tournament_id=tournament.id) }}">
+  <form method="POST" action="{{ url_for('tournament.generate_bracket', tournament_id=tournament.id) }}" class="d-flex align-items-center gap-2">
+    {% if tournament.format == 'single_elimination' %}
+    <div class="form-check mb-0 bg-light border rounded px-3 py-1">
+      <input class="form-check-input" type="checkbox" name="seeded" value="1" id="seeded_bracket">
+      <label class="form-check-label small fw-medium" for="seeded_bracket">Seeded Bracket (by wins)</label>
+    </div>
+    {% endif %}
     <button type="submit" class="btn btn-primary" data-confirm="Generate the bracket now? This cannot be undone.">
       Generate Bracket
     </button>

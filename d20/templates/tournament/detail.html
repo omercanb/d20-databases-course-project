@@ -25,6 +25,14 @@
           <dt class="col-sm-4">Start</dt>     <dd class="col-sm-8">{{ tournament.start_date.strftime('%d %b %Y, %H:%M') if tournament.start_date else '—' }}</dd>
           <dt class="col-sm-4">End</dt>       <dd class="col-sm-8">{{ tournament.end_date.strftime('%d %b %Y, %H:%M') if tournament.end_date else '—' }}</dd>
           <dt class="col-sm-4">Entry fee</dt> <dd class="col-sm-8">{{ tournament.entry_fee_points }} pts</dd>
+          <dt class="col-sm-4">Requirement</dt>
+          <dd class="col-sm-8">
+            {% if tournament.min_loyalty_tier %}
+              <span class="badge bg-info text-dark">{{ tournament.min_loyalty_tier }} Tier+</span>
+            {% else %}
+              None
+            {% endif %}
+          </dd>
           <dt class="col-sm-4">Sponsor</dt>   <dd class="col-sm-8">{{ tournament.sponsor_name or '—' }}</dd>
           <dt class="col-sm-4">Prizes</dt>    <dd class="col-sm-8">{{ tournament.prize_description or '—' }}</dd>
         </dl>
@@ -38,14 +46,35 @@
         <p class="text-muted small mb-0">Participants registered</p>
         {% if tournament.status == 'registration_open' and g.user %}
           {% if registered %}
-            <span class="badge bg-success py-2">✓ You are registered</span>
-          {% else %}
-            <form action="{{ url_for('tournament.register_for_tournament', tournament_id=tournament.id) }}" method="POST">
-              <button type="submit" class="btn btn-primary w-100"
-                data-confirm="Register for {{ tournament.name }}? This will cost {{ tournament.entry_fee_points }} pts (or a free entry if available).">
-                Register ({{ tournament.entry_fee_points }} pts)
+            <span class="badge bg-success py-2 mb-2 d-block w-100">✓ You are registered</span>
+            <form action="{{ url_for('tournament.deregister_for_tournament', tournament_id=tournament.id) }}" method="POST">
+              <button type="submit" class="btn btn-outline-danger w-100 btn-sm"
+                data-confirm="Are you sure you want to deregister? Your points/free entry will be refunded.">
+                Deregister & Refund
               </button>
             </form>
+          {% else %}
+            {% if eligibility and not eligibility.meets_tier_requirement %}
+              <div class="alert alert-warning py-2 mb-2 small text-start">
+                <strong>Ineligible:</strong> Requires {{ tournament.min_loyalty_tier }} tier or higher. You are currently {{ eligibility.tier_code }} tier.
+              </div>
+              <button class="btn btn-secondary w-100" disabled>Register (Ineligible)</button>
+            {% else %}
+              <form action="{{ url_for('tournament.register_for_tournament', tournament_id=tournament.id) }}" method="POST">
+                {% if eligibility and eligibility.free_entries_available > 0 %}
+                <div class="form-check mb-2 text-start small">
+                   <input class="form-check-input" type="checkbox" name="use_free_entry" value="yes" id="free_entry_check">
+                  <label class="form-check-label" for="free_entry_check">
+                    Use a free entry ({{ eligibility.free_entries_available }} remaining)
+                  </label>
+                </div>
+                {% endif %}
+                <button type="submit" class="btn btn-primary w-100"
+                  data-confirm="Register for {{ tournament.name }}? This will cost {{ tournament.entry_fee_points }} pts (unless using a free entry).">
+                  Register ({{ tournament.entry_fee_points }} pts)
+                </button>
+              </form>
+            {% endif %}
           {% endif %}
         {% elif not g.user and tournament.status == 'registration_open' %}
           <a href="{{ url_for('auth.login') }}" class="btn btn-outline-primary">Log in to register</a>

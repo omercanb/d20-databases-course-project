@@ -65,6 +65,7 @@
         <div class="d-flex gap-3 small mt-1">
           <span>👥 {{ t.participant_count }} / {{ t.max_participants }}</span>
           <span>🎫 {{ t.entry_fee_points }} pts</span>
+          {% if t.min_loyalty_tier %}<span>⭐ {{ t.min_loyalty_tier }} Tier+</span>{% endif %}
           {% if t.sponsor_name %}<span>🏆 {{ t.sponsor_name }}</span>{% endif %}
         </div>
       </div>

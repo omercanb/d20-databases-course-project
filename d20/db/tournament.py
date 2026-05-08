@@ -48,19 +48,19 @@ def get_store_tables(store_id):
 
 def create_tournament(store_id, game_id, name, fmt, max_participants,
                       players_per_match, entry_fee_points, sponsor_name,
-                      start_date, end_date, prize_description, table_nums):
+                      start_date, end_date, prize_description, table_nums, min_loyalty_tier=None):
     """Create a tournament and assign the given tables to it."""
     db = get_db()
     row = _row(db.execute(
         """
         INSERT INTO Tournament
             (store_id, game_id, name, format, max_participants, players_per_match,
-             entry_fee_points, sponsor_name, start_date, end_date, prize_description)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+             entry_fee_points, sponsor_name, start_date, end_date, prize_description, min_loyalty_tier)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING id
         """,
         (store_id, game_id, name, fmt, max_participants, players_per_match,
-         entry_fee_points, sponsor_name, start_date, end_date, prize_description),
+         entry_fee_points, sponsor_name, start_date, end_date, prize_description, min_loyalty_tier),
     ))
     t_id = row["id"]
     for tnum in table_nums:
@@ -72,7 +72,7 @@ def create_tournament(store_id, game_id, name, fmt, max_participants,
     return t_id
 
 
-def update_tournament(tournament_id, store_id, name, max_participants, sponsor_name, start_date, end_date, prize_description):
+def update_tournament(tournament_id, store_id, name, max_participants, sponsor_name, start_date, end_date, prize_description, min_loyalty_tier=None):
     """Update editable tournament fields and sync related Session dates."""
     db = get_db()
     
@@ -88,10 +88,11 @@ def update_tournament(tournament_id, store_id, name, max_participants, sponsor_n
             sponsor_name = %s,
             start_date = %s,
             end_date = %s,
-            prize_description = %s
+            prize_description = %s,
+            min_loyalty_tier = %s
         WHERE id = %s AND store_id = %s
         """,
-        (name, max_participants, sponsor_name, start_date, end_date, prize_description, tournament_id, store_id)
+        (name, max_participants, sponsor_name, start_date, end_date, prize_description, min_loyalty_tier, tournament_id, store_id)
     )
     
     db.execute(
@@ -214,7 +215,7 @@ def get_participants(tournament_id):
     db = get_db()
     return _rows(db.execute(
         """
-        SELECT tp.*, u.username
+        SELECT tp.*, u.username, u.tournament_wins
         FROM TournamentParticipant tp
         JOIN "User" u ON u.id = tp.user_id
         WHERE tp.tournament_id = %s
@@ -233,14 +234,62 @@ def is_registered(tournament_id, user_id):
     return r is not None
 
 
-def register_participant(tournament_id, user_id):
+def register_participant(tournament_id, user_id, use_free_entry=False):
     """Insert into TournamentParticipant; the DB trigger handles all eligibility checks."""
     db = get_db()
     db.execute(
-        "INSERT INTO TournamentParticipant (tournament_id, user_id) VALUES (%s, %s)",
+        "INSERT INTO TournamentParticipant (tournament_id, user_id, used_free_entry) VALUES (%s, %s, %s)",
+        (tournament_id, user_id, use_free_entry),
+    )
+    db.commit()
+
+
+def deregister_participant(tournament_id, user_id):
+    """Delete from TournamentParticipant; the DB trigger handles refunds."""
+    db = get_db()
+    db.execute(
+        "DELETE FROM TournamentParticipant WHERE tournament_id=%s AND user_id=%s",
         (tournament_id, user_id),
     )
     db.commit()
+
+
+def get_user_tournament_eligibility(tournament_id, user_id):
+    """Return dict with tier_code, free_entries_available, meets_tier_requirement."""
+    db = get_db()
+    t = _row(db.execute("SELECT store_id, min_loyalty_tier FROM Tournament WHERE id=%s", (tournament_id,)))
+    if not t:
+        return None
+    store_id = t["store_id"]
+    min_tier = t["min_loyalty_tier"]
+
+    # Ensure user has a LoyaltyPoint record at this store (trigger does this on insert, but we need it before)
+    db.execute(
+        "INSERT INTO LoyaltyPoint (user_id, store_id, points, lifetime_points) VALUES (%s, %s, 0, 0) ON CONFLICT DO NOTHING",
+        (user_id, store_id)
+    )
+    db.commit()
+
+    lp = _row(db.execute("SELECT tier_code, used_free_tournament_entries FROM LoyaltyPoint WHERE user_id=%s AND store_id=%s", (user_id, store_id)))
+    tier_code = lp["tier_code"] if lp else "Bronze"
+    used_entries = lp["used_free_tournament_entries"] if lp else 0
+
+    lt = _row(db.execute("SELECT min_points, free_tournament_entries FROM LoyaltyTier WHERE store_id=%s AND code=%s", (store_id, tier_code)))
+    free_allowed = lt["free_tournament_entries"] if lt else 0
+    free_entries_available = max(0, free_allowed - used_entries)
+
+    meets_tier_requirement = True
+    if min_tier:
+        min_lt = _row(db.execute("SELECT min_points FROM LoyaltyTier WHERE store_id=%s AND code=%s", (store_id, min_tier)))
+        user_lt = _row(db.execute("SELECT min_points FROM LoyaltyTier WHERE store_id=%s AND code=%s", (store_id, tier_code)))
+        if min_lt and user_lt:
+            meets_tier_requirement = user_lt["min_points"] >= min_lt["min_points"]
+
+    return {
+        "tier_code": tier_code,
+        "free_entries_available": free_entries_available,
+        "meets_tier_requirement": meets_tier_requirement
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +304,7 @@ def _get_allocated_tables(tournament_id):
     ))
 
 
-def generate_single_elimination_bracket(tournament_id):
+def generate_single_elimination_bracket(tournament_id, seeded=False):
     """Generate a seeded-random single-elimination bracket and persist TournamentMatch rows."""
     db = get_db()
     participants = get_participants(tournament_id)
@@ -265,12 +314,29 @@ def generate_single_elimination_bracket(tournament_id):
     if len(participants) < 2:
         raise ValueError("Need at least 2 participants to generate a bracket.")
 
-    random.shuffle(participants)
     n = len(participants)
     # Pad to next power of 2
     size = 1
     while size < n:
         size *= 2
+
+    if seeded:
+        participants.sort(key=lambda p: p.get("tournament_wins", 0), reverse=True)
+        players = [p["user_id"] for p in participants]
+        while len(players) < size:
+            players.append(None)
+
+        # Standard bracket seeding (1 plays N, 2 plays N-1, etc.)
+        slots = [0]
+        for i in range(1, int(math.log2(size)) + 1):
+            slots = [x for s in slots for x in (s, 2**i - 1 - s)]
+        
+        match_players = [players[slots[i]] for i in range(size)]
+    else:
+        random.shuffle(participants)
+        match_players = [p["user_id"] for p in participants]
+        while len(match_players) < size:
+            match_players.append(None)
 
     total_rounds = int(math.log2(size))
     table_cycle = 0
@@ -280,9 +346,9 @@ def generate_single_elimination_bracket(tournament_id):
     bye_match_ids = []          # track which round-1 matches are BYEs
     player_idx = 0
     for m in range(size // 2):
-        p1 = participants[player_idx]["user_id"] if player_idx < n else None
+        p1 = match_players[player_idx]
         player_idx += 1
-        p2 = participants[player_idx]["user_id"] if player_idx < n else None
+        p2 = match_players[player_idx]
         player_idx += 1
 
         is_bye = (p2 is None)
@@ -385,7 +451,7 @@ def generate_round_robin_bracket(tournament_id):
     db.commit()
 
 
-def generate_ffa_single_elimination_bracket(tournament_id, players_per_match):
+def generate_ffa_single_elimination_bracket(tournament_id, players_per_match, seeded=False):
     """
     Single-elimination bracket where each match has `players_per_match` players.
     Winner of each match advances. No player1_id/player2_id — uses TournamentMatchParticipant.
@@ -396,33 +462,52 @@ def generate_ffa_single_elimination_bracket(tournament_id, players_per_match):
     if not tables:
         raise ValueError("No tables assigned to this tournament.")
     K = players_per_match
-    random.shuffle(participants)
-    players = [p["user_id"] for p in participants]
 
-    # Pad to the next power of K
-    size = 1
-    while size < len(players):
-        size *= K
-    # Pad with byes (None)
-    while len(players) < size:
-        players.append(None)
+    # Calculate number of matches per round
+    curr = len(participants)
+    round_matches = []
+    while curr > 1:
+        m = math.ceil(curr / K)
+        round_matches.append(m)
+        curr = m
 
+    # Sort or shuffle participants
+    if seeded:
+        participants.sort(key=lambda p: p.get("tournament_wins", 0), reverse=True)
+    else:
+        random.shuffle(participants)
+        
+    current_items = [p["user_id"] for p in participants]
+    
     table_cycle = 0
-
-    def _create_round(player_groups, rnd):
-        nonlocal table_cycle
-        match_ids = []
-        for m_idx, group in enumerate(player_groups):
-            real_players = [p for p in group if p is not None and p != "TBD"]
-            is_empty = all((p is None) for p in group)
-            if is_empty:
-                match_ids.append(None)
-                continue
+    all_rounds_match_ids = []
+    
+    for rnd_idx, num_matches in enumerate(round_matches):
+        rnd = rnd_idx + 1
+        num_items = len(current_items)
+        
+        # Capacities: "fill tables first" -> K, K, ..., remainder
+        capacities = [K] * (num_matches - 1)
+        remainder = num_items - (num_matches - 1) * K
+        if remainder > 0:
+            capacities.append(remainder)
             
-            non_nones = [p for p in group if p is not None]
+        groups = [[] for _ in range(num_matches)]
+        for i, item in enumerate(current_items):
+            target = i % num_matches
+            while len(groups[target]) >= capacities[target]:
+                target = (target + 1) % num_matches
+            groups[target].append(item)
             
+        next_items = [] # these will be the match_ids for the current round
+        
+        for m_idx, group in enumerate(groups):
             t = tables[table_cycle % len(tables)]
             table_cycle += 1
+            
+            # Match is a bye if it only has 1 incoming item (player or previous match)
+            is_bye = (len(group) == 1)
+            
             row = _row(db.execute(
                 """
                 INSERT INTO TournamentMatch
@@ -430,55 +515,35 @@ def generate_ffa_single_elimination_bracket(tournament_id, players_per_match):
                 VALUES (%s,%s,%s,%s,%s,%s)
                 RETURNING id
                 """,
-                (tournament_id, rnd, m_idx + 1, t["store_id"], t["table_num"],
-                 len(non_nones) == 1),
+                (tournament_id, rnd, m_idx + 1, t["store_id"], t["table_num"], is_bye),
             ))
             mid = row["id"]
-            match_ids.append(mid)
-            # Insert participants
-            for uid in real_players:
-                db.execute(
-                    "INSERT INTO TournamentMatchParticipant (match_id, user_id) VALUES (%s,%s)",
-                    (mid, uid),
-                )
-        return match_ids
-
-    # Build rounds iteratively
-    rnd = 1
-    current_players = players
-    prev_match_ids = None
-
-    all_round_match_ids = []
-    while len([p for p in current_players if p is not None]) > 1:
-        groups = [current_players[i:i+K] for i in range(0, len(current_players), K)]
-        match_ids = _create_round(groups, rnd)
-        all_round_match_ids.append(match_ids)
-        # Next round will have one slot per match (winner advances)
-        current_players = ["TBD" if m is not None else None for m in match_ids]
-        prev_match_ids = match_ids
-        rnd += 1
-        if len([p for p in current_players if p is not None]) <= 1:
-            break
-
-    # Wire next_match_id
-    for i, round_match_ids in enumerate(all_round_match_ids[:-1]):
-        next_round = all_round_match_ids[i + 1]
-        for j, mid in enumerate(round_match_ids):
-            if mid is not None:
-                next_mid = next_round[j // K] if j // K < len(next_round) else None
-                if next_mid:
+            next_items.append(mid)
+            
+            if rnd == 1:
+                # Insert participants
+                for uid in group:
+                    db.execute(
+                        "INSERT INTO TournamentMatchParticipant (match_id, user_id) VALUES (%s,%s)",
+                        (mid, uid),
+                    )
+            else:
+                # Wire next_match_id of the PREVIOUS round's matches
+                for prev_mid in group:
                     db.execute(
                         "UPDATE TournamentMatch SET next_match_id=%s WHERE id=%s",
-                        (next_mid, mid),
+                        (mid, prev_mid),
                     )
+                    
+        all_rounds_match_ids.append(next_items)
+        current_items = next_items
 
-    # Auto-advance single-player byes (only one real player in the group)
-    for round_match_ids in all_round_match_ids:
+    # Auto-advance single-item byes (only one incoming item in the group)
+    for round_match_ids in all_rounds_match_ids:
         for mid in round_match_ids:
-            if mid is None:
-                continue
             m = _row(db.execute("SELECT * FROM TournamentMatch WHERE id=%s", (mid,)))
             if m and m["is_bye"]:
+                # For round 1, we immediately know the user_id of the single player
                 parts = _rows(db.execute(
                     "SELECT user_id FROM TournamentMatchParticipant WHERE match_id=%s", (mid,)
                 ))
@@ -488,11 +553,13 @@ def generate_ffa_single_elimination_bracket(tournament_id, players_per_match):
                         "UPDATE TournamentMatch SET winner_id=%s, is_played=TRUE WHERE id=%s",
                         (winner_uid, mid),
                     )
+                    # And copy them to the next match
                     if m["next_match_id"]:
                         db.execute(
                             "INSERT INTO TournamentMatchParticipant (match_id, user_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
                             (m["next_match_id"], winner_uid),
                         )
+
     db.commit()
 
 
