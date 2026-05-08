@@ -96,6 +96,12 @@
                                       style="display:inline;">
                                     <button type="submit" class="btn btn-sm btn-outline-warning">Deactivate</button>
                                 </form>
+                                {% else %}
+                                <form method="post"
+                                      action="{{ url_for('stores.activate_voucher_route', voucher_id=v['id']) }}"
+                                      style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-outline-success">Activate</button>
+                                </form>
                                 {% endif %}
                                 <form method="post"
                                       action="{{ url_for('stores.delete_voucher_route', voucher_id=v['id']) }}"
