@@ -90,6 +90,13 @@
                                         data-bs-target="#edit-{{ v['id'] }}">
                                     Edit
                                 </button>
+                                {% if v['is_active'] %}
+                                <form method="post"
+                                      action="{{ url_for('stores.deactivate_voucher_route', voucher_id=v['id']) }}"
+                                      style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-outline-warning">Deactivate</button>
+                                </form>
+                                {% endif %}
                                 <form method="post"
                                       action="{{ url_for('stores.delete_voucher_route', voucher_id=v['id']) }}"
                                       style="display:inline;"

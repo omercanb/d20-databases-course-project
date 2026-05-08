@@ -1259,6 +1259,20 @@ def edit_voucher(voucher_id):
     return redirect(url_for("stores.my_store_vouchers"))
 
 
+@bp.route("/mystore/vouchers/<int:voucher_id>/deactivate", methods=("POST",))
+@store_login_required
+def deactivate_voucher_route(voucher_id):
+    from d20.db import get_db
+    db = get_db()
+    db.execute(
+        "UPDATE LoyaltyVoucher SET is_active=FALSE WHERE id=%s AND store_id=%s",
+        (voucher_id, g.store["id"]),
+    )
+    db.commit()
+    flash("Voucher deactivated.")
+    return redirect(url_for("stores.my_store_vouchers"))
+
+
 @bp.route("/mystore/vouchers/<int:voucher_id>/delete", methods=("POST",))
 @store_login_required
 def delete_voucher_route(voucher_id):
