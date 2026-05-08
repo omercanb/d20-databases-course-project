@@ -151,6 +151,7 @@ CREATE TABLE Session (
     checkout_status TEXT NOT NULL DEFAULT 'active' CHECK (checkout_status IN ('active', 'checked_out')),
     is_tournament   BOOLEAN NOT NULL DEFAULT FALSE,
     tournament_id   INTEGER,  -- set after Tournament table is created; FK added via ALTER TABLE below
+    checked_in      BOOLEAN NOT NULL DEFAULT FALSE,
     FOREIGN KEY (store_id, table_num) REFERENCES "Table"(store_id, table_num),
     FOREIGN KEY (user_id) REFERENCES "User"(id)
 );

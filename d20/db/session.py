@@ -242,6 +242,12 @@ def delete_session(session_id):
     db.commit()
 
 
+def check_in_session(session_id):
+    db = get_db()
+    db.execute("UPDATE Session SET checked_in = TRUE WHERE id = %s", (session_id,))
+    db.commit()
+
+
 def get_available_tables(store_id, day, start_time, end_time):
     return (
         get_db()
