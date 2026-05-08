@@ -47,6 +47,18 @@
           <input type="number" class="form-control" value="{{ tournament.entry_fee_points }}" disabled>
         </div>
 
+        {# Min Loyalty Tier #}
+        <div class="col-md-4">
+          <label class="form-label fw-medium">Minimum Loyalty Tier</label>
+          <select name="min_loyalty_tier" class="form-select">
+            <option value="">None (open to all)</option>
+            {% for tier in tiers %}
+              <option value="{{ tier.code }}" {% if tournament.min_loyalty_tier == tier.code %}selected{% endif %}>{{ tier.code }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Restrict entry to players at or above this tier.</div>
+        </div>
+
         {# Sponsor #}
         <div class="col-md-6">
           <label class="form-label fw-medium">Sponsor Name</label>

@@ -666,7 +666,22 @@ def seed_tournament_test(game_ids):
         (ts_id, game_ids[1], "TournamentTest FFA Elimination", start_se, end_se),
     ).fetchone()["id"]
 
+    # Massive 3-Person FFA Single Elimination (64 players, 2 tables)
+    start_mass = (datetime.now() + timedelta(days=15)).strftime("%Y-%m-%d %H:%M")
+    end_mass   = (datetime.now() + timedelta(days=15, hours=8)).strftime("%Y-%m-%d %H:%M")
+    mass = db.execute(
+        """
+        INSERT INTO Tournament
+            (store_id, game_id, name, format, max_participants, players_per_match,
+             entry_fee_points, start_date, end_date, prize_description)
+        VALUES (%s,%s,%s,'single_elimination',64,3, 0,%s,%s,'Massive bracket test')
+        RETURNING id
+        """,
+        (ts_id, game_ids[1], "TournamentTest Massive FFA 3", start_mass, end_mass),
+    ).fetchone()["id"]
+
     # Assign tables to both tournaments
+    # Assign tables to both tournaments (4 tables for rr and se)
     tables = db.execute(
         "SELECT table_num FROM \"Table\" WHERE store_id=%s ORDER BY table_num", (ts_id,)
     ).fetchall()
@@ -676,8 +691,35 @@ def seed_tournament_test(game_ids):
                 "INSERT INTO TournamentTable (tournament_id, store_id, table_num) VALUES (%s,%s,%s)",
                 (tid, ts_id, t["table_num"]),
             )
+    
+    # Assign only 2 tables for the massive tournament to test seat limits
+    for t in tables[:2]:
+        db.execute(
+            "INSERT INTO TournamentTable (tournament_id, store_id, table_num) VALUES (%s,%s,%s)",
+            (mass, ts_id, t["table_num"]),
+        )
+
+    # ── 4b. Create 64 test users for the massive tournament ─────────────────
+    mass_user_ids = []
+    for i in range(1, 65):
+        name = f"mass{i}"
+        uid = create_user(name, name)
+        mass_user_ids.append(uid)
+        
+        db.execute(
+            """
+            INSERT INTO LoyaltyPoint (user_id, store_id, points, lifetime_points)
+            VALUES (%s, %s, 0, 0)
+            ON CONFLICT (user_id, store_id) DO UPDATE
+              SET points = EXCLUDED.points,
+                  lifetime_points = EXCLUDED.lifetime_points
+            """,
+            (uid, ts_id),
+        )
+    db.commit()
 
     # ── 5. Register all 7 users while registration is still open ────────────
+    # ── 5. Register all users while registration is still open ────────────
     for uid in tour_ids:
         for tid in (rr, se):
             db.execute(
@@ -688,10 +730,21 @@ def seed_tournament_test(game_ids):
                 """,
                 (tid, uid),
             )
+            
+    for uid in mass_user_ids:
+        db.execute(
+            """
+            INSERT INTO TournamentParticipant (tournament_id, user_id)
+            VALUES (%s, %s)
+            ON CONFLICT DO NOTHING
+            """,
+            (mass, uid),
+        )
     db.commit()
 
     # ── 6. Close registration so tournaments are ready to bracket ───────────
-    for tid in (rr, se):
+    # ── 6. Close registration so tournaments are ready to bracket ───────────
+    for tid in (rr, se, mass):
         db.execute(
             "UPDATE Tournament SET registration_open=FALSE, status='registration_open' WHERE id=%s",
             (tid,),

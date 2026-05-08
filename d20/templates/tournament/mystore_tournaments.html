@@ -21,6 +21,7 @@
               <th class="ps-4">Name</th>
               <th>Game</th>
               <th>Format</th>
+              <th>Tier Req</th>
               <th class="text-center">Participants</th>
               <th>Start Date</th>
               <th>Status</th>
@@ -33,6 +34,7 @@
                 <td class="ps-4 fw-medium">{{ t.name }}</td>
                 <td>{{ t.game_name }}</td>
                 <td><span class="badge bg-secondary">{{ t.format | replace('_', ' ') | title }}</span></td>
+                <td>{% if t.min_loyalty_tier %}<span class="badge bg-info text-dark">{{ t.min_loyalty_tier }}</span>{% else %}—{% endif %}</td>
                 <td class="text-center">{{ t.participant_count }} / {{ t.max_participants }}</td>
                 <td class="small text-muted">{{ t.start_date.strftime('%d %b %Y') if t.start_date else '—' }}</td>
                 <td>
