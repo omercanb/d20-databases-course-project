@@ -24,6 +24,8 @@ from d20.db.session import (
     get_session,
     get_session_games,
     get_sessions_with_store_by_user,
+    is_session_not_attended,
+    session_has_ended,
 )
 from d20.db.stores import create_store, get_store, get_store_by_id
 from d20.db.user import create_user, get_user, get_user_by_id
@@ -187,7 +189,13 @@ def view_sessions():
     for sess in sessions:
         sess_dict = dict(sess)
         sess_dict["games"] = get_session_games(sess["id"])
-        if sess["checkout_status"] == "checked_out" or sess["day"] < today:
+        sess_dict["is_not_attended"] = is_session_not_attended(
+            sess, today, current_hour
+        )
+        if (
+            sess["checkout_status"] == "checked_out"
+            or session_has_ended(sess, today, current_hour)
+        ):
             past.append(sess_dict)
         else:
             upcoming.append(sess_dict)
@@ -236,6 +244,10 @@ def check_in_user_session(session_id):
 
     if sess["day"] != today or sess["start_time"] > current_hour:
         flash("You can only check in when the session has started.")
+        return redirect(url_for("auth.view_sessions"))
+
+    if sess["end_time"] <= current_hour:
+        flash("This session has already ended.")
         return redirect(url_for("auth.view_sessions"))
 
     if sess["checked_in"]:
@@ -339,6 +351,7 @@ def rate_session_games(session_id):
 @login_required
 def view_loyalty():
     from d20.db.loyalty import REDEMPTION_RATE
+    from d20.db.voucher import get_customer_vouchers, REWARD_TYPE_LABELS
     db = get_db()
     points_rows = db.execute(
         """
@@ -350,8 +363,16 @@ def view_loyalty():
         """,
         (g.user["id"],)
     ).fetchall()
-    
-    return render_template("auth/loyalty.html", points=points_rows, redemption_rate=REDEMPTION_RATE)
+
+    all_vouchers = get_customer_vouchers(g.user["id"])
+
+    return render_template(
+        "auth/loyalty.html",
+        points=points_rows,
+        redemption_rate=REDEMPTION_RATE,
+        all_vouchers=all_vouchers,
+        reward_type_labels=REWARD_TYPE_LABELS,
+    )
 
 
 @bp.route("/loyalty/redeem", methods=("POST",))

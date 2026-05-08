@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+{% block title %}Loyalty Rewards — {{ store['name'] }}{% endblock %}
+{% block header %}
+    <h1>Loyalty Rewards — {{ store['name'] }}</h1>
+{% endblock %}
+{% block content %}
+<div class="container">
+
+    {% if g.user %}
+    <div class="alert alert-primary d-flex align-items-center mb-4" role="alert">
+        <strong class="me-2">Your Points Balance at {{ store['name'] }}:</strong>
+        <span class="badge bg-primary rounded-pill fs-6">{{ user_points }} pts</span>
+    </div>
+    {% endif %}
+
+    <!-- Available Vouchers -->
+    <section class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white py-3">
+            <h5 class="card-title mb-0">Available Vouchers</h5>
+        </div>
+        <div class="card-body p-0">
+            {% if vouchers %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4">Voucher Name</th>
+                            <th>Description</th>
+                            <th>Applies To</th>
+                            <th>Reward</th>
+                            <th class="text-center">Cost (pts)</th>
+                            <th class="text-end pe-4">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for v in vouchers %}
+                        <tr>
+                            <td class="ps-4 fw-semibold">{{ v['name'] }}</td>
+                            <td class="text-muted small">{{ v['description'] or '—' }}</td>
+                            <td>{{ reward_type_labels[v['reward_type']] }}</td>
+                            <td>${{ "%.2f"|format(v['reward_value']) }} off</td>
+                            <td class="text-center">
+                                <span class="badge bg-secondary">{{ v['point_cost'] }} pts</span>
+                            </td>
+                            <td class="text-end pe-4">
+                                {% if g.user %}
+                                    {% if user_points >= v['point_cost'] %}
+                                    <form method="post"
+                                          action="{{ url_for('stores.buy_store_voucher', store_id=store['id'], voucher_id=v['id']) }}"
+                                          style="display:inline;">
+                                        <button type="submit" class="btn btn-sm btn-success">
+                                            Buy for {{ v['point_cost'] }} pts
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <span class="text-muted small">Not enough points</span>
+                                    {% endif %}
+                                {% else %}
+                                    <a href="{{ url_for('auth.login') }}" class="btn btn-sm btn-outline-primary">Log in to buy</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-4 text-muted">
+                <p>No vouchers are currently available at this store.</p>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- Your Vouchers at this Store -->
+    {% if g.user and user_vouchers %}
+    <section class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">Your Vouchers at {{ store['name'] }}</h5>
+            <span class="badge bg-success">
+                {{ user_vouchers | selectattr('is_used', 'equalto', false) | list | length }} available
+            </span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4">Name</th>
+                            <th>Reward</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-end pe-4">Date Issued</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for v in user_vouchers %}
+                        <tr class="{% if v['is_used'] %}text-muted{% endif %}">
+                            <td class="ps-4">{{ v['voucher_name'] }}</td>
+                            <td>${{ "%.2f"|format(v['reward_value']) }} off {{ reward_type_labels[v['reward_type']] }}</td>
+                            <td class="text-center">
+                                {% if v['is_used'] %}
+                                <span class="badge bg-secondary">Used</span>
+                                {% else %}
+                                <span class="badge bg-success">Available</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4 small text-muted">{{ v['issued_at'] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <div class="mt-3">
+        <a href="{{ url_for('stores.store', store_id=store['id']) }}" class="btn btn-outline-secondary">
+            Back to Store
+        </a>
+    </div>
+
+</div>
+{% endblock %}

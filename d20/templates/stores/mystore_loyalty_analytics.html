@@ -1,0 +1,256 @@
+{% extends 'base.html' %}
+{% from 'stores/_loyalty_macros.html' import tier_badge with context %}
+
+{% block title %}Loyalty Statistics - {{ g.store['name'] }}{% endblock %}
+{% block header %}<h1>Loyalty Statistics</h1>{% endblock %}
+
+{% block content %}
+{% set active_tab = 'loyalty' %}
+{% include 'stores/_mystore_nav.html' %}
+{% set loyalty_tab = 'stats' %}
+{% include 'stores/_mystore_loyalty_nav.html' %}
+
+{% if selected_tier %}
+  <div class="d-flex align-items-center gap-2 mb-4">
+    <span class="small text-muted">Filtered by:</span>
+    {{ tier_badge(selected_tier, selected_tier, 'stores.my_store_loyalty_analytics') }}
+  </div>
+{% endif %}
+
+{# ── Points Distribution Across Tiers ──────────────────────────────────── #}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-white py-3">
+    <h5 class="mb-0">Points Distribution Across Tiers</h5>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-4">Tier</th>
+            <th class="text-center">Customers</th>
+            <th class="text-center">% of Total</th>
+            <th class="text-center">Active Pts</th>
+            <th class="text-center">Lifetime Pts</th>
+            <th class="text-center">Min</th>
+            <th class="text-center">Avg</th>
+            <th class="text-center">Max</th>
+            <th class="text-end pe-4">Discount %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for tier in analytics.tier_distribution %}
+            <tr>
+              <td class="ps-4">{{ tier_badge(tier.tier, selected_tier, 'stores.my_store_loyalty_analytics') }}</td>
+              <td class="text-center fw-medium">{{ tier.customer_count }}</td>
+              <td class="text-center">
+                {% if tier.pct_of_customers is not none %}{{ tier.pct_of_customers }}%{% else %}&mdash;{% endif %}
+              </td>
+              <td class="text-center">{{ tier.total_active_points }}</td>
+              <td class="text-center">{{ tier.total_lifetime_points }}</td>
+              <td class="text-center text-muted">{{ tier.min_lifetime if tier.min_lifetime is not none else '&mdash;' }}</td>
+              <td class="text-center">{{ tier.avg_lifetime if tier.avg_lifetime is not none else '&mdash;' }}</td>
+              <td class="text-center text-muted">{{ tier.max_lifetime if tier.max_lifetime is not none else '&mdash;' }}</td>
+              <td class="text-end pe-4">{{ tier.discount_percent }}%</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="9" class="text-center py-4 text-muted">No tier data yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# ── Redemption Rates ──────────────────────────────────────────────────── #}
+<div class="row g-4 mb-4">
+  <div class="col-lg-5">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-header bg-white py-3">
+        <h5 class="mb-0">Redemption Overview</h5>
+      </div>
+      <div class="card-body">
+        {% set r = analytics.redemption_overview %}
+        <ul class="list-group list-group-flush">
+          <li class="list-group-item d-flex justify-content-between px-0">
+            <span>Total Redemptions</span>
+            <span class="fw-bold">{{ r.total_redemptions }}</span>
+          </li>
+          <li class="list-group-item d-flex justify-content-between px-0">
+            <span>Total Points Redeemed</span>
+            <span class="fw-bold">{{ r.total_points_redeemed }}</span>
+          </li>
+          <li class="list-group-item d-flex justify-content-between px-0">
+            <span>Avg per Redemption</span>
+            <span class="fw-bold">{{ r.avg_per_redemption }} pts</span>
+          </li>
+          <li class="list-group-item d-flex justify-content-between px-0">
+            <span>Min Redemption</span>
+            <span>{{ r.min_redemption }} pts</span>
+          </li>
+          <li class="list-group-item d-flex justify-content-between px-0">
+            <span>Max Redemption</span>
+            <span>{{ r.max_redemption }} pts</span>
+          </li>
+          <li class="list-group-item d-flex justify-content-between px-0">
+            <span>Redemption Rate</span>
+            <span class="badge bg-primary fs-6">
+              {% if r.redemption_rate_pct is not none %}{{ r.redemption_rate_pct }}%{% else %}&mdash;{% endif %}
+            </span>
+          </li>
+        </ul>
+        <p class="small text-muted mt-3 mb-0">
+          Redemption rate = points redeemed / lifetime points awarded.
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-header bg-white py-3">
+        <h5 class="mb-0">Redemptions by Tier</h5>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-4">Tier</th>
+                <th class="text-center">Count</th>
+                <th class="text-center">Total Redeemed</th>
+                <th class="text-center">Avg</th>
+                <th class="text-center">Min</th>
+                <th class="text-end pe-4">Max</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in analytics.redemption_by_tier %}
+                <tr>
+                  <td class="ps-4">{{ tier_badge(row.tier, selected_tier, 'stores.my_store_loyalty_analytics') }}</td>
+                  <td class="text-center">{{ row.redemption_count }}</td>
+                  <td class="text-center fw-medium">{{ row.total_redeemed }}</td>
+                  <td class="text-center">{{ row.avg_redeemed }}</td>
+                  <td class="text-center text-muted">{{ row.min_redeemed if row.min_redeemed is not none else '&mdash;' }}</td>
+                  <td class="text-end pe-4 text-muted">{{ row.max_redeemed if row.max_redeemed is not none else '&mdash;' }}</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="6" class="text-center py-4 text-muted">No redemptions yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Revenue Impact of Discounts ───────────────────────────────────────── #}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-white py-3">
+    <h5 class="mb-0">Revenue Impact of Loyalty Discounts</h5>
+  </div>
+  <div class="card-body p-0">
+    {% set rev = analytics.revenue_impact %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-4">Metric</th>
+            <th class="text-end pe-4">Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="ps-4">Gross Revenue</td>
+            <td class="text-end pe-4 fw-bold text-success">${{ "%.2f"|format(rev.gross_revenue) }}</td>
+          </tr>
+          <tr>
+            <td class="ps-4">Total Discount Given</td>
+            <td class="text-end pe-4 fw-bold text-danger">${{ "%.2f"|format(rev.total_discount) }}</td>
+          </tr>
+          <tr>
+            <td class="ps-4">Net Revenue</td>
+            <td class="text-end pe-4 fw-bold">${{ "%.2f"|format(rev.net_revenue) }}</td>
+          </tr>
+          <tr>
+            <td class="ps-4">Discount % of Gross</td>
+            <td class="text-end pe-4 fw-medium">{% if rev.discount_pct is not none %}{{ rev.discount_pct }}%{% else %}&mdash;{% endif %}</td>
+          </tr>
+          <tr class="table-group-divider">
+            <td class="ps-4">Total Bills Generated</td>
+            <td class="text-end pe-4">{{ rev.total_bills }}</td>
+          </tr>
+          <tr>
+            <td class="ps-4">Bills With Loyalty Discount</td>
+            <td class="text-end pe-4">{{ rev.bills_with_discount }}</td>
+          </tr>
+          <tr>
+            <td class="ps-4">Average Discount per Bill</td>
+            <td class="text-end pe-4">${{ "%.2f"|format(rev.avg_discount) }}</td>
+          </tr>
+          <tr>
+            <td class="ps-4">Smallest Discount (non-zero)</td>
+            <td class="text-end pe-4">{% if rev.min_discount_nonzero is not none %}${{ "%.2f"|format(rev.min_discount_nonzero) }}{% else %}&mdash;{% endif %}</td>
+          </tr>
+          <tr>
+            <td class="ps-4">Largest Discount</td>
+            <td class="text-end pe-4">${{ "%.2f"|format(rev.max_discount) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# ── Most Loyal Customers ──────────────────────────────────────────────── #}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-white py-3">
+    <h5 class="mb-0">Top 10 Most Loyal Customers</h5>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-4">#</th>
+            <th>Customer</th>
+            <th class="text-center">Tier</th>
+            <th class="text-center">Lifetime Pts</th>
+            <th class="text-center">Current Balance</th>
+            <th class="text-center">Points Spent</th>
+            <th class="text-center">Redemptions</th>
+            <th class="text-center">Discount Earned</th>
+            <th class="text-center">Sessions</th>
+            <th class="text-end pe-4">Total Spent</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in analytics.most_loyal %}
+            <tr>
+              <td class="ps-4 text-muted">{{ loop.index }}</td>
+              <td class="fw-medium">
+                <a href="{{ url_for('stores.my_store_customer_loyalty_profile', user_id=c.user_id) }}"
+                   class="text-decoration-none">
+                  {{ c.username }}
+                </a>
+              </td>
+              <td class="text-center">{{ tier_badge(c.tier_code, selected_tier, 'stores.my_store_loyalty_analytics') }}</td>
+              <td class="text-center">{{ c.lifetime_points }}</td>
+              <td class="text-center">
+                <span class="badge bg-success">{{ c.current_points }}</span>
+              </td>
+              <td class="text-center">{{ c.points_spent }}</td>
+              <td class="text-center">{{ c.redemption_count }}</td>
+              <td class="text-center">${{ "%.2f"|format(c.discount_value) }}</td>
+              <td class="text-center">{{ c.session_count }}</td>
+              <td class="text-end pe-4 fw-bold">${{ "%.2f"|format(c.total_spent) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="10" class="text-center py-4 text-muted">No loyalty data yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

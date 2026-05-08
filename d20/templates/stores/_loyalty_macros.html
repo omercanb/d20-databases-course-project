@@ -1,0 +1,16 @@
+{% macro tier_badge(tier_name, selected_tier=None, endpoint=None) %}
+    {% set cls %}{% if tier_name == 'Gold' %}bg-warning text-dark{% elif tier_name == 'Silver' %}bg-secondary{% else %}bg-dark bg-opacity-50{% endif %}{% endset %}
+    {% if endpoint %}
+        {% if selected_tier == tier_name %}
+            <a href="{{ url_for(endpoint) }}"
+               class="badge {{ cls }} text-decoration-none"
+               title="Remove filter">{{ tier_name }} &times;</a>
+        {% else %}
+            <a href="{{ url_for(endpoint, tier=tier_name) }}"
+               class="badge {{ cls }} text-decoration-none"
+               title="Filter by {{ tier_name }}">{{ tier_name }}</a>
+        {% endif %}
+    {% else %}
+        <span class="badge {{ cls }}">{{ tier_name }}</span>
+    {% endif %}
+{% endmacro %}

@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+{% block title %}Voucher Management{% endblock %}
+{% block header %}
+    <h1>Voucher Management</h1>
+{% endblock %}
+{% block content %}
+{% set active_tab = 'vouchers' %}
+{% include 'stores/_mystore_nav.html' %}
+
+<div class="container">
+
+    <!-- Add New Voucher -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white py-3">
+            <h5 class="card-title mb-0">Add New Voucher</h5>
+        </div>
+        <div class="card-body">
+            <form method="post" action="{{ url_for('stores.add_voucher') }}" class="row g-3">
+                <div class="col-md-3">
+                    <label for="name" class="form-label">Voucher Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="name" name="name" required placeholder="e.g. $5 off food">
+                </div>
+                <div class="col-md-4">
+                    <label for="description" class="form-label">Description <span class="text-muted small">(optional)</span></label>
+                    <input type="text" class="form-control" id="description" name="description" placeholder="Short description">
+                </div>
+                <div class="col-md-2">
+                    <label for="point_cost" class="form-label">Point Cost <span class="text-danger">*</span></label>
+                    <input type="number" class="form-control" id="point_cost" name="point_cost" min="1" required placeholder="e.g. 100">
+                </div>
+                <div class="col-md-2">
+                    <label for="reward_type" class="form-label">Applies To <span class="text-danger">*</span></label>
+                    <select class="form-select" id="reward_type" name="reward_type" required>
+                        {% for key, label in reward_type_labels.items() %}
+                        <option value="{{ key }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="reward_value" class="form-label">Discount ($) <span class="text-danger">*</span></label>
+                    <input type="number" class="form-control" id="reward_value" name="reward_value" min="0.01" step="0.01" required placeholder="e.g. 5.00">
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Add Voucher</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Existing Vouchers -->
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3">
+            <h5 class="card-title mb-0">Existing Vouchers</h5>
+        </div>
+        <div class="card-body p-0">
+            {% if vouchers %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4">Name</th>
+                            <th>Description</th>
+                            <th>Applies To</th>
+                            <th>Discount</th>
+                            <th class="text-center">Point Cost</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-end pe-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for v in vouchers %}
+                        <tr>
+                            <td class="ps-4 fw-semibold">{{ v['name'] }}</td>
+                            <td class="text-muted small">{{ v['description'] or '—' }}</td>
+                            <td>{{ reward_type_labels[v['reward_type']] }}</td>
+                            <td>${{ "%.2f"|format(v['reward_value']) }} off</td>
+                            <td class="text-center">
+                                <span class="badge bg-secondary">{{ v['point_cost'] }} pts</span>
+                            </td>
+                            <td class="text-center">
+                                {% if v['is_active'] %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="collapse"
+                                        data-bs-target="#edit-{{ v['id'] }}">
+                                    Edit
+                                </button>
+                                <form method="post"
+                                      action="{{ url_for('stores.delete_voucher_route', voucher_id=v['id']) }}"
+                                      style="display:inline;"
+                                      onsubmit="return confirm('Delete this voucher?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <!-- Inline edit row -->
+                        <tr class="collapse" id="edit-{{ v['id'] }}">
+                            <td colspan="7" class="bg-light p-3">
+                                <form method="post"
+                                      action="{{ url_for('stores.edit_voucher', voucher_id=v['id']) }}"
+                                      class="row g-2">
+                                    <div class="col-md-3">
+                                        <label class="form-label">Name</label>
+                                        <input type="text" class="form-control form-control-sm" name="name" value="{{ v['name'] }}" required>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Description</label>
+                                        <input type="text" class="form-control form-control-sm" name="description" value="{{ v['description'] or '' }}">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Point Cost</label>
+                                        <input type="number" class="form-control form-control-sm" name="point_cost" value="{{ v['point_cost'] }}" min="1" required>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Applies To</label>
+                                        <select class="form-select form-select-sm" name="reward_type" required>
+                                            {% for key, label in reward_type_labels.items() %}
+                                            <option value="{{ key }}" {% if v['reward_type'] == key %}selected{% endif %}>{{ label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-1">
+                                        <label class="form-label">Discount ($)</label>
+                                        <input type="number" class="form-control form-control-sm" name="reward_value" value="{{ v['reward_value'] }}" min="0.01" step="0.01" required>
+                                    </div>
+                                    <div class="col-md-1 d-flex align-items-end">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="is_active" id="active-{{ v['id'] }}" {% if v['is_active'] %}checked{% endif %}>
+                                            <label class="form-check-label" for="active-{{ v['id'] }}">Active</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <button type="submit" class="btn btn-sm btn-primary">Save Changes</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                data-bs-toggle="collapse"
+                                                data-bs-target="#edit-{{ v['id'] }}">Cancel</button>
+                                    </div>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5 text-muted">
+                <p>No vouchers created yet. Add one above to get started.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+<ul class="nav nav-pills mb-3">
+    <li class="nav-item">
+        <a class="nav-link {% if loyalty_tab == 'settings' %}active{% endif %}"
+           href="{{ url_for('stores.my_store_loyalty') }}">Loyalty Settings</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if loyalty_tab == 'stats' %}active{% endif %}"
+           href="{{ url_for('stores.my_store_loyalty_analytics') }}">Loyalty Statistics</a>
+    </li>
+</ul>

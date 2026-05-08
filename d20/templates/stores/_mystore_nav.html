@@ -24,6 +24,10 @@
            href="{{ url_for('stores.my_store_loyalty') }}">Loyalty</a>
     </li>
     <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'vouchers' %}active{% endif %}"
+           href="{{ url_for('stores.my_store_vouchers') }}">Vouchers</a>
+    </li>
+    <li class="nav-item">
         <a class="nav-link {% if active_tab == 'tournaments' %}active{% endif %}"
            href="{{ url_for('tournament.my_store_tournaments') }}">Tournaments</a>
     </li>
