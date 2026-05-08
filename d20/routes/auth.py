@@ -375,6 +375,75 @@ def view_loyalty():
     )
 
 
+@bp.route("/loyalty/<int:store_id>/how-it-works")
+@login_required
+def view_loyalty_policy(store_id):
+    from d20.db.loyalty import REDEMPTION_RATE
+
+    default_back_url = url_for("auth.view_loyalty")
+    back_url = request.args.get("next") or default_back_url
+    if not back_url.startswith("/") or back_url.startswith("//"):
+        back_url = default_back_url
+    back_label = "Back to My Loyalty Points"
+    if back_url == url_for("stores.store_loyalty", store_id=store_id):
+        back_label = "Back to Loyalty Rewards"
+    elif back_url != default_back_url:
+        back_label = "Back"
+
+    db = get_db()
+    store = db.execute(
+        """
+        SELECT s.id, s.name,
+               COALESCE(lp.points, 0) AS points,
+               COALESCE(lp.tier_code, 'Bronze') AS tier_code
+        FROM Store s
+        LEFT JOIN LoyaltyPoint lp
+          ON lp.store_id = s.id
+         AND lp.user_id = %s
+        WHERE s.id = %s
+        """,
+        (g.user["id"], store_id),
+    ).fetchone()
+    if store is None:
+        flash("Store not found.")
+        return redirect(url_for("auth.view_loyalty"))
+
+    point_rules = db.execute(
+        """
+        SELECT action_code, points_per_unit
+        FROM LoyaltyPointRule
+        WHERE store_id = %s
+        ORDER BY CASE action_code
+            WHEN 'session_hour' THEN 1
+            WHEN 'food_dollar' THEN 2
+            WHEN 'game_rating' THEN 3
+            WHEN 'tournament_participation' THEN 4
+            ELSE 5
+        END
+        """,
+        (store_id,),
+    ).fetchall()
+    tiers = db.execute(
+        """
+        SELECT code, min_points, discount_percent, reservation_advance_days, free_tournament_entries
+        FROM LoyaltyTier
+        WHERE store_id = %s
+        ORDER BY min_points ASC
+        """,
+        (store_id,),
+    ).fetchall()
+
+    return render_template(
+        "auth/loyalty_policy.html",
+        store=store,
+        point_rules=point_rules,
+        tiers=tiers,
+        redemption_rate=REDEMPTION_RATE,
+        back_url=back_url,
+        back_label=back_label,
+    )
+
+
 @bp.route("/loyalty/redeem", methods=("POST",))
 @login_required
 def redeem_loyalty_points():

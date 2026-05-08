@@ -1059,6 +1059,97 @@ def test_store_specific_point_rule_update_changes_earning_values(app):
         assert get_point_rule(other_store_id, "game_rating") == pytest.approx(5)
 
 
+def test_user_loyalty_policy_page_shows_store_specific_rules_and_tiers(client, app):
+    with app.app_context():
+        store_id = create_store("policy-store", "Policy Store")
+        update_store_loyalty_point_rules(
+            store_id,
+            [
+                {"action_code": "session_hour", "points_per_unit": 8},
+                {"action_code": "food_dollar", "points_per_unit": 2},
+                {"action_code": "game_rating", "points_per_unit": 12},
+                {"action_code": "tournament_participation", "points_per_unit": 30},
+            ],
+        )
+        update_store_loyalty_tiers(
+            store_id,
+            [
+                {
+                    "code": "Bronze",
+                    "min_points": 0,
+                    "discount_percent": 0,
+                    "reservation_advance_days": 2,
+                    "free_tournament_entries": 0,
+                },
+                {
+                    "code": "Silver",
+                    "min_points": 500,
+                    "discount_percent": 7.5,
+                    "reservation_advance_days": 10,
+                    "free_tournament_entries": 1,
+                },
+                {
+                    "code": "Gold",
+                    "min_points": 900,
+                    "discount_percent": 15,
+                    "reservation_advance_days": 21,
+                    "free_tournament_entries": 2,
+                },
+            ],
+        )
+        add_points(1, store_id, 900)
+
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+
+    response = client.get(f"/auth/loyalty/{store_id}/how-it-works")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "Policy Store Loyalty Policy" in body
+    assert "How It Works" in body
+    assert "Table session hour" in body
+    assert "8 pts" in body
+    assert "$90.00" in body
+    assert "Gold" in body
+    assert "15%" in body
+    assert "21" in body
+    assert "2" in body
+
+
+def test_user_loyalty_policy_page_returns_to_store_rewards_when_opened_there(client, app):
+    with app.app_context():
+        store_id = create_store("policy-return-store", "Policy Return Store")
+
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+
+    response = client.get(
+        f"/auth/loyalty/{store_id}/how-it-works?next=/store/{store_id}/loyalty"
+    )
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "Back to Loyalty Rewards" in body
+    assert f'href="/store/{store_id}/loyalty"' in body
+    assert "$0.00" in body
+
+
+def test_store_loyalty_page_links_to_policy_page(client, app):
+    with app.app_context():
+        store_id = create_store("policy-link-store", "Policy Link Store")
+
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+
+    response = client.get(f"/store/{store_id}/loyalty")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "How It Works" in body
+    assert f"/auth/loyalty/{store_id}/how-it-works" in body
+
+
 def test_owner_can_update_store_loyalty_point_rules(client, app):
     with app.app_context():
         store_id = create_store()

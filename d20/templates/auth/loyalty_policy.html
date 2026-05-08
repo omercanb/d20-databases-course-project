@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ store.name }} Loyalty Policy{% endblock %}
+
+{% block header %}
+    <h1>{{ store.name }} Loyalty Policy</h1>
+{% endblock %}
+
+{% block content %}
+    <div class="mb-3">
+        <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">{{ back_label }}</a>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center gap-3">
+            <div>
+                <h5 class="card-title mb-0">{{ store.name }}</h5>
+                <div class="small text-muted">How It Works</div>
+            </div>
+            <div class="text-end small text-muted">
+                <span class="badge bg-secondary me-1">{{ store.tier_code }}</span>
+                <span>{{ store.points }} pts</span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <h6>Earning Points</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <tbody>
+                                {% for rule in point_rules %}
+                                    <tr>
+                                        <td>
+                                            {% if rule.action_code == 'session_hour' %}
+                                                Table session hour
+                                            {% elif rule.action_code == 'food_dollar' %}
+                                                Food/drink dollar
+                                            {% elif rule.action_code == 'game_rating' %}
+                                                Game rating submitted
+                                            {% elif rule.action_code == 'tournament_participation' %}
+                                                Tournament participation
+                                            {% else %}
+                                                {{ rule.action_code }}
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end fw-semibold">{{ "%g"|format(rule.points_per_unit|float) }} pts</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <h6>Redeeming Points</h6>
+                    <div class="bg-light p-3 rounded">
+                        <div class="d-flex justify-content-between">
+                            <span>1 point</span>
+                            <span class="fw-semibold">${{ "%.2f"|format(redemption_rate) }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between mt-2">
+                            <span>Your current balance</span>
+                            <span class="fw-semibold text-success">${{ "%.2f"|format(store.points * redemption_rate) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12">
+                    <h6>Tier Benefits</h6>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Tier</th>
+                                    <th class="text-center">Minimum Lifetime Points</th>
+                                    <th class="text-center">Checkout Discount</th>
+                                    <th class="text-center">Reservation Advance Days</th>
+                                    <th class="text-end">Free Tournament Entries</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tier in tiers %}
+                                    <tr>
+                                        <td>
+                                            {% if tier.code == store.tier_code %}
+                                                <span class="badge bg-primary">{{ tier.code }}</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ tier.code }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">{{ tier.min_points }}</td>
+                                        <td class="text-center">{{ "%g"|format(tier.discount_percent|float) }}%</td>
+                                        <td class="text-center">{{ tier.reservation_advance_days }}</td>
+                                        <td class="text-end">{{ tier.free_tournament_entries }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
