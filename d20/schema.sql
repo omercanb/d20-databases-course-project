@@ -992,7 +992,22 @@ SELECT
 FROM SessionGameCopy sgc
 JOIN Session s ON s.id = sgc.session_id
 JOIN Game g ON g.id = sgc.game_id
-GROUP BY sgc.store_id, s.day::date, g.id, g.name;
+GROUP BY sgc.store_id, s.day::date, g.id, g.name
+
+UNION ALL
+
+SELECT
+    s.store_id,
+    s.day::date AS activity_date,
+    t.game_id AS game_id,
+    g.name AS game_name,
+    COUNT(DISTINCT s.id) AS session_count,
+    COUNT(DISTINCT s.id) AS copy_bookings
+FROM Session s
+JOIN Tournament t ON t.id = s.tournament_id
+JOIN Game g ON g.id = t.game_id
+WHERE s.is_tournament = TRUE
+GROUP BY s.store_id, s.day::date, t.game_id, g.name;
 
 CREATE VIEW vw_store_daily_menu_item_popularity AS
 SELECT

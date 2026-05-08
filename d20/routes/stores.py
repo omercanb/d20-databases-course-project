@@ -188,32 +188,67 @@ def my_store_analytics():
     period_a_end = _parse_date_arg("a_end", current_q_end)
     period_b_start = _parse_date_arg("b_start", previous_q_start)
     period_b_end = _parse_date_arg("b_end", previous_q_end)
-    if period_a_start > period_a_end:
-        period_a_start, period_a_end = period_a_end, period_a_start
-    if period_b_start > period_b_end:
-        period_b_start, period_b_end = period_b_end, period_b_start
+    if period_a_start > period_a_end or period_b_start > period_b_end:
+        flash("Start date cannot be after end date.")
+        return redirect(url_for("stores.my_store_analytics"))
 
     period_a = get_store_analytics_summary(store_id, period_a_start, period_a_end)
     period_b = get_store_analytics_summary(store_id, period_b_start, period_b_end)
-    games_a = [
-        dict(game)
-        for game in get_store_popular_games(store_id, 5, period_a_start, period_a_end)
+
+    games_a_raw = {
+        g["game_name"]: g["session_count"]
+        for g in get_store_popular_games(store_id, 10, period_a_start, period_a_end)
+    }
+    games_b_raw = {
+        g["game_name"]: g["session_count"]
+        for g in get_store_popular_games(store_id, 10, period_b_start, period_b_end)
+    }
+    all_game_names = sorted(
+        set(games_a_raw) | set(games_b_raw),
+        key=lambda n: -(games_a_raw.get(n, 0) + games_b_raw.get(n, 0)),
+    )
+    games_merged = [
+        {
+            "name": n,
+            "sessions_a": games_a_raw.get(n, 0),
+            "sessions_b": games_b_raw.get(n, 0),
+            "delta": games_a_raw.get(n, 0) - games_b_raw.get(n, 0),
+        }
+        for n in all_game_names[:8]
     ]
-    games_b = [
-        dict(game)
-        for game in get_store_popular_games(store_id, 5, period_b_start, period_b_end)
+
+    menu_a_raw = {
+        r["item_name"]: r["quantity_sold"]
+        for r in get_store_popular_menu_items(store_id, 10, period_a_start, period_a_end)
+    }
+    menu_b_raw = {
+        r["item_name"]: r["quantity_sold"]
+        for r in get_store_popular_menu_items(store_id, 10, period_b_start, period_b_end)
+    }
+    all_item_names = sorted(
+        set(menu_a_raw) | set(menu_b_raw),
+        key=lambda n: -(menu_a_raw.get(n, 0) + menu_b_raw.get(n, 0)),
+    )
+    menu_merged = [
+        {
+            "name": n,
+            "sold_a": menu_a_raw.get(n, 0),
+            "sold_b": menu_b_raw.get(n, 0),
+            "delta": menu_a_raw.get(n, 0) - menu_b_raw.get(n, 0),
+        }
+        for n in all_item_names[:8]
     ]
-    menu_a = get_store_popular_menu_items(store_id, 5, period_a_start, period_a_end)
-    menu_b = get_store_popular_menu_items(store_id, 5, period_b_start, period_b_end)
 
     return render_template(
         "stores/mystore_analytics.html",
         period_a=period_a,
         period_b=period_b,
-        games_a=games_a,
-        games_b=games_b,
-        menu_a=menu_a,
-        menu_b=menu_b,
+        period_a_start=period_a_start,
+        period_a_end=period_a_end,
+        period_b_start=period_b_start,
+        period_b_end=period_b_end,
+        games_merged=games_merged,
+        menu_merged=menu_merged,
     )
 
 
