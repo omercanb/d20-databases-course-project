@@ -1,5 +1,5 @@
 import functools
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from uuid import uuid4
 
 from flask import (
@@ -40,6 +40,17 @@ from d20.db.game import (
     update_game_image_url,
 )
 from d20.db.loyalty import get_user_advance_days
+from d20.db.voucher import (
+    REWARD_TYPE_LABELS,
+    buy_voucher,
+    calculate_voucher_discount,
+    create_voucher,
+    delete_voucher,
+    get_customer_vouchers,
+    get_store_vouchers,
+    get_unused_vouchers_for_session,
+    update_voucher,
+)
 from d20.db.session import (
     MAX_RESERVATIONS,
     create_session,
@@ -49,6 +60,7 @@ from d20.db.session import (
     get_session,
     get_unavailable_tables,
     get_upcoming_sessions_with_user_and_games_by_store,
+    is_session_not_attended,
 )
 from d20.db.stores import (
     create_table,
@@ -244,8 +256,6 @@ def my_store_tables():
 @bp.route("/mystore/sessions")
 @store_login_required
 def my_store_sessions():
-    from datetime import datetime
-
     store_id = g.store["id"]
     today = str(date.today())
     current_hour = datetime.now().hour
@@ -261,7 +271,11 @@ def my_store_sessions():
             continue
         if to_day and sess["day"] > to_day:
             continue
-        all_sessions.append(dict(sess))
+        sess_dict = dict(sess)
+        sess_dict["is_not_attended"] = is_session_not_attended(
+            sess, today, current_hour
+        )
+        all_sessions.append(sess_dict)
 
     # Split into active (started today) and pending (not started yet)
     active_sessions = []
@@ -477,12 +491,20 @@ def checkout_session_form(session_id):
     if sess["checkout_status"] == "checked_out":
         return redirect(url_for("stores.view_bill", session_id=session_id))
 
+    if not sess["checked_in"]:
+        flash("Customer must check in before checkout.")
+        return redirect(url_for("stores.my_store_sessions"))
+
     game_copies = get_session_game_copies(session_id)
     food_orders = get_session_orders(session_id)
     food_total = sum(float(o["total_amount"]) for o in food_orders)
 
-    # Calculate potential loyalty discount (unused redemptions)
-    from d20.db.loyalty import REDEMPTION_RATE
+    # Calculate potential loyalty discounts
+    from d20.db.loyalty import (
+        REDEMPTION_RATE,
+        calculate_tier_discount,
+        get_customer_loyalty_profile,
+    )
     db = get_db()
     discount_row = db.execute(
         """
@@ -493,6 +515,23 @@ def checkout_session_form(session_id):
         (sess["user_id"], sess["store_id"])
     ).fetchone()
     loyalty_discount = round(float(discount_row["total_points"] * REDEMPTION_RATE), 2)
+    table_fee = (sess["end_time"] - sess["start_time"]) * 5.0
+    subtotal_before_tier = max(0.0, table_fee + food_total - loyalty_discount)
+    tier_discount, tier_benefits = calculate_tier_discount(
+        sess["user_id"], sess["store_id"], subtotal_before_tier
+    )
+    customer_loyalty_profile = get_customer_loyalty_profile(
+        sess["user_id"], sess["store_id"], session_limit=5
+    )
+
+    available_vouchers = []
+    if sess.get("user_id"):
+        available_vouchers = get_unused_vouchers_for_session(sess["user_id"], sess["store_id"])
+        subtotal_before_voucher = max(0.0, subtotal_before_tier - tier_discount)
+        for voucher in available_vouchers:
+            voucher["applicable_discount"] = calculate_voucher_discount(
+                voucher, table_fee, food_total, subtotal_before_voucher
+            )
 
     return render_template(
         "stores/checkout.html",
@@ -501,6 +540,11 @@ def checkout_session_form(session_id):
         food_orders=food_orders,
         food_total=food_total,
         loyalty_discount=loyalty_discount,
+        tier_discount=tier_discount,
+        tier_benefits=tier_benefits,
+        available_vouchers=available_vouchers,
+        reward_type_labels=REWARD_TYPE_LABELS,
+        customer_loyalty_profile=customer_loyalty_profile,
     )
 
 
@@ -515,6 +559,10 @@ def do_checkout(session_id):
     if sess["checkout_status"] == "checked_out":
         flash("Session already checked out.")
         return redirect(url_for("stores.view_bill", session_id=session_id))
+
+    if not sess["checked_in"]:
+        flash("Customer must check in before checkout.")
+        return redirect(url_for("stores.my_store_sessions"))
 
     game_copies = get_session_game_copies(session_id)
     game_conditions = []
@@ -533,9 +581,11 @@ def do_checkout(session_id):
             }
         )
 
+    customer_voucher_id = request.form.get("customer_voucher_id", type=int)
+
     try:
-        do_checkout_session(session_id, game_conditions)
-        
+        do_checkout_session(session_id, game_conditions, customer_voucher_id)
+
         # Award loyalty points
         from d20.db.loyalty import add_points, get_point_rule
         duration = sess["end_time"] - sess["start_time"]
@@ -961,6 +1011,21 @@ def my_store_loyalty_analytics():
     )
 
 
+@bp.route("/mystore/loyalty/customer/<int:user_id>")
+@store_login_required
+def my_store_customer_loyalty_profile(user_id):
+    from d20.db.loyalty import get_customer_loyalty_profile
+
+    profile = get_customer_loyalty_profile(user_id, g.store["id"], session_limit=20)
+    if profile is None:
+        flash("Customer not found.")
+        return redirect(url_for("stores.my_store_loyalty_analytics"))
+    return render_template(
+        "stores/mystore_loyalty_customer.html",
+        profile=profile,
+    )
+
+
 @bp.route("/mystore/loyalty/tiers", methods=("POST",))
 @store_login_required
 def update_my_store_loyalty_tiers():
@@ -1036,6 +1101,103 @@ def update_my_store_loyalty_point_rules():
     except Exception as e:
         flash(f"Error updating loyalty point earning rules: {str(e)}")
     return redirect(url_for("stores.my_store_loyalty"))
+
+
+@bp.route("/store/<int:store_id>/loyalty")
+def store_loyalty(store_id):
+    store = get_store_by_id(store_id)
+    if store is None:
+        abort(404)
+    vouchers = get_store_vouchers(store_id)
+    user_points = 0
+    user_vouchers = []
+    if g.user:
+        from d20.db.loyalty import get_user_points
+        user_points = get_user_points(g.user["id"], store_id)
+        user_vouchers = get_customer_vouchers(g.user["id"], store_id)
+    return render_template(
+        "stores/store_loyalty.html",
+        store=store,
+        vouchers=vouchers,
+        user_points=user_points,
+        user_vouchers=user_vouchers,
+        reward_type_labels=REWARD_TYPE_LABELS,
+    )
+
+
+@bp.route("/store/<int:store_id>/voucher/<int:voucher_id>/buy", methods=("POST",))
+def buy_store_voucher(store_id, voucher_id):
+    if not g.user:
+        return redirect(url_for("auth.login"))
+    try:
+        buy_voucher(g.user["id"], store_id, voucher_id)
+        flash("Voucher purchased! Check your loyalty page to use it.")
+    except ValueError as e:
+        flash(str(e))
+    except Exception as e:
+        flash(f"Error: {str(e)}")
+    return redirect(url_for("stores.store_loyalty", store_id=store_id))
+
+
+@bp.route("/mystore/vouchers")
+@store_login_required
+def my_store_vouchers():
+    vouchers = get_store_vouchers(g.store["id"], active_only=False)
+    return render_template(
+        "stores/mystore_vouchers.html",
+        vouchers=vouchers,
+        reward_type_labels=REWARD_TYPE_LABELS,
+    )
+
+
+@bp.route("/mystore/vouchers/add", methods=("POST",))
+@store_login_required
+def add_voucher():
+    name = request.form.get("name", "").strip()
+    description = request.form.get("description", "").strip() or None
+    point_cost = request.form.get("point_cost", type=int)
+    reward_type = request.form.get("reward_type", "")
+    reward_value = request.form.get("reward_value", type=float)
+    if not name or point_cost is None or point_cost <= 0 or reward_type not in REWARD_TYPE_LABELS or reward_value is None or reward_value <= 0:
+        flash("All fields required. Point cost and reward value must be positive.")
+        return redirect(url_for("stores.my_store_vouchers"))
+    try:
+        create_voucher(g.store["id"], name, description, point_cost, reward_type, reward_value)
+        flash(f"Voucher '{name}' created.")
+    except Exception as e:
+        flash(f"Error: {str(e)}")
+    return redirect(url_for("stores.my_store_vouchers"))
+
+
+@bp.route("/mystore/vouchers/<int:voucher_id>/edit", methods=("POST",))
+@store_login_required
+def edit_voucher(voucher_id):
+    name = request.form.get("name", "").strip()
+    description = request.form.get("description", "").strip() or None
+    point_cost = request.form.get("point_cost", type=int)
+    reward_type = request.form.get("reward_type", "")
+    reward_value = request.form.get("reward_value", type=float)
+    is_active = request.form.get("is_active") == "on"
+    if not name or point_cost is None or point_cost <= 0 or reward_type not in REWARD_TYPE_LABELS or reward_value is None or reward_value <= 0:
+        flash("All fields required. Point cost and reward value must be positive.")
+        return redirect(url_for("stores.my_store_vouchers"))
+    try:
+        update_voucher(voucher_id, g.store["id"], name, description, point_cost, reward_type, reward_value, is_active)
+        flash("Voucher updated.")
+    except Exception as e:
+        flash(f"Error: {str(e)}")
+    return redirect(url_for("stores.my_store_vouchers"))
+
+
+@bp.route("/mystore/vouchers/<int:voucher_id>/delete", methods=("POST",))
+@store_login_required
+def delete_voucher_route(voucher_id):
+    try:
+        delete_voucher(voucher_id, g.store["id"])
+        flash("Voucher deleted.")
+    except Exception as e:
+        flash(f"Error: {str(e)}")
+    return redirect(url_for("stores.my_store_vouchers"))
 
 
 @bp.route("/mystore/menu/add", methods=("POST",))

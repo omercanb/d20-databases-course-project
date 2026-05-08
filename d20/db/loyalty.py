@@ -73,6 +73,52 @@ def get_point_rule(store_id, action_code):
         return DEFAULT_POINT_RULES[action_code]
     return float(row["points_per_unit"])
 
+
+def get_user_tier_benefits(user_id, store_id):
+    """Return the user's current tier benefits at a store, defaulting to Bronze."""
+    db = get_db()
+    row = db.execute(
+        """
+        SELECT lt.code AS tier_code,
+               lt.discount_percent,
+               lt.reservation_advance_days,
+               lt.free_tournament_entries,
+               COALESCE(lp.points, 0) AS points,
+               COALESCE(lp.lifetime_points, 0) AS lifetime_points,
+               COALESCE(lp.used_free_tournament_entries, 0) AS used_free_tournament_entries
+        FROM LoyaltyTier lt
+        LEFT JOIN LoyaltyPoint lp
+          ON lp.store_id = lt.store_id
+         AND lp.user_id = %s
+         AND lp.tier_code = lt.code
+        WHERE lt.store_id = %s
+          AND lt.code = COALESCE(
+              (SELECT tier_code FROM LoyaltyPoint WHERE user_id = %s AND store_id = %s),
+              'Bronze'
+          )
+        """,
+        (user_id, store_id, user_id, store_id),
+    ).fetchone()
+    if row is None:
+        return {
+            "tier_code": "Bronze",
+            "discount_percent": 0,
+            "reservation_advance_days": 0,
+            "free_tournament_entries": 0,
+            "points": 0,
+            "lifetime_points": 0,
+            "used_free_tournament_entries": 0,
+        }
+    return dict(row)
+
+
+def calculate_tier_discount(user_id, store_id, subtotal):
+    benefits = get_user_tier_benefits(user_id, store_id)
+    discount_percent = float(benefits["discount_percent"] or 0)
+    discount = round(max(0.0, float(subtotal)) * discount_percent / 100, 2)
+    return discount, benefits
+
+
 def redeem_points(user_id, store_id, amount, description=None):
     """Deduct points and record a redemption."""
     amount = int(amount)
@@ -103,6 +149,114 @@ def redeem_points(user_id, store_id, amount, description=None):
     )
     db.commit()
     return amount * REDEMPTION_RATE
+
+
+def get_customer_loyalty_profile(user_id, store_id, session_limit=10):
+    db = get_db()
+    benefits = get_user_tier_benefits(user_id, store_id)
+    user = db.execute(
+        'SELECT id, username FROM "User" WHERE id = %s',
+        (user_id,),
+    ).fetchone()
+    if user is None:
+        return None
+
+    redemption = db.execute(
+        """
+        SELECT COALESCE(SUM(points_spent), 0) AS points_spent,
+               COUNT(*) AS redemption_count
+        FROM LoyaltyRedemption
+        WHERE user_id = %s AND store_id = %s
+        """,
+        (user_id, store_id),
+    ).fetchone()
+
+    billing = db.execute(
+        """
+        SELECT COUNT(b.id) AS bill_count,
+               COALESCE(SUM(b.grand_total), 0) AS total_spent,
+               COALESCE(SUM(b.loyalty_discount), 0) AS point_discount,
+               COALESCE(SUM(b.tier_discount), 0) AS tier_discount,
+               COALESCE(SUM(b.voucher_discount), 0) AS voucher_discount
+        FROM Session s
+        JOIN Bill b ON b.session_id = s.id
+        WHERE s.user_id = %s AND s.store_id = %s
+        """,
+        (user_id, store_id),
+    ).fetchone()
+
+    session_summary = db.execute(
+        """
+        SELECT COUNT(*) AS total_sessions,
+               COUNT(*) FILTER (WHERE checked_in) AS checked_in_sessions,
+               COUNT(*) FILTER (WHERE checkout_status = 'checked_out') AS checked_out_sessions,
+               COUNT(*) FILTER (
+                   WHERE checkout_status != 'checked_out'
+                     AND NOT checked_in
+                     AND (
+                         day::date < CURRENT_DATE
+                         OR (day::date = CURRENT_DATE AND end_time <= EXTRACT(HOUR FROM NOW())::INTEGER)
+                     )
+               ) AS not_attended_sessions
+        FROM Session
+        WHERE user_id = %s AND store_id = %s
+        """,
+        (user_id, store_id),
+    ).fetchone()
+
+    sessions = db.execute(
+        """
+        SELECT s.id, s.day, s.start_time, s.end_time, s.table_num,
+               s.checked_in, s.checkout_status,
+               b.grand_total, b.loyalty_discount, b.tier_discount, b.voucher_discount,
+               COALESCE(
+                   json_agg(
+                       json_build_object('id', g.id, 'name', g.name)
+                       ORDER BY g.name
+                   ) FILTER (WHERE g.id IS NOT NULL),
+                   '[]'::json
+               ) AS games
+        FROM Session s
+        LEFT JOIN Bill b ON b.session_id = s.id
+        LEFT JOIN SessionGameCopy sgc ON sgc.session_id = s.id
+        LEFT JOIN Game g ON g.id = sgc.game_id
+        WHERE s.user_id = %s
+          AND s.store_id = %s
+          AND (
+              s.checkout_status = 'checked_out'
+              OR s.day::date < CURRENT_DATE
+              OR (s.day::date = CURRENT_DATE AND s.end_time <= EXTRACT(HOUR FROM NOW())::INTEGER)
+          )
+        GROUP BY s.id, b.id
+        ORDER BY s.day DESC, s.start_time DESC
+        LIMIT %s
+        """,
+        (user_id, store_id, session_limit),
+    ).fetchall()
+
+    total_discount = (
+        float(billing["point_discount"] or 0)
+        + float(billing["tier_discount"] or 0)
+        + float(billing["voucher_discount"] or 0)
+    )
+
+    return {
+        "user": dict(user),
+        "tier": benefits,
+        "points": benefits["points"],
+        "lifetime_points": benefits["lifetime_points"],
+        "used_free_tournament_entries": benefits["used_free_tournament_entries"],
+        "points_spent": redemption["points_spent"] or 0,
+        "redemption_count": redemption["redemption_count"] or 0,
+        "bill_count": billing["bill_count"] or 0,
+        "total_spent": float(billing["total_spent"] or 0),
+        "point_discount": float(billing["point_discount"] or 0),
+        "tier_discount": float(billing["tier_discount"] or 0),
+        "voucher_discount": float(billing["voucher_discount"] or 0),
+        "total_discount": total_discount,
+        "session_summary": dict(session_summary),
+        "sessions": [dict(session) for session in sessions],
+    }
 
 def update_store_loyalty_tiers(store_id, tiers):
     """Update a store's loyalty thresholds and future perk settings."""
@@ -236,7 +390,7 @@ def get_store_loyalty_stats(store_id, tier_code=None):
 
     customers = db.execute(
         """
-        SELECT u.username, lp.tier_code, lp.points AS current_points,
+        SELECT lp.user_id, u.username, lp.tier_code, lp.points AS current_points,
                lp.lifetime_points
         FROM LoyaltyPoint lp
         JOIN "User" u ON lp.user_id = u.id
@@ -249,7 +403,7 @@ def get_store_loyalty_stats(store_id, tier_code=None):
 
     top_point_holders = db.execute(
         """
-        SELECT username, tier_code, current_points, redeemed_points, lifetime_points, store_rank
+        SELECT user_id, username, tier_code, current_points, redeemed_points, lifetime_points, store_rank
         FROM store_top_loyalty_point_holders
         WHERE store_id = %s
         ORDER BY store_rank ASC

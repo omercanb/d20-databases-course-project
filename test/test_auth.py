@@ -1,6 +1,7 @@
 import pytest
 from flask import g, session
 
+import d20.routes.auth as auth_routes
 from d20.db import get_db
 
 
@@ -108,3 +109,52 @@ def test_cancel_session_with_game_copies(client, auth, app):
 
     assert session_row is None
     assert link_row is None
+
+
+def test_check_in_after_session_end_is_rejected(client, auth, app, monkeypatch):
+    class FixedDateTime:
+        @classmethod
+        def now(cls):
+            return type("FixedNow", (), {"hour": 18})()
+
+    monkeypatch.setattr(auth_routes, "datetime", FixedDateTime)
+    auth.login()
+
+    with app.app_context():
+        db = get_db()
+        today = auth_routes.date.today().isoformat()
+        db.execute(
+            "INSERT INTO Store (username, password, name, address) VALUES (%s, %s, %s, %s)",
+            ("ended_checkin_store", "x", "Ended Checkin Store", "Test Address"),
+        )
+        store_id = db.execute(
+            "SELECT id FROM Store WHERE username = %s", ("ended_checkin_store",)
+        ).fetchone()["id"]
+        db.execute(
+            'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, %s, %s)',
+            (store_id, 1, 4),
+        )
+        session_id = db.execute(
+            """
+            INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
+            VALUES (1, %s, 1, %s, 16, 17)
+            RETURNING id
+            """,
+            (store_id, today),
+        ).fetchone()["id"]
+        db.commit()
+
+    response = client.post(
+        f"/auth/session/{session_id}/checkin",
+        follow_redirects=True,
+    )
+    assert b"This session has already ended." in response.data
+    assert b"Not Attended" in response.data
+
+    with app.app_context():
+        checked_in = get_db().execute(
+            "SELECT checked_in FROM Session WHERE id = %s",
+            (session_id,),
+        ).fetchone()["checked_in"]
+
+    assert checked_in is False

@@ -228,7 +228,12 @@
           {% for c in analytics.most_loyal %}
             <tr>
               <td class="ps-4 text-muted">{{ loop.index }}</td>
-              <td class="fw-medium">{{ c.username }}</td>
+              <td class="fw-medium">
+                <a href="{{ url_for('stores.my_store_customer_loyalty_profile', user_id=c.user_id) }}"
+                   class="text-decoration-none">
+                  {{ c.username }}
+                </a>
+              </td>
               <td class="text-center">{{ tier_badge(c.tier_code, selected_tier, 'stores.my_store_loyalty_analytics') }}</td>
               <td class="text-center">{{ c.lifetime_points }}</td>
               <td class="text-center">

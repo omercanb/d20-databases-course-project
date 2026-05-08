@@ -70,6 +70,26 @@
                         {% endif %}
                     </section>
 
+                    {% if available_vouchers %}
+                    <div class="mt-4">
+                        <label for="voucher-select-form" class="form-label fw-bold">Apply Voucher</label>
+                        <select name="customer_voucher_id" id="voucher-select-form" class="form-select form-select-sm">
+                            <option value="">— No voucher —</option>
+                            {% for v in available_vouchers %}
+                            <option value="{{ v.id }}" {% if v.applicable_discount <= 0 %}disabled{% endif %}>
+                                {{ v.voucher_name }}
+                                ({{ reward_type_labels[v.reward_type] }},
+                                {% if v.applicable_discount > 0 %}
+                                    applies -${{ "%.2f"|format(v.applicable_discount) }}
+                                {% else %}
+                                    not applicable to this bill
+                                {% endif %})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+
                     <div class="mt-4">
                         <button type="submit" id="checkout-submit-btn" class="btn btn-primary btn-lg">
                             Confirm Checkout & Generate Bill
@@ -90,13 +110,103 @@
                         <tr><td>Damage Fee</td><td class="text-end" id="damage-estimate">$0.00</td></tr>
                         {% if loyalty_discount > 0 %}
                         <tr class="table-success text-success">
-                            <td>Loyalty Discount</td>
+                            <td>Redeemed Points Discount</td>
                             <td class="text-end">-${{ "%.2f"|format(loyalty_discount) }}</td>
                         </tr>
                         {% endif %}
-                        <tr class="table-primary fw-bold"><td>Estimated Total</td><td class="text-end" id="est-total">${{ "%.2f"|format(hours * 5.0 + food_total - loyalty_discount) }}</td></tr>
+                        {% if tier_discount > 0 %}
+                        <tr class="table-success text-success">
+                            <td>{{ tier_benefits.tier_code }} Tier Discount ({{ "%.2f"|format(tier_benefits.discount_percent) }}%)</td>
+                            <td class="text-end" id="tier-discount-estimate">-${{ "%.2f"|format(tier_discount) }}</td>
+                        </tr>
+                        {% endif %}
+                        <tr class="table-primary fw-bold"><td>Estimated Total</td><td class="text-end" id="est-total">${{ "%.2f"|format(hours * 5.0 + food_total - loyalty_discount - tier_discount) }}</td></tr>
                     </table>
                 </section>
+
+                {% if customer_loyalty_profile %}
+                <section class="card-section bg-light mt-4">
+                    <div class="d-flex justify-content-between align-items-center gap-2">
+                        <div>
+                            <h2 class="card-section-title mb-1">Customer Loyalty</h2>
+                            <div class="fw-semibold">{{ customer_loyalty_profile.user.username }}</div>
+                            <div class="small text-muted">
+                                {{ customer_loyalty_profile.tier.tier_code }} tier ·
+                                {{ customer_loyalty_profile.points }} current pts ·
+                                {{ customer_loyalty_profile.lifetime_points }} lifetime pts
+                            </div>
+                        </div>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary"
+                                data-bs-toggle="modal"
+                                data-bs-target="#customerLoyaltyModal">
+                            Details
+                        </button>
+                    </div>
+                </section>
+
+                <div class="modal fade" id="customerLoyaltyModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">{{ customer_loyalty_profile.user.username }} Loyalty Profile</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="row g-3 mb-3">
+                                    <div class="col-md-3"><strong>{{ customer_loyalty_profile.tier.tier_code }}</strong><br><span class="text-muted small">Tier</span></div>
+                                    <div class="col-md-3"><strong>{{ customer_loyalty_profile.points }}</strong><br><span class="text-muted small">Current Points</span></div>
+                                    <div class="col-md-3"><strong>{{ customer_loyalty_profile.lifetime_points }}</strong><br><span class="text-muted small">Lifetime Points</span></div>
+                                    <div class="col-md-3"><strong>{{ customer_loyalty_profile.session_summary.total_sessions }}</strong><br><span class="text-muted small">Sessions</span></div>
+                                    <div class="col-md-3"><strong>{{ customer_loyalty_profile.session_summary.checked_in_sessions }}</strong><br><span class="text-muted small">Checked In</span></div>
+                                    <div class="col-md-3"><strong>{{ customer_loyalty_profile.session_summary.not_attended_sessions }}</strong><br><span class="text-muted small">Not Attended</span></div>
+                                    <div class="col-md-3"><strong>${{ "%.2f"|format(customer_loyalty_profile.total_spent) }}</strong><br><span class="text-muted small">Total Spent</span></div>
+                                    <div class="col-md-3"><strong>${{ "%.2f"|format(customer_loyalty_profile.total_discount) }}</strong><br><span class="text-muted small">Discounts</span></div>
+                                </div>
+                                <h6>Recent Past Sessions</h6>
+                                {% if customer_loyalty_profile.sessions %}
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Time</th>
+                                                <th>Games</th>
+                                                <th class="text-end">Bill</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for past in customer_loyalty_profile.sessions %}
+                                            <tr>
+                                                <td>{{ past.day }}</td>
+                                                <td>{{ past.start_time }}:00 - {{ past.end_time }}:00</td>
+                                                <td>
+                                                    {% for game in past.games %}
+                                                        {{ game.name }}{% if not loop.last %}, {% endif %}
+                                                    {% else %}
+                                                        <span class="text-muted">No games</span>
+                                                    {% endfor %}
+                                                </td>
+                                                <td class="text-end">
+                                                    {% if past.grand_total is not none %}
+                                                        ${{ "%.2f"|format(past.grand_total) }}
+                                                    {% else %}
+                                                        <span class="text-muted">No bill</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {% else %}
+                                <p class="text-muted mb-0">No past sessions at this store.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -104,6 +214,8 @@
 <div id="checkout-data"
      data-base-fee="{{ (sess['end_time'] - sess['start_time']) * 5.0 }}"
      data-food-total="{{ food_total }}"
+     data-loyalty-discount="{{ loyalty_discount }}"
+     data-tier-discount-percent="{{ tier_benefits.discount_percent }}"
      style="display:none;"></div>
 
 <script>
@@ -111,6 +223,8 @@
         var data = document.getElementById('checkout-data');
         var baseFee = parseFloat(data.getAttribute('data-base-fee'));
         var foodTotal = parseFloat(data.getAttribute('data-food-total'));
+        var loyaltyDiscount = parseFloat(data.getAttribute('data-loyalty-discount'));
+        var tierDiscountPercent = parseFloat(data.getAttribute('data-tier-discount-percent'));
         var DAMAGE_FEE = 25.00;
 
         document.querySelectorAll('.condition-select').forEach(function(sel) {
@@ -125,7 +239,13 @@
                 }
             });
             document.getElementById('damage-estimate').textContent = '$' + damageFee.toFixed(2);
-            document.getElementById('est-total').textContent = '$' + (baseFee + foodTotal + damageFee).toFixed(2);
+            var subtotalBeforeTier = Math.max(0, baseFee + foodTotal + damageFee - loyaltyDiscount);
+            var tierDiscount = Math.round((subtotalBeforeTier * tierDiscountPercent / 100) * 100) / 100;
+            var tierDiscountEstimate = document.getElementById('tier-discount-estimate');
+            if (tierDiscountEstimate) {
+                tierDiscountEstimate.textContent = '-$' + tierDiscount.toFixed(2);
+            }
+            document.getElementById('est-total').textContent = '$' + Math.max(0, subtotalBeforeTier - tierDiscount).toFixed(2);
         }
     })();
 </script>

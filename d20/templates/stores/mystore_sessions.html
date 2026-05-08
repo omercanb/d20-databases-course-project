@@ -88,6 +88,11 @@
                                 <div class="session-row">
                                     <div>
                                         <strong>{{ sess['username'] }}</strong>
+                                        {% if sess['is_not_attended'] %}
+                                            <div class="mt-1">
+                                                <span class="badge bg-warning text-dark">Not Attended</span>
+                                            </div>
+                                        {% endif %}
                                     </div>
                                     <div>{{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
                                     <div>Table {{ sess['table_num'] }}</div>
@@ -106,6 +111,17 @@
                                             <span class="badge bg-success me-1">Checked Out</span>
                                             <a href="{{ url_for('stores.view_bill', session_id=sess['id']) }}"
                                                class="btn btn-sm btn-outline-success">View Bill</a>
+                                        {% elif sess['is_not_attended'] %}
+                                            <span class="badge bg-warning text-dark">Not Attended</span>
+                                        {% elif not sess['checked_in'] %}
+                                            <span class="badge bg-secondary">Waiting for Check In</span>
+                                            <form method="post"
+                                                  action="{{ url_for('stores.cancel_store_session', session_id=sess['id']) }}"
+                                                  style="display: inline">
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-danger w-100"
+                                                        data-confirm="Cancel this session?">Cancel</button>
+                                            </form>
                                         {% else %}
                                             <form method="post"
                                                   action="{{ url_for('stores.cancel_store_session', session_id=sess['id']) }}"
@@ -156,6 +172,11 @@
                                 <div class="session-row">
                                     <div>
                                         <strong>{{ sess['username'] }}</strong>
+                                        {% if sess['is_not_attended'] %}
+                                            <div class="mt-1">
+                                                <span class="badge bg-warning text-dark">Not Attended</span>
+                                            </div>
+                                        {% endif %}
                                     </div>
                                     <div>{{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
                                     <div>Table {{ sess['table_num'] }}</div>

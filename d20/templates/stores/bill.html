@@ -39,8 +39,20 @@
                             {% endif %}
                             {% if bill['loyalty_discount'] > 0 %}
                             <tr class="table-success">
-                                <td>Loyalty Discount</td>
+                                <td>Redeemed Points Discount</td>
                                 <td class="text-end">-${{ "%.2f"|format(bill['loyalty_discount']) }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if bill.get('tier_discount', 0) > 0 %}
+                            <tr class="table-success">
+                                <td>Tier Discount</td>
+                                <td class="text-end">-${{ "%.2f"|format(bill['tier_discount']) }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if bill.get('voucher_discount', 0) > 0 %}
+                            <tr class="table-success">
+                                <td>Voucher Discount</td>
+                                <td class="text-end">-${{ "%.2f"|format(bill['voucher_discount']) }}</td>
                             </tr>
                             {% endif %}
                         </tbody>

@@ -22,6 +22,11 @@
                         <div class="session-row">
                             <div>
                                 <strong>{{ sess['store_name'] }}</strong>
+                                {% if sess['is_not_attended'] %}
+                                    <div class="mt-1">
+                                        <span class="badge bg-warning text-dark">Not Attended</span>
+                                    </div>
+                                {% endif %}
                             </div>
                             <div>{{ sess['day'] | pretty_day }} • {{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
                             <div>Table {{ sess['table_num'] }}</div>
@@ -53,7 +58,7 @@
                                 {% elif sess['checked_in'] %}
                                     <a href="{{ url_for('auth.order_food', session_id=sess['id']) }}"
                                        class="btn btn-sm btn-outline-primary w-100">Order Food/Drinks</a>
-                                {% elif sess['day'] == today and sess['start_time'] <= current_hour %}
+                                {% elif sess['day'] == today and sess['start_time'] <= current_hour and current_hour < sess['end_time'] %}
                                     <form method="post"
                                           action="{{ url_for('auth.check_in_user_session', session_id=sess['id']) }}">
                                         <button type="submit"
@@ -102,6 +107,11 @@
                         <div class="session-row past">
                             <div>
                                 <strong>{{ sess['store_name'] }}</strong>
+                                {% if sess['is_not_attended'] %}
+                                    <div class="mt-1">
+                                        <span class="badge bg-warning text-dark">Not Attended</span>
+                                    </div>
+                                {% endif %}
                             </div>
                             <div>{{ sess['day'] }} • {{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
                             <div>Table {{ sess['table_num'] }}</div>

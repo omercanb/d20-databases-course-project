@@ -33,6 +33,7 @@ from d20.db.loyalty import (
     update_store_loyalty_point_rules,
     update_store_loyalty_tiers,
 )
+from d20.db.voucher import create_voucher
 
 
 def seed_users():
@@ -459,6 +460,63 @@ def _seed_extra_bills(user_ids, store_ids):
     db.commit()
 
 
+def seed_vouchers(user_ids, store_ids):
+    """Create sample loyalty vouchers and issue a few unused customer vouchers."""
+    db = get_db()
+    voucher_configs = [
+        [
+            ("Snack Credit", "Take $5 off food and drinks.", 60, "food", 5.00),
+            ("Table Time Credit", "Take $10 off table fees.", 110, "session", 10.00),
+            ("Game Night Credit", "Take $15 off the total bill.", 160, "any", 15.00),
+        ],
+        [
+            ("Coffee Break", "Take $4 off cafe orders.", 45, "food", 4.00),
+            ("Afternoon Table Deal", "Take $8 off table fees.", 90, "session", 8.00),
+            ("VIP Visit Credit", "Take $20 off the total bill.", 220, "any", 20.00),
+        ],
+        [
+            ("Snack Combo Credit", "Take $6 off food and drinks.", 70, "food", 6.00),
+            ("Session Saver", "Take $12 off table fees.", 130, "session", 12.00),
+            ("Premium Night Credit", "Take $18 off the total bill.", 190, "any", 18.00),
+        ],
+    ]
+
+    voucher_ids_by_store = []
+    for index, store_id in enumerate(store_ids):
+        store_voucher_ids = []
+        for name, description, point_cost, reward_type, reward_value in voucher_configs[
+            index % len(voucher_configs)
+        ]:
+            store_voucher_ids.append(
+                create_voucher(
+                    store_id,
+                    name,
+                    description,
+                    point_cost,
+                    reward_type,
+                    reward_value,
+                )
+            )
+        voucher_ids_by_store.append(store_voucher_ids)
+
+    issued_examples = [
+        (user_ids[0], store_ids[0], voucher_ids_by_store[0][0]),
+        (user_ids[1], store_ids[0], voucher_ids_by_store[0][1]),
+        (user_ids[2], store_ids[1], voucher_ids_by_store[1][2]),
+        (user_ids[5], store_ids[2], voucher_ids_by_store[2][0]),
+        (user_ids[7], store_ids[2], voucher_ids_by_store[2][2]),
+    ]
+    for user_id, store_id, voucher_id in issued_examples:
+        db.execute(
+            """
+            INSERT INTO CustomerVoucher (user_id, store_id, voucher_id)
+            VALUES (%s, %s, %s)
+            """,
+            (user_id, store_id, voucher_id),
+        )
+    db.commit()
+
+
 def seed_historical_price_data(user_ids, game_ids):
     """Generate 14 days of historical price data for games."""
     user2_id = user_ids[1]
@@ -654,6 +712,7 @@ def seed_the_universe():
     seed_orders(user_ids, game_ids)
     seed_menus(store_ids)
     seed_loyalty_program(user_ids, store_ids)
+    seed_vouchers(user_ids, store_ids)
     seed_historical_price_data(user_ids, game_ids)
     seed_tournament_test(game_ids)
 

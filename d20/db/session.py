@@ -18,6 +18,20 @@ def get_reservation_count(user_id):
     return row["cnt"]
 
 
+def session_has_ended(sess, today, current_hour):
+    return sess["day"] < today or (
+        sess["day"] == today and sess["end_time"] <= current_hour
+    )
+
+
+def is_session_not_attended(sess, today, current_hour):
+    return (
+        session_has_ended(sess, today, current_hour)
+        and sess["checkout_status"] != "checked_out"
+        and not sess["checked_in"]
+    )
+
+
 def create_session(
     user_id, store_id, table_num, day, start_time, end_time, game_ids=None
 ):

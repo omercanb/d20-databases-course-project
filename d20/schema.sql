@@ -4,6 +4,8 @@ DROP TABLE IF EXISTS TournamentMatch CASCADE;
 DROP TABLE IF EXISTS TournamentParticipant CASCADE;
 DROP TABLE IF EXISTS TournamentTable CASCADE;
 DROP TABLE IF EXISTS Tournament CASCADE;
+DROP TABLE IF EXISTS CustomerVoucher CASCADE;
+DROP TABLE IF EXISTS LoyaltyVoucher CASCADE;
 DROP TABLE IF EXISTS Bill CASCADE;
 DROP TABLE IF EXISTS LoyaltyRedemption CASCADE;
 DROP TABLE IF EXISTS LoyaltyPoint CASCADE;
@@ -215,8 +217,33 @@ CREATE TABLE Bill (
     food_total      NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     damage_fee      NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     loyalty_discount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    tier_discount   NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    voucher_discount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     grand_total     NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     generated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE LoyaltyVoucher (
+    id           SERIAL PRIMARY KEY,
+    store_id     INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
+    name         TEXT NOT NULL,
+    description  TEXT,
+    point_cost   INTEGER NOT NULL CHECK (point_cost > 0),
+    reward_type  TEXT NOT NULL CHECK (reward_type IN ('food', 'session', 'any')),
+    reward_value NUMERIC(10, 2) NOT NULL CHECK (reward_value > 0),
+    is_active    BOOLEAN NOT NULL DEFAULT TRUE,
+    UNIQUE (store_id, name)
+);
+
+CREATE TABLE CustomerVoucher (
+    id         SERIAL PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    store_id   INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
+    voucher_id INTEGER NOT NULL REFERENCES LoyaltyVoucher(id) ON DELETE CASCADE,
+    is_used    BOOLEAN NOT NULL DEFAULT FALSE,
+    bill_id    INTEGER REFERENCES Bill(id),
+    issued_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    used_at    TIMESTAMP
 );
 
 CREATE TABLE MarketParticipant (
@@ -1019,16 +1046,16 @@ CREATE VIEW vw_loyalty_revenue_impact AS
 SELECT
     s.store_id,
     COUNT(b.id) AS total_bills,
-    SUM(b.grand_total + b.loyalty_discount) AS gross_revenue,
-    SUM(b.loyalty_discount) AS total_discount,
+    SUM(b.grand_total + b.loyalty_discount + b.tier_discount + b.voucher_discount) AS gross_revenue,
+    SUM(b.loyalty_discount + b.tier_discount + b.voucher_discount) AS total_discount,
     SUM(b.grand_total) AS net_revenue,
-    ROUND(AVG(b.loyalty_discount), 2) AS avg_discount,
-    MAX(b.loyalty_discount) AS max_discount,
-    MIN(CASE WHEN b.loyalty_discount > 0 THEN b.loyalty_discount END) AS min_discount_nonzero,
-    COUNT(CASE WHEN b.loyalty_discount > 0 THEN 1 END) AS bills_with_discount,
+    ROUND(AVG(b.loyalty_discount + b.tier_discount + b.voucher_discount), 2) AS avg_discount,
+    MAX(b.loyalty_discount + b.tier_discount + b.voucher_discount) AS max_discount,
+    MIN(CASE WHEN b.loyalty_discount + b.tier_discount + b.voucher_discount > 0 THEN b.loyalty_discount + b.tier_discount + b.voucher_discount END) AS min_discount_nonzero,
+    COUNT(CASE WHEN b.loyalty_discount + b.tier_discount + b.voucher_discount > 0 THEN 1 END) AS bills_with_discount,
     ROUND(
-        100.0 * SUM(b.loyalty_discount)
-        / NULLIF(SUM(b.grand_total + b.loyalty_discount), 0),
+        100.0 * SUM(b.loyalty_discount + b.tier_discount + b.voucher_discount)
+        / NULLIF(SUM(b.grand_total + b.loyalty_discount + b.tier_discount + b.voucher_discount), 0),
     1) AS discount_pct
 FROM Bill b
 JOIN Session s ON b.session_id = s.id
@@ -1037,6 +1064,7 @@ GROUP BY s.store_id;
 CREATE VIEW vw_loyalty_most_loyal AS
 SELECT
     lp.store_id,
+    lp.user_id,
     u.username,
     lp.tier_code,
     lp.points AS current_points,

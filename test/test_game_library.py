@@ -4,7 +4,9 @@ import io
 
 import pytest
 
+import d20.routes.stores as store_routes
 from d20.db import get_db
+from d20.db.checkout import checkout_session
 from d20.db.game import (
     get_available_games_during,
     get_game_copies_with_condition,
@@ -519,6 +521,38 @@ class TestMyStoreSplitViews:
         assert b"Active Sessions" in response.data
         assert b"Pending Sessions" in response.data
 
+    def test_mystore_sessions_marks_ended_unchecked_session_not_attended(
+        self, client, app, monkeypatch
+    ):
+        class FixedDateTime:
+            @classmethod
+            def now(cls):
+                return type("FixedNow", (), {"hour": 18})()
+
+        monkeypatch.setattr(store_routes, "datetime", FixedDateTime)
+        store_id = self._setup_store_session(
+            client, app, username="split_no_show", name="Split No Show"
+        )
+        with app.app_context():
+            db = get_db()
+            db.execute(
+                'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+                (store_id,),
+            )
+            db.execute(
+                """
+                INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
+                VALUES (1, %s, 1, %s, 16, 17)
+                """,
+                (store_id, store_routes.date.today().isoformat()),
+            )
+            db.commit()
+
+        response = client.get("/mystore/sessions")
+
+        assert response.status_code == 200
+        assert b"Not Attended" in response.data
+
     def test_mystore_split_views_require_store_auth(self, client):
         for path in (
             "/mystore/overview",
@@ -982,6 +1016,52 @@ class TestCreateSessionAvailability:
                 match="The game you selected has no available copies at the selected time slot.",
             ):
                 create_session(1, store_id, 1, "2099-01-01", 10, 12, [game_id])
+
+    def test_only_copy_damaged_at_checkout_blocks_later_booking(self, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(db, name="CheckoutDamageStore", username="checkoutdamage")
+            game_id = _insert_game(db, name="Checkout Damaged Game", symbol="CDG")
+            _insert_game_copy(db, game_id, store_id)
+            db.execute(
+                'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+                (store_id,),
+            )
+            db.commit()
+
+            session_id = create_session(
+                1, store_id, 1, "2099-01-01", 10, 12, [game_id]
+            )
+
+            checkout_session(
+                session_id,
+                [
+                    {
+                        "game_id": game_id,
+                        "store_id": store_id,
+                        "copy_num": 1,
+                        "condition": "damaged",
+                        "description": "Box crushed during session.",
+                    }
+                ],
+            )
+
+            copy = db.execute(
+                """
+                SELECT condition, is_available
+                FROM GameCopy
+                WHERE game_id = %s AND store_id = %s AND copy_num = 1
+                """,
+                (game_id, store_id),
+            ).fetchone()
+            assert copy["condition"] == "damaged"
+            assert copy["is_available"] is False
+
+            with pytest.raises(
+                ValueError,
+                match="The game you selected has no available copies at the selected time slot.",
+            ):
+                create_session(1, store_id, 1, "2099-01-01", 13, 15, [game_id])
 
     def test_uses_available_copy_not_first_copy(self, app):
         with app.app_context():

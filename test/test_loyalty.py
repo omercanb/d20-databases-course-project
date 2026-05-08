@@ -2,9 +2,11 @@ import pytest
 from psycopg2 import errors
 
 from d20.db import get_db
+from d20.db.checkout import checkout_session
 from d20.db.loyalty import (
     REDEMPTION_RATE,
     add_points,
+    get_customer_loyalty_profile,
     get_loyalty_analytics,
     get_point_rule,
     get_store_loyalty_stats,
@@ -13,6 +15,8 @@ from d20.db.loyalty import (
     update_store_loyalty_point_rules,
     update_store_loyalty_tiers,
 )
+from d20.db.tournament import register_participant
+from d20.db.voucher import create_voucher
 from d20.seed import seed_loyalty_program
 
 
@@ -107,8 +111,8 @@ def test_checkout_awards_session_hour_loyalty_points_once(client, app):
         )
         session_id = db.execute(
             """
-            INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
-            VALUES (1, %s, 1, '2099-01-01', 10, 12)
+            INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time, checked_in)
+            VALUES (1, %s, 1, '2099-01-01', 10, 12, TRUE)
             RETURNING id
             """,
             (store_id,),
@@ -134,6 +138,260 @@ def test_checkout_awards_session_hour_loyalty_points_once(client, app):
         row = get_loyalty_row(1, store_id)
         assert row["points"] == 10
         assert row["lifetime_points"] == 10
+
+
+def test_store_owner_cannot_checkout_before_customer_checkin(client, app):
+    with app.app_context():
+        db = get_db()
+        store_id = create_store("pre-checkin-checkout-store", "Pre Checkin Store")
+        db.execute(
+            'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+            (store_id,),
+        )
+        session_id = db.execute(
+            """
+            INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
+            VALUES (1, %s, 1, '2099-01-01', 10, 12)
+            RETURNING id
+            """,
+            (store_id,),
+        ).fetchone()["id"]
+        db.commit()
+
+    with client.session_transaction() as sess:
+        sess["store_id"] = store_id
+
+    get_response = client.get(
+        f"/mystore/session/{session_id}/checkout",
+        follow_redirects=True,
+    )
+    post_response = client.post(
+        f"/mystore/session/{session_id}/checkout",
+        follow_redirects=True,
+    )
+
+    assert get_response.status_code == 200
+    assert post_response.status_code == 200
+    assert "Customer must check in before checkout." in get_response.get_data(as_text=True)
+    assert "Customer must check in before checkout." in post_response.get_data(as_text=True)
+
+    with app.app_context():
+        db = get_db()
+        bill_count = db.execute(
+            "SELECT COUNT(*) AS count FROM Bill WHERE session_id = %s",
+            (session_id,),
+        ).fetchone()["count"]
+        session = db.execute(
+            "SELECT checkout_status, checked_in FROM Session WHERE id = %s",
+            (session_id,),
+        ).fetchone()
+        loyalty_row = get_loyalty_row(1, store_id)
+
+        assert bill_count == 0
+        assert session["checkout_status"] == "active"
+        assert session["checked_in"] is False
+        assert loyalty_row is None
+
+
+def test_checkout_applies_current_tier_discount(app):
+    with app.app_context():
+        db = get_db()
+        store_id = create_store("tier-discount-store", "Tier Discount Store")
+        db.execute(
+            'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+            (store_id,),
+        )
+        update_store_loyalty_tiers(
+            store_id,
+            [
+                {
+                    "code": "Bronze",
+                    "min_points": 0,
+                    "discount_percent": 0,
+                    "reservation_advance_days": 0,
+                    "free_tournament_entries": 0,
+                },
+                {
+                    "code": "Silver",
+                    "min_points": 500,
+                    "discount_percent": 10,
+                    "reservation_advance_days": 0,
+                    "free_tournament_entries": 0,
+                },
+                {
+                    "code": "Gold",
+                    "min_points": 1000,
+                    "discount_percent": 20,
+                    "reservation_advance_days": 0,
+                    "free_tournament_entries": 1,
+                },
+            ],
+        )
+        add_points(1, store_id, 600)
+        session_id = db.execute(
+            """
+            INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
+            VALUES (1, %s, 1, '2099-01-01', 10, 12)
+            RETURNING id
+            """,
+            (store_id,),
+        ).fetchone()["id"]
+        db.commit()
+
+        bill = checkout_session(session_id, [])
+
+        assert bill["table_fee"] == pytest.approx(10)
+        assert bill["tier_discount"] == pytest.approx(1)
+        assert bill["grand_total"] == pytest.approx(9)
+
+
+def test_checkout_rejects_customer_voucher_from_another_store(app):
+    with app.app_context():
+        db = get_db()
+        store_id = create_store("voucher-checkout-store", "Voucher Checkout Store")
+        other_store_id = create_store("other-voucher-store", "Other Voucher Store")
+        db.execute(
+            'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+            (store_id,),
+        )
+        session_id = db.execute(
+            """
+            INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
+            VALUES (1, %s, 1, '2099-01-01', 10, 12)
+            RETURNING id
+            """,
+            (store_id,),
+        ).fetchone()["id"]
+        db.commit()
+
+        voucher_id = create_voucher(
+            other_store_id,
+            "Wrong Store Credit",
+            "Should not apply outside its store.",
+            50,
+            "any",
+            5,
+        )
+        customer_voucher_id = db.execute(
+            """
+            INSERT INTO CustomerVoucher (user_id, store_id, voucher_id)
+            VALUES (1, %s, %s)
+            RETURNING id
+            """,
+            (other_store_id, voucher_id),
+        ).fetchone()["id"]
+        db.commit()
+
+        with pytest.raises(ValueError, match="Voucher is not valid for this session"):
+            checkout_session(session_id, [], customer_voucher_id)
+
+        bill_count = db.execute(
+            "SELECT COUNT(*) AS count FROM Bill WHERE session_id = %s",
+            (session_id,),
+        ).fetchone()["count"]
+        customer_voucher = db.execute(
+            "SELECT is_used, bill_id FROM CustomerVoucher WHERE id = %s",
+            (customer_voucher_id,),
+        ).fetchone()
+        session = db.execute(
+            "SELECT checkout_status FROM Session WHERE id = %s",
+            (session_id,),
+        ).fetchone()
+
+        assert bill_count == 0
+        assert customer_voucher["is_used"] is False
+        assert customer_voucher["bill_id"] is None
+        assert session["checkout_status"] == "active"
+
+
+def test_checkout_rejects_food_voucher_when_bill_has_no_food(app):
+    with app.app_context():
+        db = get_db()
+        store_id = create_store("food-voucher-store", "Food Voucher Store")
+        db.execute(
+            'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+            (store_id,),
+        )
+        session_id = db.execute(
+            """
+            INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
+            VALUES (1, %s, 1, '2099-01-01', 10, 12)
+            RETURNING id
+            """,
+            (store_id,),
+        ).fetchone()["id"]
+        db.commit()
+
+        voucher_id = create_voucher(
+            store_id,
+            "Food Only Credit",
+            "Only applies to food and drinks.",
+            50,
+            "food",
+            5,
+        )
+        customer_voucher_id = db.execute(
+            """
+            INSERT INTO CustomerVoucher (user_id, store_id, voucher_id)
+            VALUES (1, %s, %s)
+            RETURNING id
+            """,
+            (store_id, voucher_id),
+        ).fetchone()["id"]
+        db.commit()
+
+        with pytest.raises(ValueError, match="Voucher does not apply to this bill"):
+            checkout_session(session_id, [], customer_voucher_id)
+
+        bill_count = db.execute(
+            "SELECT COUNT(*) AS count FROM Bill WHERE session_id = %s",
+            (session_id,),
+        ).fetchone()["count"]
+        customer_voucher = db.execute(
+            "SELECT is_used, bill_id FROM CustomerVoucher WHERE id = %s",
+            (customer_voucher_id,),
+        ).fetchone()
+
+        assert bill_count == 0
+        assert customer_voucher["is_used"] is False
+        assert customer_voucher["bill_id"] is None
+
+
+def test_store_owner_can_create_voucher(client, app):
+    with app.app_context():
+        store_id = create_store("owner-voucher-store", "Owner Voucher Store")
+
+    with client.session_transaction() as sess:
+        sess["store_id"] = store_id
+
+    response = client.post(
+        "/mystore/vouchers/add",
+        data={
+            "name": "Owner Food Credit",
+            "description": "Created from the owner dashboard.",
+            "point_cost": "75",
+            "reward_type": "food",
+            "reward_value": "7.50",
+        },
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        voucher = get_db().execute(
+            """
+            SELECT name, description, point_cost, reward_type, reward_value, is_active
+            FROM LoyaltyVoucher
+            WHERE store_id = %s AND name = %s
+            """,
+            (store_id, "Owner Food Credit"),
+        ).fetchone()
+
+        assert voucher is not None
+        assert voucher["description"] == "Created from the owner dashboard."
+        assert voucher["point_cost"] == 75
+        assert voucher["reward_type"] == "food"
+        assert voucher["reward_value"] == pytest.approx(7.50)
+        assert voucher["is_active"] is True
 
 
 def test_loyalty_points_cannot_go_negative_in_sql(app):
@@ -593,6 +851,107 @@ def test_owner_can_update_store_loyalty_tier_settings(client, app):
         assert gold["free_tournament_entries"] == 2
 
 
+def test_free_tournament_entry_is_used_before_points_are_deducted(app):
+    with app.app_context():
+        db = get_db()
+        store_id = create_store("free-entry-store", "Free Entry Store")
+        db.execute(
+            'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+            (store_id,),
+        )
+        update_store_loyalty_tiers(
+            store_id,
+            [
+                {
+                    "code": "Bronze",
+                    "min_points": 0,
+                    "discount_percent": 0,
+                    "reservation_advance_days": 0,
+                    "free_tournament_entries": 0,
+                },
+                {
+                    "code": "Silver",
+                    "min_points": 500,
+                    "discount_percent": 5,
+                    "reservation_advance_days": 0,
+                    "free_tournament_entries": 0,
+                },
+                {
+                    "code": "Gold",
+                    "min_points": 1000,
+                    "discount_percent": 10,
+                    "reservation_advance_days": 0,
+                    "free_tournament_entries": 1,
+                },
+            ],
+        )
+        add_points(1, store_id, 1200)
+        first_tournament_id = db.execute(
+            """
+            INSERT INTO Tournament
+                (store_id, game_id, name, format, max_participants, players_per_match,
+                 entry_fee_points, start_date, end_date)
+            VALUES (%s, 1, 'Free Entry One', 'single_elimination', 8, 2, 100,
+                    '2099-01-01 10:00', '2099-01-01 12:00')
+            RETURNING id
+            """,
+            (store_id,),
+        ).fetchone()["id"]
+        second_tournament_id = db.execute(
+            """
+            INSERT INTO Tournament
+                (store_id, game_id, name, format, max_participants, players_per_match,
+                 entry_fee_points, start_date, end_date)
+            VALUES (%s, 1, 'Paid Entry Two', 'single_elimination', 8, 2, 100,
+                    '2099-01-02 10:00', '2099-01-02 12:00')
+            RETURNING id
+            """,
+            (store_id,),
+        ).fetchone()["id"]
+        for tournament_id in (first_tournament_id, second_tournament_id):
+            db.execute(
+                "INSERT INTO TournamentTable (tournament_id, store_id, table_num) VALUES (%s, %s, 1)",
+                (tournament_id, store_id),
+            )
+        db.commit()
+
+        register_participant(first_tournament_id, 1)
+        after_free = get_loyalty_row(1, store_id)
+        first_participant = db.execute(
+            """
+            SELECT used_free_entry
+            FROM TournamentParticipant
+            WHERE tournament_id = %s AND user_id = 1
+            """,
+            (first_tournament_id,),
+        ).fetchone()
+        assert first_participant["used_free_entry"] is True
+        assert after_free["points"] == 1200
+
+        register_participant(second_tournament_id, 1)
+        after_paid = get_loyalty_row(1, store_id)
+        second_participant = db.execute(
+            """
+            SELECT used_free_entry
+            FROM TournamentParticipant
+            WHERE tournament_id = %s AND user_id = 1
+            """,
+            (second_tournament_id,),
+        ).fetchone()
+        used_free_entries = db.execute(
+            """
+            SELECT used_free_tournament_entries
+            FROM LoyaltyPoint
+            WHERE user_id = 1 AND store_id = %s
+            """,
+            (store_id,),
+        ).fetchone()["used_free_tournament_entries"]
+
+        assert second_participant["used_free_entry"] is False
+        assert after_paid["points"] == 1100
+        assert used_free_entries == 1
+
+
 def test_owner_loyalty_policy_editors_are_hidden_behind_buttons(client, app):
     with app.app_context():
         store_id = create_store()
@@ -610,6 +969,49 @@ def test_owner_loyalty_policy_editors_are_hidden_behind_buttons(client, app):
     assert 'class="collapse" id="rewardPolicyEditor"' in body
     assert 'data-bs-target="#tierSettingsEditor"' in body
     assert 'data-bs-target="#rewardPolicyEditor"' in body
+
+
+def test_owner_can_view_customer_loyalty_profile(client, app):
+    with app.app_context():
+        db = get_db()
+        store_id = create_store("profile-loyalty-store", "Profile Loyalty Store")
+        db.execute(
+            'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+            (store_id,),
+        )
+        add_points(1, store_id, 250)
+        session_id = db.execute(
+            """
+            INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time, checkout_status)
+            VALUES (1, %s, 1, '2000-01-01', 10, 12, 'checked_out')
+            RETURNING id
+            """,
+            (store_id,),
+        ).fetchone()["id"]
+        db.execute(
+            """
+            INSERT INTO Bill (session_id, table_fee, food_total, damage_fee, grand_total)
+            VALUES (%s, 10, 0, 0, 10)
+            """,
+            (session_id,),
+        )
+        db.commit()
+
+        profile = get_customer_loyalty_profile(1, store_id)
+        assert profile["user"]["username"] == "test"
+        assert profile["lifetime_points"] == 250
+        assert profile["session_summary"]["checked_out_sessions"] == 1
+
+    with client.session_transaction() as sess:
+        sess["store_id"] = store_id
+
+    response = client.get(f"/mystore/loyalty/customer/1")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "test Loyalty Profile" in body
+    assert "Lifetime Points" in body
+    assert "Recent Past Sessions" in body
 
 
 def test_new_store_gets_default_loyalty_point_rules_from_sql_trigger(app):
