@@ -1442,3 +1442,30 @@ class TestStoreGameImageUpload:
         )
         assert response.status_code == 200
         assert b"Invalid file type" in response.data
+
+
+class TestUserStoreNavigation:
+    def test_customer_store_nav_stays_visible_across_store_pages(self, client, app):
+        with app.app_context():
+            db = get_db()
+            store_id = _insert_store(
+                db, name="Customer Nav Store", username="customernav"
+            )
+
+        with client.session_transaction() as sess:
+            sess["user_id"] = 1
+
+        paths = (
+            f"/store/{store_id}",
+            f"/store/{store_id}/book",
+            f"/store/{store_id}/menu",
+            f"/store/{store_id}/loyalty",
+        )
+
+        for path in paths:
+            response = client.get(path)
+            body = response.get_data(as_text=True)
+            assert response.status_code == 200
+            assert "Book Session" in body
+            assert "View Menu" in body
+            assert "Loyalty Rewards" in body

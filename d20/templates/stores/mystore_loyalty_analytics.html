@@ -48,9 +48,9 @@
               </td>
               <td class="text-center">{{ tier.total_active_points }}</td>
               <td class="text-center">{{ tier.total_lifetime_points }}</td>
-              <td class="text-center text-muted">{{ tier.min_lifetime if tier.min_lifetime is not none else '&mdash;' }}</td>
-              <td class="text-center">{{ tier.avg_lifetime if tier.avg_lifetime is not none else '&mdash;' }}</td>
-              <td class="text-center text-muted">{{ tier.max_lifetime if tier.max_lifetime is not none else '&mdash;' }}</td>
+              <td class="text-center text-muted">{% if tier.min_lifetime is not none %}{{ tier.min_lifetime }}{% else %}&mdash;{% endif %}</td>
+              <td class="text-center">{% if tier.avg_lifetime is not none %}{{ tier.avg_lifetime }}{% else %}&mdash;{% endif %}</td>
+              <td class="text-center text-muted">{% if tier.max_lifetime is not none %}{{ tier.max_lifetime }}{% else %}&mdash;{% endif %}</td>
               <td class="text-end pe-4">{{ tier.discount_percent }}%</td>
             </tr>
           {% else %}
@@ -130,8 +130,8 @@
                   <td class="text-center">{{ row.redemption_count }}</td>
                   <td class="text-center fw-medium">{{ row.total_redeemed }}</td>
                   <td class="text-center">{{ row.avg_redeemed }}</td>
-                  <td class="text-center text-muted">{{ row.min_redeemed if row.min_redeemed is not none else '&mdash;' }}</td>
-                  <td class="text-end pe-4 text-muted">{{ row.max_redeemed if row.max_redeemed is not none else '&mdash;' }}</td>
+                  <td class="text-center text-muted">{% if row.min_redeemed is not none %}{{ row.min_redeemed }}{% else %}&mdash;{% endif %}</td>
+                  <td class="text-end pe-4 text-muted">{% if row.max_redeemed is not none %}{{ row.max_redeemed }}{% else %}&mdash;{% endif %}</td>
                 </tr>
               {% else %}
                 <tr><td colspan="6" class="text-center py-4 text-muted">No redemptions yet.</td></tr>

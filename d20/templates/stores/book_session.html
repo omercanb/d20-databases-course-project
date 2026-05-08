@@ -9,6 +9,8 @@
 {% endblock %}
 {% block content %}
     <div class="container">
+        {% set store_customer_tab = 'book' %}
+        {% include 'stores/_store_customer_nav.html' %}
         <div class="container">
             {% if max_advance is not none %}
             <div class="alert alert-info">

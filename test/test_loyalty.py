@@ -1352,6 +1352,7 @@ def test_analytics_page_shows_tier_tables(client, app):
     assert "Redemption Overview" in body
     assert "Revenue Impact" in body
     assert "Most Loyal Customers" in body
+    assert "&amp;mdash;" not in body
 
 
 def test_analytics_page_silver_tier_filter(client, app):

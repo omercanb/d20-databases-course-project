@@ -6,16 +6,8 @@
 {% endblock %}
 {% block content %}
     <div class="container">
-        <div class="mb-4">
-            {% if g.user is defined and g.user %}
-                <a href="{{ url_for('stores.book_session', store_id=store['id']) }}"
-                   class="btn btn-primary btn-lg">Book Session</a>
-            {% endif %}
-            <a href="{{ url_for('stores.store_menu', store_id=store['id']) }}"
-               class="btn btn-outline-primary btn-lg ms-2">View Menu</a>
-            <a href="{{ url_for('stores.store_loyalty', store_id=store['id']) }}"
-               class="btn btn-outline-warning btn-lg ms-2">Loyalty Rewards</a>
-        </div>
+        {% set store_customer_tab = 'library' %}
+        {% include 'stores/_store_customer_nav.html' %}
         <ul class="nav nav-tabs mb-4" id="storeTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active"

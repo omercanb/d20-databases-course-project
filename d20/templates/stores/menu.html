@@ -7,6 +7,8 @@
 
 {% block content %}
 <div class="space-y-8">
+  {% set store_customer_tab = 'menu' %}
+  {% include 'stores/_store_customer_nav.html' %}
   {% set foods = menu_items | selectattr('item_type', 'equalto', 'Food') | list %}
   {% set beverages = menu_items | selectattr('item_type', 'equalto', 'Beverage') | list %}
 
@@ -63,12 +65,5 @@
     </div>
   </section>
   {% endif %}
-
-  <div class="mt-6">
-    <a href="{{ url_for('stores.store', store_id=store.id) }}"
-      class="inline-block border-2 border-gray-900 px-4 py-2 hover:bg-gray-200 transition-colors font-mono shadow-[2px_2px_0_0_rgba(0,0,0,1)]">
-      Back to Store
-    </a>
-  </div>
 </div>
 {% endblock %}

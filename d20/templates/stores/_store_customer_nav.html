@@ -1,0 +1,10 @@
+<div class="mb-4 d-flex flex-wrap gap-2">
+    {% if g.user is defined and g.user %}
+        <a href="{{ url_for('stores.book_session', store_id=store['id']) }}"
+           class="btn btn-lg {% if store_customer_tab == 'book' %}btn-primary{% else %}btn-outline-primary{% endif %}">Book Session</a>
+    {% endif %}
+    <a href="{{ url_for('stores.store_menu', store_id=store['id']) }}"
+       class="btn btn-lg {% if store_customer_tab == 'menu' %}btn-primary{% else %}btn-outline-primary{% endif %}">View Menu</a>
+    <a href="{{ url_for('stores.store_loyalty', store_id=store['id']) }}"
+       class="btn btn-lg {% if store_customer_tab == 'loyalty' %}btn-warning{% else %}btn-outline-warning{% endif %}">Loyalty Rewards</a>
+</div>
