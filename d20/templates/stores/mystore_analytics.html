@@ -1,0 +1,252 @@
+{% extends 'base.html' %}
+
+{% block title %}Analytics - {{ g.store['name'] }}{% endblock %}
+
+{% block header %}
+<h1>Store Analytics</h1>
+{% endblock %}
+
+{% block content %}
+{% set active_tab = 'analytics' %}
+{% include 'stores/_mystore_nav.html' %}
+{% set revenue_delta = period_a.total_revenue - period_b.total_revenue %}
+{% set session_delta = period_a.total_sessions - period_b.total_sessions %}
+{% set bill_delta = period_a.total_bills - period_b.total_bills %}
+
+<form method="get" class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-5">
+        <h5 class="card-title">Period A</h5>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label" for="a_start">Start</label>
+            <input class="form-control" id="a_start" name="a_start" type="date" value="{{ period_a.start_date }}">
+          </div>
+          <div class="col-6">
+            <label class="form-label" for="a_end">End</label>
+            <input class="form-control" id="a_end" name="a_end" type="date" value="{{ period_a.end_date }}">
+          </div>
+        </div>
+      </div>
+      <div class="col-md-5">
+        <h5 class="card-title">Period B</h5>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label" for="b_start">Start</label>
+            <input class="form-control" id="b_start" name="b_start" type="date" value="{{ period_b.start_date }}">
+          </div>
+          <div class="col-6">
+            <label class="form-label" for="b_end">End</label>
+            <input class="form-control" id="b_end" name="b_end" type="date" value="{{ period_b.end_date }}">
+          </div>
+        </div>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-primary" type="submit">Compare</button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Revenue</h5>
+        <p class="display-6 mb-1">${{ "%.2f"|format(period_a.total_revenue) }}</p>
+        <p class="mb-0 {% if revenue_delta >= 0 %}text-success{% else %}text-danger{% endif %}">
+          {{ "%+.2f"|format(revenue_delta) }} vs Period B
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Sessions</h5>
+        <p class="display-6 mb-1">{{ period_a.total_sessions }}</p>
+        <p class="mb-0 {% if session_delta >= 0 %}text-success{% else %}text-danger{% endif %}">
+          {{ "%+d"|format(session_delta) }} vs Period B
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Bills</h5>
+        <p class="display-6 mb-1">{{ period_a.total_bills }}</p>
+        <p class="mb-0 {% if bill_delta >= 0 %}text-success{% else %}text-danger{% endif %}">
+          {{ "%+d"|format(bill_delta) }} vs Period B
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-1">
+  <div class="col-lg-7">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Revenue Comparison</h5>
+        <div style="position: relative; height: 280px">
+          <canvas id="revenueCompareChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Revenue Mix</h5>
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th class="text-end">Period A</th>
+              <th class="text-end">Period B</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Table Fees</td>
+              <td class="text-end">${{ "%.2f"|format(period_a.table_revenue) }}</td>
+              <td class="text-end">${{ "%.2f"|format(period_b.table_revenue) }}</td>
+            </tr>
+            <tr>
+              <td>Food & Drink</td>
+              <td class="text-end">${{ "%.2f"|format(period_a.food_revenue) }}</td>
+              <td class="text-end">${{ "%.2f"|format(period_b.food_revenue) }}</td>
+            </tr>
+            <tr>
+              <td>Damage Fees</td>
+              <td class="text-end">${{ "%.2f"|format(period_a.damage_revenue) }}</td>
+              <td class="text-end">${{ "%.2f"|format(period_b.damage_revenue) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-1">
+  <div class="col-lg-6">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Top Games</h5>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Period A</th>
+                <th class="text-end">Sessions</th>
+                <th>Period B</th>
+                <th class="text-end">Sessions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for i in range(5) %}
+                {% set a = games_a[i] if i < games_a|length else none %}
+                {% set b = games_b[i] if i < games_b|length else none %}
+                <tr>
+                  <td>{{ a.game_name if a else '-' }}</td>
+                  <td class="text-end">{{ a.session_count if a else '-' }}</td>
+                  <td>{{ b.game_name if b else '-' }}</td>
+                  <td class="text-end">{{ b.session_count if b else '-' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Top Menu Items</h5>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Period A</th>
+                <th class="text-end">Sold</th>
+                <th>Period B</th>
+                <th class="text-end">Sold</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for i in range(5) %}
+                {% set a = menu_a[i] if i < menu_a|length else none %}
+                {% set b = menu_b[i] if i < menu_b|length else none %}
+                <tr>
+                  <td>{{ a.item_name if a else '-' }}</td>
+                  <td class="text-end">{{ a.quantity_sold if a else '-' }}</td>
+                  <td>{{ b.item_name if b else '-' }}</td>
+                  <td class="text-end">{{ b.quantity_sold if b else '-' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  (function initStoreAnalyticsCharts() {
+      if (!window.Chart) {
+          return;
+      }
+
+      const canvas = document.getElementById("revenueCompareChart");
+      if (!canvas) {
+          return;
+      }
+
+      const existing = Chart.getChart(canvas);
+      if (existing) {
+          existing.destroy();
+      }
+
+      new Chart(canvas, {
+          type: "bar",
+          data: {
+              labels: ["Total", "Table Fees", "Food & Drink", "Damage Fees"],
+              datasets: [
+                  {
+                      label: "Period A",
+                      data: [
+                          {{ "%.2f"|format(period_a.total_revenue) }},
+                          {{ "%.2f"|format(period_a.table_revenue) }},
+                          {{ "%.2f"|format(period_a.food_revenue) }},
+                          {{ "%.2f"|format(period_a.damage_revenue) }}
+                      ],
+                      backgroundColor: "rgba(13, 110, 253, 0.78)"
+                  },
+                  {
+                      label: "Period B",
+                      data: [
+                          {{ "%.2f"|format(period_b.total_revenue) }},
+                          {{ "%.2f"|format(period_b.table_revenue) }},
+                          {{ "%.2f"|format(period_b.food_revenue) }},
+                          {{ "%.2f"|format(period_b.damage_revenue) }}
+                      ],
+                      backgroundColor: "rgba(25, 135, 84, 0.78)"
+                  }
+              ]
+          },
+          options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              scales: { y: { beginAtZero: true } }
+          }
+      });
+  })();
+</script>
+{% endblock %}
