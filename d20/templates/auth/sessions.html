@@ -23,7 +23,7 @@
                             <div>
                                 <strong>{{ sess['store_name'] }}</strong>
                             </div>
-                            <div>{{ sess['day'] }} • {{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
+                            <div>{{ sess['day'] | pretty_day }} • {{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
                             <div>Table {{ sess['table_num'] }}</div>
                             <div>
                                 {% if sess['is_tournament'] %}
@@ -56,7 +56,7 @@
                                           style="display: inline">
                                         <button type="submit"
                                                 class="btn btn-sm btn-danger"
-                                            data-confirm="Are you sure you want to cancel this session?">
+                                                data-confirm="Are you sure you want to cancel this session?">
                                             Cancel
                                         </button>
                                     </form>
