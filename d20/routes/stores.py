@@ -1,5 +1,5 @@
 import functools
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from uuid import uuid4
 
 from flask import (
@@ -79,6 +79,29 @@ from d20.db.stores import (
 from d20.routes import ALLOWED_IMAGE_EXTENSIONS, MAX_IMAGE_SIZE_BYTES
 
 bp = Blueprint("stores", __name__)
+
+
+def _booking_start_is_past(day, start_time):
+    try:
+        booking_date = date.fromisoformat(day)
+        booking_start = datetime.combine(booking_date, time(hour=start_time))
+    except (TypeError, ValueError):
+        return True
+    return booking_start <= datetime.now()
+
+
+def _redirect_to_booking_time_error(store_id, table_num, day, start_time, end_time):
+    flash("Cannot book a session in the past.")
+    return redirect(
+        url_for(
+            "stores.select_games",
+            store_id=store_id,
+            table_num=table_num,
+            day=day,
+            start_time=start_time,
+            end_time=end_time,
+        )
+    )
 
 
 @bp.before_app_request
@@ -804,29 +827,59 @@ def store(store_id):
 def book_session(store_id):
     start_time = request.args.get("start_time", 9, type=int)
     end_time = request.args.get("end_time", 20, type=int)
+    min_capacity = request.args.get("min_capacity", type=int)
     day = request.args.get("day") or str(date.today())
+    today = date.today()
     store = get_store_by_id(store_id)
     if store is None:
         abort(404)
     if start_time is None or end_time is None or end_time <= start_time:
         flash("End time must be later than start time.")
         start_time, end_time = 9, 20
+    if min_capacity is not None and min_capacity <= 0:
+        flash("Table capacity must be a positive number.")
+        min_capacity = None
+    has_bookable_time = True
+    try:
+        booking_date = date.fromisoformat(day)
+    except ValueError:
+        flash("Please choose a valid booking date.")
+        day = str(today)
+        booking_date = today
+    if booking_date == today and _booking_start_is_past(day, start_time):
+        min_start_time = datetime.now().hour + 1
+        if min_start_time <= 22:
+            flash("Start time was moved to the next available hour.")
+            start_time = max(start_time, min_start_time)
+            end_time = max(end_time, start_time + 1)
+        else:
+            flash("There are no more bookable time slots today.")
+            has_bookable_time = False
     max_advance = None
     max_date = None
     if g.user:
         max_advance = get_user_advance_days(g.user["id"], store_id)
-        max_date = str(date.today() + timedelta(days=max_advance))
-    tables = get_available_tables(store_id, day, start_time, end_time)
-    unvailable_tables = get_unavailable_tables(store_id, day, start_time, end_time)
+        max_date = str(today + timedelta(days=max_advance))
+    tables = []
+    unvailable_tables = []
+    if has_bookable_time:
+        tables = get_available_tables(
+            store_id, day, start_time, end_time, min_capacity=min_capacity
+        )
+        unvailable_tables = get_unavailable_tables(
+            store_id, day, start_time, end_time, min_capacity=min_capacity
+        )
     return render_template(
         "stores/book_session.html",
         store=store,
         tables=tables,
         unvailable_tables=unvailable_tables,
         day=day,
-        today=str(date.today()),
+        today=str(today),
         max_date=max_date,
         max_advance=max_advance,
+        current_hour=datetime.now().hour,
+        min_capacity=min_capacity,
         start_time=start_time,
         end_time=end_time,
     )
@@ -842,6 +895,9 @@ def select_games(store_id, table_num):
     end_time = request.args.get("end_time", 20, type=int)
     if start_time is None or end_time is None or end_time <= start_time:
         flash("End time must be later than start time.")
+        return redirect(url_for("stores.book_session", store_id=store_id, day=day))
+    if _booking_start_is_past(day, start_time):
+        flash("Cannot book a session in the past.")
         return redirect(url_for("stores.book_session", store_id=store_id, day=day))
     search = request.args.get("search") or None
     genre = request.args.get("genre") or None
@@ -924,6 +980,10 @@ def confirm_booking(store_id, table_num):
                 start_time=9,
                 end_time=20,
             )
+        )
+    if _booking_start_is_past(day, start_time):
+        return _redirect_to_booking_time_error(
+            store_id, table_num, day, start_time, end_time
         )
 
     if not selected_games:

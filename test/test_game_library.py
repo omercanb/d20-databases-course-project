@@ -704,6 +704,7 @@ class TestMyStoreSplitViews:
                 'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
                 (store_id,),
             )
+            db.execute("ALTER TABLE Session DISABLE TRIGGER prevent_past_session_booking")
             db.execute(
                 """
                 INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
@@ -711,6 +712,7 @@ class TestMyStoreSplitViews:
                 """,
                 (store_id, store_routes.date.today().isoformat()),
             )
+            db.execute("ALTER TABLE Session ENABLE TRIGGER prevent_past_session_booking")
             db.commit()
 
         response = client.get("/mystore/sessions")
@@ -821,8 +823,8 @@ class TestMyStoreSessionsFiltering:
             db = get_db()
             db.execute(
                 """
-                INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
-                VALUES (1, %s, 1, '2020-01-01', 10, 12)
+                INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time, checkout_status)
+                VALUES (1, %s, 1, '2020-01-01', 10, 12, 'checked_out')
                 """,
                 (store_id,),
             )

@@ -28,11 +28,21 @@
                            min="{{ today }}"
                            {% if max_date %}max="{{ max_date }}"{% endif %}
                            value="{{ day }}" />
+                    <label for="min_capacity" class="form-label">Minimum table capacity</label>
+                    <input type="number"
+                           id="min_capacity"
+                           name="min_capacity"
+                           class="form-control mb-4"
+                           min="1"
+                           value="{{ min_capacity or '' }}" />
                     <input type="hidden" name="start_time" id="start_time" />
                     <input type="hidden" name="end_time" id="end_time" />
                     <div id="time-slider"></div>
                     <p class="mt-2">
                         Selected: <span id="slider-label"></span>
+                    </p>
+                    <p class="mt-2 text-muted d-none" id="same-day-unavailable">
+                        There are no more bookable time slots today.
                     </p>
                     <button type="submit" class="btn btn-primary">Search</button>
                 </form>
@@ -74,13 +84,44 @@
     </div>
     <script>
   const slider = document.getElementById("time-slider");
+  const dayInput = document.getElementById("day");
+  const submitButton = document.querySelector('button[type="submit"]');
+  const unavailableMessage = document.getElementById("same-day-unavailable");
+  const today = "{{ today }}";
+  const currentHour = {{ current_hour }};
+  const lastStartTime = 22;
+
+  function minStartFor(day) {
+    return day === today ? currentHour + 1 : 0;
+  }
+
+  function noSameDaySlots(day) {
+    return day === today && minStartFor(day) > lastStartTime;
+  }
+
+  function updateFormState() {
+    if (noSameDaySlots(dayInput.value)) {
+      slider.setAttribute("disabled", true);
+      submitButton.disabled = true;
+      unavailableMessage.classList.remove("d-none");
+      return;
+    }
+
+    slider.removeAttribute("disabled");
+    submitButton.disabled = false;
+    unavailableMessage.classList.add("d-none");
+  }
+
+  const initialMinStart = noSameDaySlots(dayInput.value) ? 0 : minStartFor(dayInput.value);
+  const initialStart = Math.max({{ start_time }}, initialMinStart);
+  const initialEnd = Math.max({{ end_time }}, initialStart + 1);
 
   noUiSlider.create(slider, {
-      start: [{{start_time}}, {{end_time}}], // default 9am to 5pm
+      start: [Math.min(initialStart, lastStartTime), Math.min(initialEnd, 23)],
     connect: true, // fills the bar between the two handles
     step: 1,
     margin: 1,
-    range: { min: 0, max: 23 },
+    range: { min: initialMinStart, max: 23 },
   });
 
   slider.noUiSlider.on("update", function (values) {
@@ -91,5 +132,19 @@
     document.getElementById("start_time").value = start;
     document.getElementById("end_time").value = end;
   });
+
+  dayInput.addEventListener("change", function () {
+    const nextMinStart = noSameDaySlots(dayInput.value) ? 0 : minStartFor(dayInput.value);
+    const currentValues = slider.noUiSlider.get().map((value) => Math.round(value));
+    const nextStart = Math.max(currentValues[0], nextMinStart);
+    const nextEnd = Math.max(currentValues[1], nextStart + 1);
+    slider.noUiSlider.updateOptions({
+      range: { min: nextMinStart, max: 23 },
+      start: [Math.min(nextStart, lastStartTime), Math.min(nextEnd, 23)],
+    });
+    updateFormState();
+  });
+
+  updateFormState();
     </script>
 {% endblock %}

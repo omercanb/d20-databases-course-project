@@ -1,5 +1,5 @@
 """Tests for the reservation advance days feature (loyalty-tier-based booking window)."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -171,7 +171,7 @@ def test_booking_beyond_advance_days_rejected(app, client):
 
 
 def test_booking_same_day_always_allowed(app, client):
-    """Booking for today is always allowed even when advance_days is 0."""
+    """A future same-day slot is allowed even when advance_days is 0."""
     with app.app_context():
         db = get_db()
         store_id, table_num = _insert_store_and_table(db)
@@ -188,14 +188,19 @@ def test_booking_same_day_always_allowed(app, client):
             "INSERT INTO GameCopy (game_id, store_id, copy_num) VALUES (%s, %s, %s)",
             (1, store_id, 1),
         )
+        db_hour = db.execute("SELECT EXTRACT(HOUR FROM NOW())::INTEGER AS hour").fetchone()["hour"]
         db.commit()
 
+    current_hour = max(datetime.now().hour, db_hour)
+    if current_hour >= 22:
+        pytest.skip("No same-day slots remain after the current hour.")
+    start_time = current_hour + 1
+    end_time = start_time + 1
+
     _login(client)
-    # Book for today with end_time=23 to minimise the risk of the
-    # "session in the past" check failing (only fails if NOW() >= 23:00).
     response = _post_booking(
         client, store_id, table_num,
-        day=str(date.today()), start_time=22, end_time=23, game_ids=[1],
+        day=str(date.today()), start_time=start_time, end_time=end_time, game_ids=[1],
     )
 
     assert response.status_code == 302

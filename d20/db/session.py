@@ -42,7 +42,7 @@ def create_session(
     session_day = date.fromisoformat(day.strip())
     is_future = db.execute(
         "SELECT (%s::date + (%s || ' hours')::interval) > NOW() AS is_future",
-        (session_day.isoformat(), end_time),
+        (session_day.isoformat(), start_time),
     ).fetchone()["is_future"]
     if not is_future:
         raise ValueError("Cannot book a session in the past.")
@@ -293,13 +293,21 @@ def check_in_session(session_id):
     db.commit()
 
 
-def get_available_tables(store_id, day, start_time, end_time):
+def get_available_tables(store_id, day, start_time, end_time, min_capacity=None):
+    capacity_filter = ""
+    params = [store_id]
+    if min_capacity is not None:
+        capacity_filter = "AND capacity >= %s"
+        params.append(min_capacity)
+    params.extend([store_id, day, end_time, start_time])
+
     return (
         get_db()
         .execute(
-            """
+            f"""
             SELECT * FROM "Table"
             WHERE store_id = %s
+            {capacity_filter}
             AND (store_id, table_num) NOT IN (
                 SELECT store_id, table_num FROM Session
                 WHERE store_id = %s
@@ -308,19 +316,27 @@ def get_available_tables(store_id, day, start_time, end_time):
                 AND end_time > %s
             )
             """,
-            (store_id, store_id, day, end_time, start_time),
+            tuple(params),
         )
         .fetchall()
     )
 
 
-def get_unavailable_tables(store_id, day, start_time, end_time):
+def get_unavailable_tables(store_id, day, start_time, end_time, min_capacity=None):
+    capacity_filter = ""
+    params = [store_id]
+    if min_capacity is not None:
+        capacity_filter = "AND capacity >= %s"
+        params.append(min_capacity)
+    params.extend([store_id, day, end_time, start_time])
+
     return (
         get_db()
         .execute(
-            """
+            f"""
             SELECT * FROM "Table"
             WHERE store_id = %s
+            {capacity_filter}
             AND (store_id, table_num) IN (
                 SELECT store_id, table_num FROM Session
                 WHERE store_id = %s
@@ -329,7 +345,7 @@ def get_unavailable_tables(store_id, day, start_time, end_time):
                 AND end_time > %s
             )
             """,
-            (store_id, store_id, day, end_time, start_time),
+            tuple(params),
         )
         .fetchall()
     )

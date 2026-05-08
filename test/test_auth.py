@@ -61,6 +61,20 @@ def test_logout(client, auth):
         assert "user_id" not in session
 
 
+def test_store_owner_nav_brand_does_not_link_to_public_store_list(client, app):
+    response = client.post(
+        "/auth/loginstore",
+        data={"username": "teststore", "password": "test"},
+    )
+    assert response.status_code == 302
+
+    response = client.get("/mystore/overview")
+
+    assert response.status_code == 200
+    assert b'href="/" class="text-decoration-none text-reset"' not in response.data
+    assert b'<a class="nav-link" href="/mystore/overview">My Store</a>' in response.data
+
+
 def test_cancel_session_with_game_copies(client, auth, app):
     auth.login()
 
@@ -134,6 +148,7 @@ def test_check_in_after_session_end_is_rejected(client, auth, app, monkeypatch):
             'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, %s, %s)',
             (store_id, 1, 4),
         )
+        db.execute("ALTER TABLE Session DISABLE TRIGGER prevent_past_session_booking")
         session_id = db.execute(
             """
             INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
@@ -142,6 +157,7 @@ def test_check_in_after_session_end_is_rejected(client, auth, app, monkeypatch):
             """,
             (store_id, today),
         ).fetchone()["id"]
+        db.execute("ALTER TABLE Session ENABLE TRIGGER prevent_past_session_booking")
         db.commit()
 
     response = client.post(

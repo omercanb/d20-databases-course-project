@@ -158,6 +158,23 @@ CREATE TABLE Session (
     FOREIGN KEY (user_id) REFERENCES "User"(id)
 );
 
+CREATE OR REPLACE FUNCTION fn_prevent_past_session_booking()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.checkout_status = 'active'
+       AND (NEW.day::date + (NEW.start_time || ' hours')::interval) <= NOW() THEN
+        RAISE EXCEPTION 'Cannot book a session in the past.'
+            USING ERRCODE = 'check_violation',
+                  CONSTRAINT = 'session_start_time_not_past';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER prevent_past_session_booking
+BEFORE INSERT OR UPDATE OF day, start_time ON Session
+FOR EACH ROW EXECUTE FUNCTION fn_prevent_past_session_booking();
+
 CREATE TABLE SessionGameCopy (
     session_id INTEGER NOT NULL,
     game_id    INTEGER NOT NULL,
