@@ -3,11 +3,52 @@
 {% block header %}<h1>Upcoming Tournaments</h1>{% endblock %}
 
 {% block content %}
+{% if g.user and my_stats %}
+<div class="d-flex justify-content-end mb-3">
+  <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#myStatsModal">
+    My Stats
+  </button>
+</div>
+
+<div class="modal fade" id="myStatsModal" tabindex="-1" aria-labelledby="myStatsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="myStatsModalLabel">My Lifetime Tournament Stats</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3 text-center">
+          <div class="col-4">
+            <div class="border rounded-3 p-3">
+              <div class="text-muted small">Wins</div>
+              <div class="fs-4 fw-bold text-success">{{ my_stats.wins }}</div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="border rounded-3 p-3">
+              <div class="text-muted small">Losses</div>
+              <div class="fs-4 fw-bold text-danger">{{ my_stats.losses }}</div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="border rounded-3 p-3">
+              <div class="text-muted small">Points</div>
+              <div class="fs-4 fw-bold text-primary">{{ my_stats.points }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {# ── Filter bar ─────────────────────────────────────────────────────────── #}
 <div class="card shadow-sm border-0 mb-4">
   <div class="card-body">
     <form method="GET" action="{{ url_for('tournament.browse_tournaments') }}" class="row g-2 align-items-end">
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label class="form-label fw-medium small mb-1">Game</label>
         <select name="game_id" class="form-select form-select-sm">
           <option value="">All games</option>
@@ -38,7 +79,13 @@
         <input type="number" name="max_fee" min="0" class="form-control form-control-sm"
           value="{{ selected_max_fee or '' }}">
       </div>
-      <div class="col-md-1 d-flex gap-1">
+      <div class="col-md-2">
+        <div class="form-check mt-4 pt-1">
+          <input class="form-check-input" type="checkbox" name="open_slots" value="1" id="open_slots" {% if selected_open_slots %}checked{% endif %}>
+          <label class="form-check-label small" for="open_slots">Open slots only</label>
+        </div>
+      </div>
+      <div class="col-md-2 d-flex gap-1">
         <button type="submit" class="btn btn-primary btn-sm w-100">Filter</button>
         <a href="{{ url_for('tournament.browse_tournaments') }}" class="btn btn-outline-secondary btn-sm">✕</a>
       </div>
@@ -64,6 +111,7 @@
         <p class="text-muted small mb-0">📅 {{ t.start_date.strftime('%d %b %Y, %H:%M') if t.start_date else '—' }}</p>
         <div class="d-flex gap-3 small mt-1">
           <span>👥 {{ t.participant_count }} / {{ t.max_participants }}</span>
+          <span>🟢 {{ t.open_slots }} open</span>
           <span>🎫 {{ t.entry_fee_points }} pts</span>
           {% if t.min_loyalty_tier %}<span>⭐ {{ t.min_loyalty_tier }} Tier+</span>{% endif %}
           {% if t.sponsor_name %}<span>🏆 {{ t.sponsor_name }}</span>{% endif %}

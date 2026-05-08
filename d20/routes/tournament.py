@@ -33,6 +33,7 @@ from d20.db.tournament import (
     get_store_tables,
     get_tournament,
     get_tournaments_for_store,
+    get_user_lifetime_tournament_stats,
     is_registered,
     get_user_tournament_eligibility,
     record_ffa_match_result,
@@ -82,6 +83,7 @@ def browse_tournaments():
     date_to   = request.args.get("date_to")   or None
     fmt       = request.args.get("format")    or None
     max_fee   = request.args.get("max_fee",   type=int)
+    open_slots_only = request.args.get("open_slots") == "1"
 
     tournaments = get_open_tournaments(
         game_id=game_id,
@@ -89,7 +91,9 @@ def browse_tournaments():
         date_to=date_to,
         fmt=fmt,
         max_fee=max_fee,
+        open_slots_only=open_slots_only,
     )
+    my_stats = get_user_lifetime_tournament_stats(g.user["id"]) if g.user else None
     # Distinct games for the filter dropdown
     from d20.db import get_db
     all_games = [dict(r) for r in get_db().execute(
@@ -105,6 +109,8 @@ def browse_tournaments():
         selected_date_to=date_to,
         selected_format=fmt,
         selected_max_fee=max_fee,
+        selected_open_slots=open_slots_only,
+        my_stats=my_stats,
     )
 
 

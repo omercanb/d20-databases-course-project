@@ -143,7 +143,7 @@ def get_tournaments_for_store(store_id):
 
 
 def get_open_tournaments(game_id=None, date_from=None, date_to=None,
-                          fmt=None, max_fee=None, store_id=None):
+                          fmt=None, max_fee=None, store_id=None, open_slots_only=False):
     """Browse open tournaments with optional filters."""
     db = get_db()
     clauses = ["t.status = 'registration_open'"]
@@ -160,12 +160,17 @@ def get_open_tournaments(game_id=None, date_from=None, date_to=None,
         clauses.append("t.format = %s"); params.append(fmt)
     if max_fee is not None:
         clauses.append("t.entry_fee_points <= %s"); params.append(max_fee)
+    if open_slots_only:
+        clauses.append(
+            "(SELECT COUNT(*) FROM TournamentParticipant tp WHERE tp.tournament_id = t.id) < t.max_participants"
+        )
 
     where = " AND ".join(clauses)
     return _rows(db.execute(
         f"""
         SELECT t.*, g.name AS game_name, s.name AS store_name,
-               (SELECT COUNT(*) FROM TournamentParticipant tp WHERE tp.tournament_id = t.id) AS participant_count
+               (SELECT COUNT(*) FROM TournamentParticipant tp WHERE tp.tournament_id = t.id) AS participant_count,
+               t.max_participants - (SELECT COUNT(*) FROM TournamentParticipant tp WHERE tp.tournament_id = t.id) AS open_slots
         FROM Tournament t
         JOIN Game g ON g.id = t.game_id
         JOIN Store s ON s.id = t.store_id
@@ -215,7 +220,12 @@ def get_participants(tournament_id):
     db = get_db()
     return _rows(db.execute(
         """
-        SELECT tp.*, u.username, u.tournament_wins
+        SELECT tp.*, u.username,
+               COALESCE((
+                   SELECT COUNT(*)
+                   FROM TournamentResult tr
+                   WHERE tr.user_id = u.id AND tr.place = 1
+               ), 0) AS tournament_wins
         FROM TournamentParticipant tp
         JOIN "User" u ON u.id = tp.user_id
         WHERE tp.tournament_id = %s
@@ -721,6 +731,7 @@ def record_ffa_match_result(match_id, participant_ranks, tournament_id, store_id
 
     # Delete loser sessions (single elimination only) and winner if this is the final
     losers = [p["user_id"] for p in participant_ranks if p["rank_in_match"] != 1]
+
     if t["format"] == "single_elimination":
         for uid in losers:
             db.execute(
@@ -994,4 +1005,42 @@ def report_revenue():
     return _rows(get_db().execute("SELECT * FROM vw_tournament_revenue"))
 
 def report_top_players():
-    return _rows(get_db().execute("SELECT * FROM vw_top_tournament_players"))
+    return _rows(get_db().execute(
+        """
+        SELECT
+            tr.user_id,
+            u.username,
+            COUNT(*) FILTER (WHERE tr.place = 1) AS tournament_wins,
+            COUNT(*) FILTER (WHERE tr.place > 1) AS tournament_losses,
+            COUNT(*) AS total_matches,
+            CASE
+                WHEN COUNT(*) = 0 THEN 0
+                ELSE ROUND(100.0 * COUNT(*) FILTER (WHERE tr.place = 1) / COUNT(*), 2)
+            END AS win_rate_pct,
+            COALESCE(SUM(tr.points_awarded), 0) AS total_prize_points,
+            MIN(tr.place) AS best_finish
+        FROM TournamentResult tr
+        JOIN "User" u ON u.id = tr.user_id
+        GROUP BY tr.user_id, u.username
+        ORDER BY tournament_wins DESC, win_rate_pct DESC, best_finish ASC
+        """
+    ))
+
+
+def get_user_lifetime_tournament_stats(user_id):
+    """Return lifetime tournament stats (tournaments won/lost and total prize points)."""
+    return _row(get_db().execute(
+        """
+        SELECT
+            u.id AS user_id,
+            u.username,
+            COALESCE(COUNT(*) FILTER (WHERE tr.place = 1), 0) AS wins,
+            COALESCE(COUNT(*) FILTER (WHERE tr.place > 1), 0) AS losses,
+            COALESCE(SUM(tr.points_awarded), 0) AS points
+        FROM "User" u
+        LEFT JOIN TournamentResult tr ON tr.user_id = u.id
+        WHERE u.id = %s
+        GROUP BY u.id, u.username
+        """,
+        (user_id,),
+    ))
