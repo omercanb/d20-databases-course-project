@@ -1,3 +1,10 @@
+# CS 353 Project Group 13
+## People
+Ahmet Utku Özdoğru
+Berkay Demirçin
+Ceyhun Deniz Keleş
+Ege Şeşen
+Ömer Can Baykara
 # Setup
 
 To install Flask and its dependencies:
