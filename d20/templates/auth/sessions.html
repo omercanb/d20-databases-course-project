@@ -23,7 +23,7 @@
                             <div>
                                 <strong>{{ sess['store_name'] }}</strong>
                             </div>
-                            <div>{{ sess['day'] }} • {{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
+                            <div>{{ sess['day'] | pretty_day }} • {{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
                             <div>Table {{ sess['table_num'] }}</div>
                             <div>
                                 {% if sess['is_tournament'] %}
@@ -43,25 +43,41 @@
                                     No games
                                 {% endif %}
                             </div>
-                            <div>
+                            <div class="d-flex flex-column gap-2">
                                 {% if sess['is_tournament'] %}
                                     {# Tournament sessions are read-only — no cancel or food order #}
                                 {% elif sess['checkout_status'] == 'checked_out' %}
                                     <span class="badge bg-secondary me-1">Checked Out</span>
                                     <a href="{{ url_for('auth.rate_session_games', session_id=sess['id']) }}"
-                                       class="btn btn-sm btn-outline-warning">Rate Games</a>
-                                {% else %}
+                                       class="btn btn-sm btn-outline-warning w-100">Rate Games</a>
+                                {% elif sess['checked_in'] %}
+                                    <a href="{{ url_for('auth.order_food', session_id=sess['id']) }}"
+                                       class="btn btn-sm btn-outline-primary w-100">Order Food/Drinks</a>
+                                {% elif sess['day'] == today and sess['start_time'] <= current_hour %}
                                     <form method="post"
-                                          action="{{ url_for('auth.cancel_session', session_id=sess['id']) }}"
-                                          style="display: inline">
+                                          action="{{ url_for('auth.check_in_user_session', session_id=sess['id']) }}">
                                         <button type="submit"
-                                                class="btn btn-sm btn-danger"
-                                            data-confirm="Are you sure you want to cancel this session?">
+                                                class="btn btn-sm btn-success w-100">
+                                            Check In
+                                        </button>
+                                    </form>
+                                    <form method="post"
+                                          action="{{ url_for('auth.cancel_session', session_id=sess['id']) }}">
+                                        <button type="submit"
+                                                class="btn btn-sm btn-danger w-100"
+                                                data-confirm="Are you sure you want to cancel this session?">
                                             Cancel
                                         </button>
                                     </form>
-                                    <a href="{{ url_for('auth.order_food', session_id=sess['id']) }}"
-                                       class="btn btn-sm btn-outline-primary ms-2">Order Food/Drinks</a>
+                                {% else %}
+                                    <form method="post"
+                                          action="{{ url_for('auth.cancel_session', session_id=sess['id']) }}">
+                                        <button type="submit"
+                                                class="btn btn-sm btn-danger w-100"
+                                                data-confirm="Are you sure you want to cancel this session?">
+                                            Cancel
+                                        </button>
+                                    </form>
                                 {% endif %}
                             </div>
                         </div>

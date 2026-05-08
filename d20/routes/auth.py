@@ -1,5 +1,5 @@
 import functools
-from datetime import date
+from datetime import date, datetime
 from operator import add
 
 from flask import (
@@ -18,6 +18,7 @@ from d20.db import get_db
 from d20.db.menu import create_session_order, get_menu, get_session_orders
 from d20.db.session import (
     MAX_RESERVATIONS,
+    check_in_session,
     delete_session,
     get_reservation_count,
     get_session,
@@ -178,6 +179,7 @@ def logout():
 def view_sessions():
     sessions = get_sessions_with_store_by_user(g.user["id"])
     today = str(date.today())
+    current_hour = datetime.now().hour
 
     upcoming = []
     past = []
@@ -196,6 +198,8 @@ def view_sessions():
         past_sessions=past,
         reservation_count=get_reservation_count(g.user["id"]),
         max_reservation_count=MAX_RESERVATIONS,
+        today=today,
+        current_hour=current_hour,
     )
 
 
@@ -214,6 +218,39 @@ def cancel_session(session_id):
     except Exception as e:
         msg = str(e).split('\n')[0].replace('ERROR:', '').strip()
         flash(f"Could not cancel session: {msg}")
+
+    return redirect(url_for("auth.view_sessions"))
+
+
+@bp.route("/session/<int:session_id>/checkin", methods=("POST",))
+@login_required
+def check_in_user_session(session_id):
+    sess = get_session(session_id)
+
+    if not sess or sess["user_id"] != g.user["id"]:
+        flash("Session not found.")
+        return redirect(url_for("auth.view_sessions"))
+
+    today = str(date.today())
+    current_hour = datetime.now().hour
+
+    if sess["day"] != today or sess["start_time"] > current_hour:
+        flash("You can only check in when the session has started.")
+        return redirect(url_for("auth.view_sessions"))
+
+    if sess["checked_in"]:
+        flash("You are already checked in.")
+        return redirect(url_for("auth.view_sessions"))
+
+    if sess["checkout_status"] == "checked_out":
+        flash("This session has already been checked out.")
+        return redirect(url_for("auth.view_sessions"))
+
+    try:
+        check_in_session(session_id)
+        flash("Checked in successfully!")
+    except Exception as e:
+        flash(f"Error during check-in: {str(e)}")
 
     return redirect(url_for("auth.view_sessions"))
 

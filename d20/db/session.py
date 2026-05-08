@@ -141,7 +141,7 @@ def get_sessions_with_store_by_user(user_id):
             FROM Session
             JOIN Store ON (Session.store_id = Store.id)
             WHERE Session.user_id = %s
-            ORDER BY Session.day DESC, Session.start_time DESC
+            ORDER BY Session.day ASC, Session.start_time ASC
             """,
             (user_id,),
         )
@@ -218,19 +218,33 @@ def update_session(session_id, day, start_time, end_time):
 
 def delete_session(session_id):
     db = get_db()
-    
+
     # Check if there are any orders associated with this session
-    order = db.execute("SELECT 1 FROM SessionOrder WHERE session_id = %s", (session_id,)).fetchone()
+    order = db.execute(
+        "SELECT 1 FROM SessionOrder WHERE session_id = %s", (session_id,)
+    ).fetchone()
     if order:
-        raise ValueError("Cannot cancel session because there are active food or drink orders. Please contact the cafe staff.")
-    
+        raise ValueError(
+            "Cannot cancel session because there are active food or drink orders. Please contact the cafe staff."
+        )
+
     # Check if a bill has already been generated
-    bill = db.execute("SELECT 1 FROM Bill WHERE session_id = %s", (session_id,)).fetchone()
+    bill = db.execute(
+        "SELECT 1 FROM Bill WHERE session_id = %s", (session_id,)
+    ).fetchone()
     if bill:
-        raise ValueError("Cannot cancel session because a bill has already been generated.")
+        raise ValueError(
+            "Cannot cancel session because a bill has already been generated."
+        )
 
     db.execute("DELETE FROM SessionGameCopy WHERE session_id = %s", (session_id,))
     db.execute("DELETE FROM Session WHERE id = %s", (session_id,))
+    db.commit()
+
+
+def check_in_session(session_id):
+    db = get_db()
+    db.execute("UPDATE Session SET checked_in = TRUE WHERE id = %s", (session_id,))
     db.commit()
 
 
