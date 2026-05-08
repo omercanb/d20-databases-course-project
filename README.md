@@ -1,31 +1,27 @@
-# Selam gang
+# Setup
 
-Flask ve dependencyleri yüklemek için
-
+To install Flask and its dependencies:
 ```bash
 pip install -e .
 ```
 
-Dili (lang klasöründeki) yüklemek için
-
+To install the language package (located in the `lang` directory):
 ```bash
 pip install -e ./lang
 ```
 
 ## Docker (PostgreSQL)
 
-Projede app ve test için iki ayrı PostgreSQL container var.
+The project uses two separate PostgreSQL containers — one for the application and one for testing.
 
-Önce `.env.example` dosyasını kopyala:
-
+Begin by copying the example environment file:
 ```bash
 cp .env.example .env
 ```
 
 ### Database Connection
 
-App database:
-
+Application database:
 - Username: `d20`
 - Password: `d20`
 - Host: `localhost`
@@ -34,7 +30,6 @@ App database:
 - URL: `postgresql://d20:d20@localhost:5432/d20`
 
 Test database:
-
 - Username: `d20`
 - Password: `d20`
 - Host: `localhost`
@@ -42,21 +37,19 @@ Test database:
 - Database: `d20_test`
 - URL: `postgresql://d20:d20@localhost:5433/d20_test`
 
+Start the containers:
 ```bash
 docker compose up -d
 ```
 
-`.env` (veya `.env.example`):
-
+`.env` (or `.env.example`):
 ```env
 POSTGRES_USER=d20
 POSTGRES_PASSWORD=d20
 POSTGRES_DB=d20
 POSTGRES_TEST_DB=d20_test
-
 DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}
 TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5433/${POSTGRES_TEST_DB}
-
 # MinIO (game image upload)
 MINIO_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
@@ -67,68 +60,63 @@ MINIO_SECURE=false
 
 ## MinIO
 
-Game kapak görselleri MinIO'ya yükleniyor.
+Game cover images are stored in MinIO.
 
 - API endpoint: `http://localhost:9000`
 - Console: `http://localhost:9001`
 - Bucket: `game-images`
 
-`docker compose up -d` komutu MinIO servisini de ayağa kaldırır.
+Running `docker compose up -d` will also start the MinIO service.
 
-## Init
+## Initialization
 
-Uygulamayı çalıştırmadan önce dbyi init ve seed yapıyoruz
-
+Before running the application, the database must be initialized and seeded:
 ```bash
 flask --app d20 init-db && flask --app d20 seed
 ```
 
-Ya da ayrı ayrı:
-
+Or run each step separately:
 ```bash
 flask --app d20 init-db
 flask --app d20 seed
 ```
 
-`init-db` komutu `schema.sql`ı çalıştırıyor `seed` de örnek veri ekliyor, her yeni feature içın `seed` fonksiyonuyla bir örnek veri eklemek lazım. Örnek oyun isimleri de burda yaratılıyor.
+`init-db` executes `schema.sql` to set up the database schema. `seed` populates it with sample data. Each new feature should include at least one corresponding entry in the `seed` function. Sample game names are also generated at this stage.
 
-## Run
+## Running
 
 ```bash
 flask --app d20 run --debug
 ```
 
-> Debug modda çalıştırınca exceptionlar daha net gözüküyor, yoksa şart değil.
+> Debug mode provides more detailed exception output and is recommended during development, though not required.
 
-## Test
+## Testing
 
-Pytest ile testleri çalıştırmak için:
-
+To run the test suite with pytest:
 ```bash
 pytest
 ```
 
-Not: Testlerin çoğu PostgreSQL gerektirir ve sadece `--pg` ile çalışır.
+> **Note:** Most tests require PostgreSQL and will only run with the `--pg` flag.
 
-Önce test DB container'ını ayağa kaldır:
-
+First, start the test database container:
 ```bash
 docker compose up -d db_test
 ```
 
-Sonra PostgreSQL testlerini çalıştır:
-
+Then run the PostgreSQL tests:
 ```bash
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest --pg
 ```
 
-Farklı bir test veritabanı URL'i kullanacaksan:
-
+To use a custom test database URL:
 ```bash
 TEST_DATABASE_URL=postgresql://d20:d20@localhost:5433/d20_test PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest --pg
 ```
 
-## Kullandığımız stack
-Web frameworkü olarak Flask kullandık
-Stylign (CSS) için Bootstrap diye bir library var
-Bazı gereken dynamic/interaktif yerler için htmx
+## Stack
+
+- **Flask** — web framework
+- **Bootstrap** — CSS styling
+- **htmx** — dynamic and interactive UI components
