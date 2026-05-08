@@ -56,6 +56,16 @@
                         aria-controls="pending"
                         aria-selected="false">Pending Sessions ({{ pending_sessions|length }})</button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link"
+                        id="past-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#past"
+                        type="button"
+                        role="tab"
+                        aria-controls="past"
+                        aria-selected="false">Past Sessions ({{ past_sessions|length }})</button>
+            </li>
         </ul>
         <div class="tab-content">
             <!-- Active Sessions Tab -->
@@ -205,6 +215,75 @@
                     {% endfor %}
                 {% else %}
                     <p class="text-muted">No pending sessions.</p>
+                {% endif %}
+            </div>
+            <!-- Past Sessions Tab -->
+            <div class="tab-pane fade"
+                 id="past"
+                 role="tabpanel"
+                 aria-labelledby="past-tab">
+                {% if past_sessions %}
+                    {% set past_by_day = {} %}
+                    {% for sess in past_sessions %}
+                        {% if sess['day'] not in past_by_day %}
+                            {% set _ = past_by_day.update({sess['day']: []}) %}
+                        {% endif %}
+                        {% set _ = past_by_day[sess['day']].append(sess) %}
+                    {% endfor %}
+                    {% for day in past_by_day|sort(reverse=true) %}
+                        <div class="d-flex align-items-center mt-4 mb-2">
+                            <strong class="me-3">{{ day | pretty_day }}</strong>
+                            <hr class="flex-grow-1 m-0">
+                        </div>
+                        <div class="session-list">
+                            <div class="session-header">
+                                <div>Customer</div>
+                                <div>Time</div>
+                                <div>Table</div>
+                                <div>Games</div>
+                                <div>Status</div>
+                            </div>
+                            {% for sess in past_by_day[day] %}
+                                <div class="session-row past">
+                                    <div>
+                                        <strong>{{ sess['username'] }}</strong>
+                                        {% if sess['is_not_attended'] %}
+                                            <div class="mt-1">
+                                                <span class="badge bg-warning text-dark">Not Attended</span>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                    <div>{{ sess['start_time'] }}:00 - {{ sess['end_time'] }}:00</div>
+                                    <div>Table {{ sess['table_num'] }}</div>
+                                    <div>
+                                        {% if sess['games'] %}
+                                            {% for game in sess['games'] %}
+                                                {{ game['name'] }}
+                                                {% if not loop.last %},{% endif %}
+                                            {% endfor %}
+                                        {% else %}
+                                            No games
+                                        {% endif %}
+                                    </div>
+                                    <div class="d-flex flex-column gap-2">
+                                        {% if sess['checkout_status'] == 'checked_out' %}
+                                            <span class="badge bg-success">Checked Out</span>
+                                            <a href="{{ url_for('stores.view_bill', session_id=sess['id']) }}"
+                                               class="btn btn-sm btn-outline-success">View Bill</a>
+                                        {% elif sess['is_not_attended'] %}
+                                            <span class="badge bg-warning text-dark">Not Attended</span>
+                                        {% elif sess['checked_in'] %}
+                                            <span class="badge bg-info text-dark">Checked In</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Ended</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No past sessions.</p>
                 {% endif %}
             </div>
         </div>

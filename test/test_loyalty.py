@@ -87,7 +87,7 @@ def test_loyalty_tier_recalculates_when_points_cross_thresholds(app):
         assert row["tier_code"] == "Gold"
 
 
-def test_redemption_decreases_balance_without_downgrading_lifetime_tier(app):
+def test_redemption_decreases_balance_and_recalculates_current_balance_tier(app):
     with app.app_context():
         store_id = create_store()
 
@@ -98,7 +98,7 @@ def test_redemption_decreases_balance_without_downgrading_lifetime_tier(app):
         assert discount == pytest.approx(60.0)
         assert row["points"] == 400
         assert row["lifetime_points"] == 1000
-        assert row["tier_code"] == "Gold"
+        assert row["tier_code"] == "Bronze"
 
 
 def test_checkout_awards_session_hour_loyalty_points_once(client, app):
@@ -514,7 +514,7 @@ def test_store_specific_tier_threshold_update_recalculates_existing_customers(ap
         assert silver["reservation_advance_days"] == 2
 
 
-def test_tier_threshold_update_uses_lifetime_points_not_current_balance(app):
+def test_tier_threshold_update_uses_current_balance_not_lifetime_points(app):
     with app.app_context():
         store_id = create_store()
         add_points(1, store_id, 1000)
@@ -550,7 +550,7 @@ def test_tier_threshold_update_uses_lifetime_points_not_current_balance(app):
         row = get_loyalty_row(1, store_id)
         assert row["points"] == 400
         assert row["lifetime_points"] == 1000
-        assert row["tier_code"] == "Gold"
+        assert row["tier_code"] == "Bronze"
 
 
 def test_loyalty_sql_functions_triggers_and_views_exist(app):
@@ -587,7 +587,7 @@ def test_loyalty_sql_functions_triggers_and_views_exist(app):
                 'seed_default_loyalty_tiers_after_store_insert',
                 'seed_default_loyalty_point_rules_after_store_insert',
                 'recalculate_loyalty_tier_before_insert',
-                'recalculate_loyalty_tier_before_lifetime_points_update',
+                'recalculate_loyalty_tier_before_points_update',
                 'recalculate_store_loyalty_points_after_tier_update',
                 'validate_loyalty_tier_threshold_order_after_insert_update'
               )
@@ -597,7 +597,7 @@ def test_loyalty_sql_functions_triggers_and_views_exist(app):
             "seed_default_loyalty_tiers_after_store_insert",
             "seed_default_loyalty_point_rules_after_store_insert",
             "recalculate_loyalty_tier_before_insert",
-            "recalculate_loyalty_tier_before_lifetime_points_update",
+            "recalculate_loyalty_tier_before_points_update",
             "recalculate_store_loyalty_points_after_tier_update",
             "validate_loyalty_tier_threshold_order_after_insert_update",
         }
@@ -653,7 +653,7 @@ def test_store_top_loyalty_point_holders_view_ranks_top_five_by_lifetime_points(
         assert [row["lifetime_points"] for row in rows] == [700, 600, 500, 400, 300]
         assert rows[0]["current_points"] == 450
         assert rows[0]["redeemed_points"] == 250
-        assert get_loyalty_row(user_ids[-1], store_id)["tier_code"] == "Silver"
+        assert get_loyalty_row(user_ids[-1], store_id)["tier_code"] == "Bronze"
         assert [row["store_rank"] for row in rows] == [1, 2, 3, 4, 5]
 
         stats = get_store_loyalty_stats(store_id)
@@ -915,7 +915,7 @@ def test_free_tournament_entry_is_used_before_points_are_deducted(app):
             )
         db.commit()
 
-        register_participant(first_tournament_id, 1)
+        register_participant(first_tournament_id, 1, use_free_entry=True)
         after_free = get_loyalty_row(1, store_id)
         first_participant = db.execute(
             """
@@ -1033,7 +1033,6 @@ def test_new_store_gets_default_loyalty_point_rules_from_sql_trigger(app):
             "food_dollar": 1,
             "game_rating": 5,
             "session_hour": 5,
-            "tournament_participation": 20,
         }
 
 
@@ -1048,14 +1047,12 @@ def test_store_specific_point_rule_update_changes_earning_values(app):
                 {"action_code": "session_hour", "points_per_unit": 8},
                 {"action_code": "food_dollar", "points_per_unit": 2},
                 {"action_code": "game_rating", "points_per_unit": 12},
-                {"action_code": "tournament_participation", "points_per_unit": 30},
             ],
         )
 
         assert get_point_rule(store_id, "session_hour") == pytest.approx(8)
         assert get_point_rule(store_id, "food_dollar") == pytest.approx(2)
         assert get_point_rule(store_id, "game_rating") == pytest.approx(12)
-        assert get_point_rule(store_id, "tournament_participation") == pytest.approx(30)
         assert get_point_rule(other_store_id, "game_rating") == pytest.approx(5)
 
 
@@ -1068,7 +1065,6 @@ def test_user_loyalty_policy_page_shows_store_specific_rules_and_tiers(client, a
                 {"action_code": "session_hour", "points_per_unit": 8},
                 {"action_code": "food_dollar", "points_per_unit": 2},
                 {"action_code": "game_rating", "points_per_unit": 12},
-                {"action_code": "tournament_participation", "points_per_unit": 30},
             ],
         )
         update_store_loyalty_tiers(
@@ -1163,7 +1159,6 @@ def test_owner_can_update_store_loyalty_point_rules(client, app):
             "session_hour": "9",
             "food_dollar": "2.5",
             "game_rating": "11",
-            "tournament_participation": "40",
         },
         follow_redirects=True,
     )
@@ -1173,7 +1168,6 @@ def test_owner_can_update_store_loyalty_point_rules(client, app):
         assert get_point_rule(store_id, "session_hour") == pytest.approx(9)
         assert get_point_rule(store_id, "food_dollar") == pytest.approx(2.5)
         assert get_point_rule(store_id, "game_rating") == pytest.approx(11)
-        assert get_point_rule(store_id, "tournament_participation") == pytest.approx(40)
 
 
 def test_seed_loyalty_program_creates_visible_tiers_top_holders_and_applied_redemptions(app):
@@ -1194,14 +1188,14 @@ def test_seed_loyalty_program_creates_visible_tiers_top_holders_and_applied_rede
         seed_loyalty_program(user_ids, store_ids)
 
         # store 0 uses tier_configs[0]: Silver≥300, Gold≥800
-        # effective lifetime points (base + 45 extra from rules): Bronze×3, Silver×2, Gold×3
+        # effective current points after rule awards and redemptions: Bronze×4, Silver×2, Gold×2
         stats = get_store_loyalty_stats(store_ids[0])
         distribution = {tier["code"]: tier["customer_count"] for tier in stats["tier_distribution"]}
-        assert distribution == {"Bronze": 3, "Silver": 2, "Gold": 3}
+        assert distribution == {"Bronze": 4, "Silver": 2, "Gold": 2}
         assert len(stats["top_customers"]) == 5
         assert [customer["store_rank"] for customer in stats["top_customers"]] == [1, 2, 3, 4, 5]
         assert stats["point_rule_map"]["session_hour"] == pytest.approx(6)
-        assert stats["point_rule_map"]["tournament_participation"] == pytest.approx(25)
+        assert stats["point_rule_map"]["game_rating"] == pytest.approx(8)
 
         db = get_db()
         # 6 (store0) + 7 (store1) + 6 (store2) = 19 applied redemptions total

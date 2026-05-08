@@ -267,9 +267,9 @@ def seed_loyalty_program(user_ids, store_ids):
         ],
     ]
     rule_configs = [
-        {"session_hour": 6, "food_dollar": 1.5, "game_rating": 8, "tournament_participation": 25},
-        {"session_hour": 5, "food_dollar": 1, "game_rating": 5, "tournament_participation": 20},
-        {"session_hour": 7, "food_dollar": 2, "game_rating": 10, "tournament_participation": 30},
+        {"session_hour": 6, "food_dollar": 1.5, "game_rating": 8},
+        {"session_hour": 5, "food_dollar": 1, "game_rating": 5},
+        {"session_hour": 7, "food_dollar": 2, "game_rating": 10},
     ]
 
     for index, store_id in enumerate(store_ids):
@@ -321,7 +321,6 @@ def seed_loyalty_program(user_ids, store_ids):
         add_points(user_id, store_id, base_points)
         add_points(user_id, store_id, int(2 * get_point_rule(store_id, "session_hour")))
         add_points(user_id, store_id, int(get_point_rule(store_id, "game_rating")))
-        add_points(user_id, store_id, int(get_point_rule(store_id, "tournament_participation")))
 
     applied_redemptions = [
         # store 0
@@ -609,7 +608,6 @@ def seed_tournament_test(game_ids):
         {"action_code": "session_hour",             "points_per_unit": 6},
         {"action_code": "food_dollar",              "points_per_unit": 1},
         {"action_code": "game_rating",              "points_per_unit": 8},
-        {"action_code": "tournament_participation", "points_per_unit": 25},
     ])
 
     # ── 3. Tour users (tour1 … tour7) with varied loyalty ───────────────────

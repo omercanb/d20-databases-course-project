@@ -417,7 +417,6 @@ def view_loyalty_policy(store_id):
             WHEN 'session_hour' THEN 1
             WHEN 'food_dollar' THEN 2
             WHEN 'game_rating' THEN 3
-            WHEN 'tournament_participation' THEN 4
             ELSE 5
         END
         """,

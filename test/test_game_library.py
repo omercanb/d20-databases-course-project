@@ -684,6 +684,7 @@ class TestMyStoreSplitViews:
         assert response.status_code == 200
         assert b"Active Sessions" in response.data
         assert b"Pending Sessions" in response.data
+        assert b"Past Sessions" in response.data
 
     def test_mystore_sessions_marks_ended_unchecked_session_not_attended(
         self, client, app, monkeypatch
@@ -813,6 +814,25 @@ class TestMyStoreSessionsFiltering:
         assert response.status_code == 200
         assert b"01 Jan 2099" not in response.data
         assert b"02 Jan 2099" in response.data
+
+    def test_sessions_view_includes_past_sessions(self, client, app):
+        store_id = self._setup_store_with_sessions(client, app)
+        with app.app_context():
+            db = get_db()
+            db.execute(
+                """
+                INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time)
+                VALUES (1, %s, 1, '2020-01-01', 10, 12)
+                """,
+                (store_id,),
+            )
+            db.commit()
+
+        response = client.get("/mystore/sessions")
+
+        assert response.status_code == 200
+        assert b"Past Sessions (1)" in response.data
+        assert b"01 Jan 2020" in response.data
 
 
 # ---------------------------------------------------------------------------

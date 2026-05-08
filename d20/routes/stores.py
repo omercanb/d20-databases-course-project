@@ -58,8 +58,10 @@ from d20.db.session import (
     get_available_tables,
     get_reservation_count,
     get_session,
+    get_sessions_with_user_and_games_by_store,
     get_unavailable_tables,
     get_upcoming_sessions_with_user_and_games_by_store,
+    session_has_ended,
     is_session_not_attended,
 )
 from d20.db.stores import (
@@ -366,12 +368,10 @@ def my_store_sessions():
     current_hour = datetime.now().hour
     from_day = request.args.get("from_day") or ""
     to_day = request.args.get("to_day") or ""
-    upcoming_sessions_raw = get_upcoming_sessions_with_user_and_games_by_store(
-        store_id, today
-    )
+    sessions_raw = get_sessions_with_user_and_games_by_store(store_id)
 
     all_sessions = []
-    for sess in upcoming_sessions_raw:
+    for sess in sessions_raw:
         if from_day and sess["day"] < from_day:
             continue
         if to_day and sess["day"] > to_day:
@@ -382,12 +382,15 @@ def my_store_sessions():
         )
         all_sessions.append(sess_dict)
 
-    # Split into active (started today) and pending (not started yet)
+    # Split into active, pending, and past for store owner review.
     active_sessions = []
     pending_sessions = []
+    past_sessions = []
 
     for sess in all_sessions:
-        if sess["day"] == today and sess["start_time"] <= current_hour:
+        if session_has_ended(sess, today, current_hour) or sess["checkout_status"] == "checked_out":
+            past_sessions.append(sess)
+        elif sess["day"] == today and sess["start_time"] <= current_hour:
             active_sessions.append(sess)
         else:
             pending_sessions.append(sess)
@@ -396,6 +399,7 @@ def my_store_sessions():
         "stores/mystore_sessions.html",
         active_sessions=active_sessions,
         pending_sessions=pending_sessions,
+        past_sessions=past_sessions,
         from_day=from_day,
         to_day=to_day,
     )
@@ -1185,7 +1189,6 @@ def update_my_store_loyalty_point_rules():
         "session_hour": "session hour",
         "food_dollar": "food dollar",
         "game_rating": "game rating",
-        "tournament_participation": "tournament participation",
     }
     rules = []
     for action_code in rule_labels:

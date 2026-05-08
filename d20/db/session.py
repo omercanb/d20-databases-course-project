@@ -221,6 +221,37 @@ def get_upcoming_sessions_with_user_and_games_by_store(store_id, today):
     )
 
 
+def get_sessions_with_user_and_games_by_store(store_id):
+    """All non-tournament sessions at this store, including past sessions."""
+    return (
+        get_db()
+        .execute(
+            """
+            SELECT
+                Session.*,
+                "User".username,
+                COALESCE(
+                    json_agg(
+                        json_build_object('id', Game.id, 'name', Game.name)
+                        ORDER BY Game.name
+                    ) FILTER (WHERE Game.id IS NOT NULL),
+                    '[]'::json
+                ) AS games
+            FROM Session
+            JOIN "User" ON (Session.user_id = "User".id)
+            LEFT JOIN SessionGameCopy ON (Session.id = SessionGameCopy.session_id)
+            LEFT JOIN Game ON (SessionGameCopy.game_id = Game.id)
+            WHERE Session.store_id = %s
+              AND Session.is_tournament = FALSE
+            GROUP BY Session.id, "User".username
+            ORDER BY Session.day DESC, Session.start_time DESC
+            """,
+            (store_id,),
+        )
+        .fetchall()
+    )
+
+
 def update_session(session_id, day, start_time, end_time):
     db = get_db()
     db.execute(

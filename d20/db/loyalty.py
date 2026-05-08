@@ -3,14 +3,12 @@ from d20.db import get_db
 SESSION_POINTS_PER_HOUR = 5
 FOOD_POINT_PER_DOLLAR = 1
 RATING_POINTS = 5
-TOURNAMENT_PARTICIPATION_POINTS = 20
 REDEMPTION_RATE = 0.10  # 1 point = $0.10 discount
 
 DEFAULT_POINT_RULES = {
     "session_hour": SESSION_POINTS_PER_HOUR,
     "food_dollar": FOOD_POINT_PER_DOLLAR,
     "game_rating": RATING_POINTS,
-    "tournament_participation": TOURNAMENT_PARTICIPATION_POINTS,
 }
 
 def get_user_advance_days(user_id, store_id):
@@ -300,7 +298,6 @@ def update_store_loyalty_point_rules(store_id, rules):
         "session_hour",
         "food_dollar",
         "game_rating",
-        "tournament_participation",
     }
     submitted_actions = {rule["action_code"] for rule in rules}
     if submitted_actions != required_actions:

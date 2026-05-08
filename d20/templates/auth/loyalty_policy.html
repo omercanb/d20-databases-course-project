@@ -38,8 +38,6 @@
                                                 Food/drink dollar
                                             {% elif rule.action_code == 'game_rating' %}
                                                 Game rating submitted
-                                            {% elif rule.action_code == 'tournament_participation' %}
-                                                Tournament participation
                                             {% else %}
                                                 {{ rule.action_code }}
                                             {% endif %}
@@ -73,7 +71,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th>Tier</th>
-                                    <th class="text-center">Minimum Lifetime Points</th>
+                                    <th class="text-center">Minimum Points</th>
                                     <th class="text-center">Checkout Discount</th>
                                     <th class="text-center">Reservation Advance Days</th>
                                     <th class="text-end">Free Tournament Entries</th>

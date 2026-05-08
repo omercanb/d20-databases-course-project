@@ -90,7 +90,7 @@ def test_get_user_advance_days_with_tier(app):
         )
         db.commit()
 
-        # Give user enough lifetime_points to be auto-assigned Silver (>=500)
+        # Give user enough current points to be auto-assigned Silver (>=500)
         db.execute(
             "INSERT INTO LoyaltyPoint (user_id, store_id, points, lifetime_points) "
             "VALUES (%s, %s, %s, %s)",
@@ -225,7 +225,7 @@ def test_higher_tier_more_advance_days(app, client):
         )
         db.commit()
 
-        # Promote user to Silver via lifetime_points
+        # Promote user to Silver via current points
         db.execute(
             "INSERT INTO LoyaltyPoint (user_id, store_id, points, lifetime_points) "
             "VALUES (%s, %s, %s, %s)",

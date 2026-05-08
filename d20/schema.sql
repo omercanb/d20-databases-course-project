@@ -404,7 +404,7 @@ CREATE TABLE LoyaltyPointRule (
     points_per_unit NUMERIC(10, 2) NOT NULL,
     PRIMARY KEY (store_id, action_code),
     CONSTRAINT loyaltypointrule_valid_action CHECK (
-        action_code IN ('session_hour', 'food_dollar', 'game_rating', 'tournament_participation')
+        action_code IN ('session_hour', 'food_dollar', 'game_rating')
     ),
     CONSTRAINT loyaltypointrule_points_nonnegative CHECK (points_per_unit >= 0)
 );
@@ -416,8 +416,7 @@ BEGIN
     VALUES
         (NEW.id, 'session_hour', 5),
         (NEW.id, 'food_dollar', 1),
-        (NEW.id, 'game_rating', 5),
-        (NEW.id, 'tournament_participation', 20);
+        (NEW.id, 'game_rating', 5);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -465,12 +464,12 @@ BEGIN
     INTO NEW.tier_code
     FROM LoyaltyTier
     WHERE store_id = NEW.store_id
-      AND min_points <= NEW.lifetime_points
+      AND min_points <= NEW.points
     ORDER BY min_points DESC
     LIMIT 1;
 
     IF NEW.tier_code IS NULL THEN
-        RAISE EXCEPTION 'No loyalty tier configured for store % and % lifetime points', NEW.store_id, NEW.lifetime_points;
+        RAISE EXCEPTION 'No loyalty tier configured for store % and % current points', NEW.store_id, NEW.points;
     END IF;
 
     NEW.updated_at = CURRENT_TIMESTAMP;
@@ -482,15 +481,15 @@ CREATE TRIGGER recalculate_loyalty_tier_before_insert
 BEFORE INSERT ON LoyaltyPoint
 FOR EACH ROW EXECUTE FUNCTION fn_recalculate_loyalty_tier();
 
-CREATE TRIGGER recalculate_loyalty_tier_before_lifetime_points_update
-BEFORE UPDATE OF lifetime_points ON LoyaltyPoint
+CREATE TRIGGER recalculate_loyalty_tier_before_points_update
+BEFORE UPDATE OF points ON LoyaltyPoint
 FOR EACH ROW EXECUTE FUNCTION fn_recalculate_loyalty_tier();
 
 CREATE OR REPLACE FUNCTION fn_recalculate_store_loyalty_points()
 RETURNS TRIGGER AS $$
 BEGIN
     UPDATE LoyaltyPoint
-    SET lifetime_points = lifetime_points
+    SET points = points
     WHERE store_id = NEW.store_id;
     RETURN NEW;
 END;
