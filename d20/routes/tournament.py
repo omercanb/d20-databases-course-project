@@ -34,10 +34,12 @@ from d20.db.tournament import (
     get_tournament,
     get_tournaments_for_store,
     is_registered,
+    get_user_tournament_eligibility,
     record_ffa_match_result,
     record_match_result,
     record_result,
     register_participant,
+    deregister_participant,
     report_participation_stats,
     report_popular_games,
     report_revenue,
@@ -116,8 +118,10 @@ def tournament_detail(tournament_id):
     matches      = get_matches(tournament_id)
     results      = get_results(tournament_id)
     registered   = False
+    eligibility  = None
     if g.user:
         registered = is_registered(tournament_id, g.user["id"])
+        eligibility = get_user_tournament_eligibility(tournament_id, g.user["id"])
 
     # Group matches by round
     rounds = {}
@@ -131,6 +135,7 @@ def tournament_detail(tournament_id):
         rounds=rounds,
         results=results,
         registered=registered,
+        eligibility=eligibility,
     )
 
 
@@ -141,12 +146,33 @@ def register_for_tournament(tournament_id):
     if not t:
         abort(404)
     try:
-        register_participant(tournament_id, g.user["id"])
+        use_free_entry = request.form.get("use_free_entry") == "yes"
+        eligibility = get_user_tournament_eligibility(tournament_id, g.user["id"])
+        if eligibility and not eligibility["meets_tier_requirement"]:
+            flash(f"This tournament requires {t['min_loyalty_tier']} tier or higher to enter.")
+            return redirect(url_for("tournament.tournament_detail", tournament_id=tournament_id))
+            
+        register_participant(tournament_id, g.user["id"], use_free_entry=use_free_entry)
         flash("Successfully registered for the tournament!")
     except Exception as exc:
         # Clean up Postgres error message (remove CONTEXT and ERROR prefix)
         msg = str(exc).split('\n')[0].replace('ERROR:', '').strip()
         flash(f"Registration failed: {msg}")
+    return redirect(url_for("tournament.tournament_detail", tournament_id=tournament_id))
+
+
+@bp.route("/tournaments/<int:tournament_id>/deregister", methods=("POST",))
+@_user_required
+def deregister_for_tournament(tournament_id):
+    t = get_tournament(tournament_id)
+    if not t:
+        abort(404)
+    try:
+        deregister_participant(tournament_id, g.user["id"])
+        flash("Successfully deregistered from the tournament. Your points/free entry have been refunded.")
+    except Exception as exc:
+        msg = str(exc).split('\n')[0].replace('ERROR:', '').strip()
+        flash(f"Deregistration failed: {msg}")
     return redirect(url_for("tournament.tournament_detail", tournament_id=tournament_id))
 
 
@@ -183,6 +209,7 @@ def create_tournament_form():
         end_date          = request.form.get("end_date") or None
         prize_description = request.form.get("prize_description", "").strip() or None
         table_nums        = request.form.getlist("table_nums", type=int)
+        min_loyalty_tier  = request.form.get("min_loyalty_tier") or None
 
         if not name or not game_id or not fmt or not max_participants or not start_date:
             flash("Name, game, format, max participants, and start date are required.")
@@ -203,6 +230,7 @@ def create_tournament_form():
                     end_date=end_date,
                     prize_description=prize_description,
                     table_nums=table_nums,
+                    min_loyalty_tier=min_loyalty_tier,
                 )
                 flash("Tournament created successfully!")
                 return redirect(url_for("tournament.manage_tournament", tournament_id=t_id))
@@ -210,10 +238,14 @@ def create_tournament_form():
                 msg = str(exc).split('\n')[0].replace('ERROR:', '').strip()
                 flash(f"Error creating tournament: {msg}")
 
+    from d20.db import get_db
+    tiers = [dict(r) for r in get_db().execute("SELECT code FROM LoyaltyTier WHERE store_id = %s ORDER BY min_points ASC", (store_id,)).fetchall()]
+
     return render_template(
         "tournament/create_tournament.html",
         games=games,
         tables=tables,
+        tiers=tiers,
     )
 
 
@@ -237,6 +269,7 @@ def edit_tournament_form(tournament_id):
         start_date        = request.form.get("start_date")
         end_date          = request.form.get("end_date") or None
         prize_description = request.form.get("prize_description", "").strip() or None
+        min_loyalty_tier  = request.form.get("min_loyalty_tier") or None
 
         if not name or not max_participants or not start_date:
             flash("Name, max participants, and start date are required.")
@@ -256,6 +289,7 @@ def edit_tournament_form(tournament_id):
                         start_date=start_date,
                         end_date=end_date,
                         prize_description=prize_description,
+                        min_loyalty_tier=min_loyalty_tier,
                     )
                     flash("Tournament updated successfully!")
                     return redirect(url_for("tournament.manage_tournament", tournament_id=tournament_id))
@@ -278,9 +312,13 @@ def edit_tournament_form(tournament_id):
         else:
             t["end_date_formatted"] = str(t["end_date"]).replace(' ', 'T')[:16]
 
+    from d20.db import get_db
+    tiers = [dict(r) for r in get_db().execute("SELECT code FROM LoyaltyTier WHERE store_id = %s ORDER BY min_points ASC", (g.store["id"],)).fetchall()]
+
     return render_template(
         "tournament/edit_tournament.html",
         tournament=t,
+        tiers=tiers,
     )
 
 
@@ -350,15 +388,16 @@ def generate_bracket(tournament_id):
         abort(403)
     K = t["players_per_match"]
     fmt = t["format"]
+    seeded = request.form.get("seeded") == "1"
     try:
         if K == 2:
             if fmt == "single_elimination":
-                generate_single_elimination_bracket(tournament_id)
+                generate_single_elimination_bracket(tournament_id, seeded=seeded)
             else:
                 generate_round_robin_bracket(tournament_id)
         else:
             if fmt == "single_elimination":
-                generate_ffa_single_elimination_bracket(tournament_id, K)
+                generate_ffa_single_elimination_bracket(tournament_id, K, seeded=seeded)
             else:
                 generate_ffa_round_robin_bracket(tournament_id, K)
         flash("Bracket generated successfully!")

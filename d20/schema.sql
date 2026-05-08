@@ -561,6 +561,7 @@ CREATE TABLE Tournament (
     players_per_match    INTEGER NOT NULL DEFAULT 2 CHECK (players_per_match >= 2),
     entry_fee_points     INTEGER NOT NULL DEFAULT 0 CHECK (entry_fee_points >= 0),
     sponsor_name         TEXT,
+    min_loyalty_tier     TEXT DEFAULT NULL CHECK (min_loyalty_tier IS NULL OR min_loyalty_tier IN ('Bronze', 'Silver', 'Gold')),
     registration_open    BOOLEAN NOT NULL DEFAULT TRUE,
     status               TEXT NOT NULL DEFAULT 'registration_open'
                          CHECK (status IN ('registration_open', 'in_progress', 'completed')),
@@ -664,7 +665,7 @@ BEGIN
     END IF;
 
     -- 2. Registration must be open
-    IF NOT v_tournament.registration_open OR v_tournament.status <> 'registration_open' THEN
+    IF v_tournament.status <> 'registration_open' THEN
         RAISE EXCEPTION 'Registration for this tournament is currently closed.';
     END IF;
 
@@ -703,14 +704,29 @@ BEGIN
     FROM LoyaltyPoint
     WHERE user_id = NEW.user_id AND store_id = v_tournament.store_id;
 
-    -- 6. Determine entry payment
+    -- 6. Loyalty tier gate
+    IF v_tournament.min_loyalty_tier IS NOT NULL THEN
+        IF v_lp.tier_code NOT IN (
+            SELECT code FROM LoyaltyTier
+            WHERE store_id = v_tournament.store_id
+              AND min_points >= (
+                  SELECT min_points FROM LoyaltyTier
+                  WHERE store_id = v_tournament.store_id AND code = v_tournament.min_loyalty_tier
+              )
+        ) THEN
+            RAISE EXCEPTION 'This tournament requires % tier or higher to enter.', v_tournament.min_loyalty_tier;
+        END IF;
+    END IF;
+
+    -- 7. Determine entry payment
     SELECT lt.free_tournament_entries INTO v_free_allowed
     FROM LoyaltyTier lt
     WHERE lt.store_id = v_tournament.store_id AND lt.code = v_lp.tier_code;
 
-    IF v_lp.used_free_tournament_entries < v_free_allowed THEN
-        -- Use a free entry
-        NEW.used_free_entry := TRUE;
+    IF NEW.used_free_entry THEN
+        IF v_lp.used_free_tournament_entries >= v_free_allowed THEN
+            RAISE EXCEPTION 'You have no free tournament entries remaining at this tier.';
+        END IF;
         UPDATE LoyaltyPoint
         SET used_free_tournament_entries = used_free_tournament_entries + 1
         WHERE user_id = NEW.user_id AND store_id = v_tournament.store_id;
@@ -780,6 +796,44 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER register_tournament_before_insert
 BEFORE INSERT ON TournamentParticipant
 FOR EACH ROW EXECUTE FUNCTION fn_register_tournament();
+
+-- =============================================================
+-- TRIGGER: DEREGISTRATION
+-- Fires BEFORE DELETE ON TournamentParticipant.
+-- Checks: tournament open, refunds points or free entries.
+-- =============================================================
+CREATE OR REPLACE FUNCTION fn_deregister_tournament()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_tournament Tournament%ROWTYPE;
+BEGIN
+    SELECT * INTO v_tournament FROM Tournament WHERE id = OLD.tournament_id;
+
+    IF v_tournament.status <> 'registration_open' THEN
+        RAISE EXCEPTION 'Cannot deregister: tournament registration is closed or already started.';
+    END IF;
+
+    IF OLD.used_free_entry THEN
+        UPDATE LoyaltyPoint
+        SET used_free_tournament_entries = GREATEST(used_free_tournament_entries - 1, 0)
+        WHERE user_id = OLD.user_id AND store_id = v_tournament.store_id;
+    ELSIF v_tournament.entry_fee_points > 0 THEN
+        UPDATE LoyaltyPoint
+        SET points = points + v_tournament.entry_fee_points
+        WHERE user_id = OLD.user_id AND store_id = v_tournament.store_id;
+
+        INSERT INTO LoyaltyRedemption (user_id, store_id, points_spent, description)
+        VALUES (OLD.user_id, v_tournament.store_id, -v_tournament.entry_fee_points,
+                'Refund for deregistering from tournament ID ' || OLD.tournament_id);
+    END IF;
+
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER deregister_tournament_before_delete
+BEFORE DELETE ON TournamentParticipant
+FOR EACH ROW EXECUTE FUNCTION fn_deregister_tournament();
 
 -- =============================================================
 -- TRIGGER: ADVANCE BRACKET ON MATCH RESULT
