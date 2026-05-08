@@ -1,162 +1,211 @@
-{% extends 'base.html' %} {% block header %}
-<h1>{% block title %}{{ g.store['name'] }} - My Store{% endblock %}</h1>
-{% endblock %} {% block content %} {% set active_tab = 'overview' %} {% include
-'stores/_mystore_nav.html' %}
+{% extends 'base.html' %}
+
+{% block title %}{{ g.store['name'] }} - My Store{% endblock %}
+
+{% block header %}
+<h1>{{ g.store['name'] }} - My Store</h1>
+{% endblock %}
+
+{% block content %}
+{% set active_tab = 'overview' %}
+{% include 'stores/_mystore_nav.html' %}
+{% set top_game = popular_games[0] if popular_games else none %}
+{% set top_item = popular_menu_items[0] if popular_menu_items else none %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="h4 mb-0">Today</h2>
+  <a href="{{ url_for('stores.my_store_analytics') }}" class="btn btn-outline-primary btn-sm">
+    View Analytics
+  </a>
+</div>
 
 <div class="row g-3">
-  <div class="col-md-4">
-    <div class="card h-100">
+  <div class="col-sm-6 col-xl-3">
+    <div class="card h-100 shadow-sm border-0">
       <div class="card-body">
-        <h5 class="card-title">Tables</h5>
-        <p class="display-6 mb-1">{{ tables|length }}</p>
-        <a
-          href="{{ url_for('stores.my_store_tables') }}"
-          class="btn btn-outline-primary btn-sm"
-          >Manage Tables</a
-        >
+        <h5 class="card-title">Today's Revenue</h5>
+        <p class="display-6 mb-1">${{ "%.2f"|format(overview.total_revenue) }}</p>
+        <p class="small text-muted mb-0">{{ overview.total_bills }} bills today</p>
       </div>
     </div>
   </div>
-  <div class="col-md-4">
-    <div class="card h-100">
+  <div class="col-sm-6 col-xl-3">
+    <div class="card h-100 shadow-sm border-0">
       <div class="card-body">
-        <h5 class="card-title">Games In Inventory</h5>
-        <p class="display-6 mb-1">{{ games|length }}</p>
-        <a
-          href="{{ url_for('stores.my_store_games') }}"
-          class="btn btn-outline-primary btn-sm"
-          >Manage Games</a
-        >
+        <h5 class="card-title">Today's Sessions</h5>
+        <p class="display-6 mb-1">{{ overview.todays_sessions }}</p>
+        <p class="small text-muted mb-0">{{ overview.checked_in_sessions }} checked in</p>
       </div>
     </div>
   </div>
-  <div class="col-md-4">
-    <div class="card h-100">
+  <div class="col-sm-6 col-xl-3">
+    <div class="card h-100 shadow-sm border-0">
       <div class="card-body">
-        <h5 class="card-title">Upcoming Sessions</h5>
-        <p class="display-6 mb-1">{{ upcoming_sessions|length }}</p>
-        <a
-          href="{{ url_for('stores.my_store_sessions') }}"
-          class="btn btn-outline-primary btn-sm"
-          >View Sessions</a
-        >
+        <h5 class="card-title">Today's Top Game</h5>
+        {% if top_game %}
+          <p class="h4 mb-1">{{ top_game.game_name }}</p>
+          <p class="small text-muted mb-0">{{ top_game.session_count }} sessions booked</p>
+        {% else %}
+          <p class="h5 text-muted mb-0">No game bookings yet</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Today's Top Menu Item</h5>
+        {% if top_item %}
+          <p class="h4 mb-1">{{ top_item.item_name }}</p>
+          <p class="small text-muted mb-0">{{ top_item.quantity_sold }} sold</p>
+        {% else %}
+          <p class="h5 text-muted mb-0">No menu sales yet</p>
+        {% endif %}
       </div>
     </div>
   </div>
 </div>
 
 <div class="row g-3 mt-1">
-  <div class="col-lg-8">
-    <div class="card h-100">
+  <div class="col-lg-7">
+    <div class="card h-100 shadow-sm border-0">
       <div class="card-body">
-        <h5 class="card-title">Upcoming Reservations</h5>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="card-title mb-0">Upcoming Sessions (Next 7 Days)</h5>
+          <a href="{{ url_for('stores.my_store_sessions') }}" class="btn btn-outline-primary btn-sm">Sessions</a>
+        </div>
         <div style="position: relative; height: 220px">
-          <canvas id="reservationsByDayChart"></canvas>
+          <canvas id="upcomingSessionsChart"></canvas>
         </div>
       </div>
     </div>
   </div>
-  <div class="col-lg-4">
-    <div class="card h-100">
+  <div class="col-lg-5">
+    <div class="card h-100 shadow-sm border-0">
       <div class="card-body">
-        <h5 class="card-title">Operations Snapshot</h5>
+        <h5 class="card-title">Today's Revenue Mix</h5>
         <div style="position: relative; height: 220px">
-          <canvas id="opsSnapshotChart"></canvas>
+          <canvas id="revenueMixChart"></canvas>
         </div>
-        <p class="small text-muted mt-3 mb-0">
-          Total copies in inventory: {{ total_copies }}
-        </p>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0 mt-3">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h5 class="card-title mb-0">Upcoming Sessions</h5>
+      <a href="{{ url_for('stores.my_store_sessions') }}" class="btn btn-outline-primary btn-sm">
+        Sessions
+      </a>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Customer</th>
+            <th>Table</th>
+            <th>Games</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sess in upcoming_sessions[:8] %}
+            <tr>
+              <td>{{ sess.day }}</td>
+              <td>{{ sess.start_time }}:00-{{ sess.end_time }}:00</td>
+              <td>{{ sess.username }}</td>
+              <td>{{ sess.table_num }}</td>
+              <td>
+                {% if sess.games %}
+                  {{ sess.games|map(attribute='name')|join(', ') }}
+                {% else %}
+                  <span class="text-muted">No games selected</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="5" class="text-center text-muted py-4">No upcoming sessions.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-  (function initMyStoreOverviewCharts() {
-      if (!window.Chart) {
-          return;
-      }
+  (function initOverviewCharts() {
+      if (!window.Chart) return;
 
-      if (!window.__mystoreCharts) {
-          window.__mystoreCharts = {};
-      }
-
-      const reservationLabels = [{% for day, count in reservations_by_day|dictsort %}"{{ day }}"{% if not loop.last %}, {% endif %}{% endfor %}];
-      const reservationCounts = [{% for day, count in reservations_by_day|dictsort %}{{ count }}{% if not loop.last %}, {% endif %}{% endfor %}];
-
-      const reservationsByDayCanvas = document.getElementById("reservationsByDayChart");
-      const opsSnapshotCanvas = document.getElementById("opsSnapshotChart");
-      if (!reservationsByDayCanvas || !opsSnapshotCanvas) {
-          return;
-      }
-
-      const existingReservations = Chart.getChart(reservationsByDayCanvas);
-      if (existingReservations) {
-          existingReservations.destroy();
-      }
-      const existingOps = Chart.getChart(opsSnapshotCanvas);
-      if (existingOps) {
-          existingOps.destroy();
-      }
-
-      window.__mystoreCharts.reservationsByDay = new Chart(reservationsByDayCanvas, {
-          type: "line",
-          data: {
-              labels: reservationLabels.length ? reservationLabels : ["No Upcoming Reservations"],
-              datasets: [{
-                  label: "Reservations",
-                  data: reservationCounts.length ? reservationCounts : [0],
-                  borderColor: "rgba(13, 110, 253, 1)",
-                  backgroundColor: "rgba(13, 110, 253, 0.2)",
-                  tension: 0.25,
-                  fill: true,
-                  pointRadius: 4
-              }]
-          },
-          options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              animation: false,
-              scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
-          }
-      });
-
-      window.__mystoreCharts.opsSnapshot = new Chart(opsSnapshotCanvas, {
-          type: "doughnut",
-          data: {
-              labels: ["Tables", "Game Titles", "Upcoming Sessions"],
-              datasets: [{
-                  data: [{{ tables|length }}, {{ games|length }}, {{ upcoming_sessions|length }}],
-                  backgroundColor: [
-                      "rgba(25, 135, 84, 0.75)",
-                      "rgba(255, 193, 7, 0.75)",
-                      "rgba(220, 53, 69, 0.75)"
-                  ],
-                  borderWidth: 1
-              }]
-          },
-          options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              animation: false
-          }
-      });
-
-      if (!window.__mystoreChartsCleanupBound) {
-          const cleanupCharts = function () {
-              if (window.__mystoreCharts?.reservationsByDay) {
-                  window.__mystoreCharts.reservationsByDay.destroy();
-                  window.__mystoreCharts.reservationsByDay = null;
+      const sessCanvas = document.getElementById("upcomingSessionsChart");
+      if (sessCanvas) {
+          const existing = Chart.getChart(sessCanvas);
+          if (existing) existing.destroy();
+          new Chart(sessCanvas, {
+              type: "line",
+              data: {
+                  labels: {{ next_7_days | tojson }},
+                  datasets: [{
+                      label: "Sessions",
+                      data: {{ sessions_by_day | tojson }},
+                      borderColor: "rgba(13, 110, 253, 0.9)",
+                      backgroundColor: "rgba(13, 110, 253, 0.15)",
+                      fill: true,
+                      tension: 0.3,
+                      pointRadius: 4
+                  }]
+              },
+              options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  animation: false,
+                  scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
               }
-              if (window.__mystoreCharts?.opsSnapshot) {
-                  window.__mystoreCharts.opsSnapshot.destroy();
-                  window.__mystoreCharts.opsSnapshot = null;
+          });
+      }
+
+      const mixCanvas = document.getElementById("revenueMixChart");
+      if (mixCanvas) {
+          const existingMix = Chart.getChart(mixCanvas);
+          if (existingMix) existingMix.destroy();
+          new Chart(mixCanvas, {
+              type: "pie",
+              data: {
+                  labels: ["Food & Drink", "Table Fees"],
+                  datasets: [{
+                      data: [
+                          {{ "%.2f"|format(overview.food_revenue) }},
+                          {{ "%.2f"|format(overview.table_revenue) }}
+                      ],
+                      backgroundColor: [
+                          "rgba(255, 193, 7, 0.85)",
+                          "rgba(13, 110, 253, 0.78)"
+                      ],
+                      borderColor: ["#ffc107", "#0d6efd"],
+                      borderWidth: 1
+                  }]
+              },
+              options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  animation: false,
+                  plugins: {
+                      legend: { position: "bottom" },
+                      tooltip: {
+                          callbacks: {
+                              label: function(ctx) {
+                                  return " $" + ctx.parsed.toFixed(2);
+                              }
+                          }
+                      }
+                  }
               }
-          };
-          window.addEventListener("beforeunload", cleanupCharts);
-          document.body.addEventListener("htmx:beforeSwap", cleanupCharts);
-          window.__mystoreChartsCleanupBound = true;
+          });
       }
   })();
 </script>

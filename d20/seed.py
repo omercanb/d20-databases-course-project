@@ -754,6 +754,89 @@ def seed_tournament_test(game_ids):
     return ts_id, rr, se
 
 
+def _seed_analytics_history(user_ids, store_ids, store_to_game_copy):
+    """
+    Inserts two clean 30-day periods of completed sessions with game copies,
+    session orders, and bills so both revenue and menu popularity views have data.
+
+    Period A: 1-30 days ago  — Monopoly-heavy
+    Period B: 61-90 days ago — Catan-heavy
+    """
+    db = get_db()
+    random.seed(77)
+
+    for store_id in store_ids:
+        game_copies = store_to_game_copy[store_id]
+        n_games = len(game_copies)
+
+        menu_items = db.execute(
+            "SELECT id, price FROM MenuItem WHERE store_id = %s AND is_available = TRUE",
+            (store_id,),
+        ).fetchall()
+        if not menu_items:
+            continue
+
+        for days_ago, weights in [
+            (range(1, 31),  [6, 2, 2]),
+            (range(61, 91), [2, 6, 2]),
+        ]:
+            for d in days_ago:
+                day = date.today() - timedelta(days=d)
+                for _ in range(random.randint(1, 3)):
+                    user_id = random.choice(user_ids)
+                    start_hour = random.choice([9, 11, 13, 15, 17])
+                    duration = random.choice([2, 3])
+                    end_hour = start_hour + duration
+                    table_fee = round(duration * 5.0, 2)
+
+                    game_id, copy_num = random.choices(game_copies, weights=weights[:n_games])[0]
+
+                    session_id = db.execute(
+                        """
+                        INSERT INTO Session
+                            (user_id, store_id, table_num, day, start_time, end_time,
+                             checkout_status, checked_in)
+                        VALUES (%s, %s, 1, %s, %s, %s, 'checked_out', TRUE)
+                        RETURNING id
+                        """,
+                        (user_id, store_id, day, start_hour, end_hour),
+                    ).fetchone()["id"]
+
+                    db.execute(
+                        "INSERT INTO SessionGameCopy (session_id, game_id, store_id, copy_num) VALUES (%s, %s, %s, %s)",
+                        (session_id, game_id, store_id, copy_num),
+                    )
+
+                    food_total = 0.0
+                    if random.random() > 0.3:
+                        order_items = random.sample(menu_items, k=random.randint(1, min(2, len(menu_items))))
+                        order_total = round(sum(float(i["price"]) for i in order_items), 2)
+                        order_id = db.execute(
+                            """
+                            INSERT INTO SessionOrder (session_id, status, total_amount)
+                            VALUES (%s, 'completed', %s) RETURNING id
+                            """,
+                            (session_id, order_total),
+                        ).fetchone()["id"]
+                        for item in order_items:
+                            db.execute(
+                                "INSERT INTO SessionOrderItem (order_id, item_id, quantity) VALUES (%s, %s, 1)",
+                                (order_id, item["id"]),
+                            )
+                        food_total = order_total
+
+                    grand_total = round(table_fee + food_total, 2)
+                    db.execute(
+                        """
+                        INSERT INTO Bill
+                            (session_id, table_fee, food_total, damage_fee, loyalty_discount, grand_total)
+                        VALUES (%s, %s, %s, 0, 0, %s)
+                        """,
+                        (session_id, table_fee, food_total, grand_total),
+                    )
+    db.commit()
+
+
 def seed_the_universe():
     user_ids = seed_users()
     store_ids = seed_stores()
@@ -767,6 +850,7 @@ def seed_the_universe():
     seed_loyalty_program(user_ids, store_ids)
     seed_vouchers(user_ids, store_ids)
     seed_historical_price_data(user_ids, game_ids)
+    _seed_analytics_history(user_ids, store_ids, store_to_game_copy)
     seed_tournament_test(game_ids)
 
 

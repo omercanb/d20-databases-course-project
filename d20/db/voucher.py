@@ -44,6 +44,14 @@ def update_voucher(voucher_id, store_id, name, description, point_cost, reward_t
 
 def delete_voucher(voucher_id, store_id):
     db = get_db()
+    count = db.execute(
+        "SELECT COUNT(*) AS n FROM CustomerVoucher WHERE voucher_id=%s", (voucher_id,)
+    ).fetchone()["n"]
+    if count > 0:
+        raise ValueError(
+            "Cannot delete a voucher that customers have already purchased. "
+            "Deactivate it instead."
+        )
     db.execute("DELETE FROM LoyaltyVoucher WHERE id=%s AND store_id=%s", (voucher_id, store_id))
     db.commit()
 

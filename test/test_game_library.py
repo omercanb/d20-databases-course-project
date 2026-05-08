@@ -486,7 +486,171 @@ class TestMyStoreSplitViews:
         response = client.get("/mystore/overview")
         assert response.status_code == 200
         assert b"Overview" in response.data
-        assert b"Manage Tables" in response.data
+        assert b"Today's Revenue" in response.data
+        assert b"Today's Sessions" in response.data
+        assert b"Today's Top Game" in response.data
+        assert b"Today's Top Menu Item" in response.data
+        assert b"No game bookings yet" in response.data
+
+    def test_mystore_overview_shows_today_store_metrics(self, client, app):
+        store_id = self._setup_store_session(
+            client, app, username="split_ov_metrics", name="Split Ov Metrics"
+        )
+        with app.app_context():
+            db = get_db()
+            today = store_routes.date.today().isoformat()
+            game_id = _insert_game(
+                db,
+                name="Overview Popular Game",
+                symbol="OPG",
+            )
+            db.execute(
+                'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+                (store_id,),
+            )
+            _insert_game_copy(db, game_id, store_id)
+            session_id = db.execute(
+                """
+                INSERT INTO Session (
+                    user_id, store_id, table_num, day, start_time, end_time,
+                    checkout_status, checked_in
+                )
+                VALUES (1, %s, 1, %s, 10, 12, 'checked_out', TRUE)
+                RETURNING id
+                """,
+                (store_id, today),
+            ).fetchone()["id"]
+            db.execute(
+                """
+                INSERT INTO Bill (
+                    session_id, table_fee, food_total, damage_fee,
+                    loyalty_discount, tier_discount, voucher_discount, grand_total
+                )
+                VALUES (%s, 10.00, 20.00, 5.00, 2.00, 3.00, 2.00, 28.00)
+                """,
+                (session_id,),
+            )
+            db.execute(
+                """
+                INSERT INTO SessionGameCopy (session_id, game_id, store_id, copy_num)
+                VALUES (%s, %s, %s, 1)
+                """,
+                (session_id, game_id, store_id),
+            )
+            item_id = db.execute(
+                """
+                INSERT INTO MenuItem (store_id, name, price, is_available)
+                VALUES (%s, 'Tea', 5.00, TRUE)
+                RETURNING id
+                """,
+                (store_id,),
+            ).fetchone()["id"]
+            order_id = db.execute(
+                """
+                INSERT INTO SessionOrder (session_id, status, total_amount)
+                VALUES (%s, 'completed', 20.00)
+                RETURNING id
+                """,
+                (session_id,),
+            ).fetchone()["id"]
+            db.execute(
+                """
+                INSERT INTO SessionOrderItem (order_id, item_id, quantity)
+                VALUES (%s, %s, 4)
+                """,
+                (order_id, item_id),
+            )
+            db.commit()
+
+        response = client.get("/mystore/overview")
+        body = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert "$28.00" in body
+        assert "Overview Popular Game" in body
+        assert "Tea" in body
+        assert "4" in body
+
+    def test_mystore_analytics_renders_period_comparison(self, client, app):
+        store_id = self._setup_store_session(
+            client, app, username="split_analytics", name="Split Analytics"
+        )
+        with app.app_context():
+            db = get_db()
+            game_id = _insert_game(
+                db,
+                name="Analytics Popular Game",
+                symbol="APG",
+            )
+            db.execute(
+                'INSERT INTO "Table" (store_id, table_num, capacity) VALUES (%s, 1, 4)',
+                (store_id,),
+            )
+            _insert_game_copy(db, game_id, store_id)
+            session_id = db.execute(
+                """
+                INSERT INTO Session (
+                    user_id, store_id, table_num, day, start_time, end_time,
+                    checkout_status, checked_in
+                )
+                VALUES (1, %s, 1, '2026-04-15', 10, 12, 'checked_out', TRUE)
+                RETURNING id
+                """,
+                (store_id,),
+            ).fetchone()["id"]
+            db.execute(
+                """
+                INSERT INTO Bill (
+                    session_id, table_fee, food_total, damage_fee, grand_total
+                )
+                VALUES (%s, 10.00, 15.00, 0.00, 25.00)
+                """,
+                (session_id,),
+            )
+            db.execute(
+                """
+                INSERT INTO SessionGameCopy (session_id, game_id, store_id, copy_num)
+                VALUES (%s, %s, %s, 1)
+                """,
+                (session_id, game_id, store_id),
+            )
+            item_id = db.execute(
+                """
+                INSERT INTO MenuItem (store_id, name, price, is_available)
+                VALUES (%s, 'Coffee', 5.00, TRUE)
+                RETURNING id
+                """,
+                (store_id,),
+            ).fetchone()["id"]
+            order_id = db.execute(
+                """
+                INSERT INTO SessionOrder (session_id, status, total_amount)
+                VALUES (%s, 'completed', 15.00)
+                RETURNING id
+                """,
+                (session_id,),
+            ).fetchone()["id"]
+            db.execute(
+                """
+                INSERT INTO SessionOrderItem (order_id, item_id, quantity)
+                VALUES (%s, %s, 3)
+                """,
+                (order_id, item_id),
+            )
+            db.commit()
+
+        response = client.get(
+            "/mystore/analytics?a_start=2026-04-01&a_end=2026-06-30"
+            "&b_start=2026-01-01&b_end=2026-03-31"
+        )
+        body = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert "Store Analytics" in body
+        assert "Period A" in body
+        assert "$25.00" in body
+        assert "Analytics Popular Game" in body
+        assert "Coffee" in body
 
     def test_mystore_games_renders(self, client, app):
         self._setup_store_session(client, app, username="split_games", name="Split Games")
@@ -561,6 +725,7 @@ class TestMyStoreSplitViews:
             "/mystore/games/library",
             "/mystore/tables",
             "/mystore/sessions",
+            "/mystore/analytics",
         ):
             response = client.get(path)
             assert response.status_code == 302

@@ -1,0 +1,272 @@
+{% extends 'base.html' %}
+
+{% block title %}Analytics - {{ g.store['name'] }}{% endblock %}
+
+{% block header %}
+<h1>Store Analytics</h1>
+{% endblock %}
+
+{% block content %}
+{% set active_tab = 'analytics' %}
+{% include 'stores/_mystore_nav.html' %}
+{% set revenue_delta = period_a.total_revenue - period_b.total_revenue %}
+{% set session_delta = period_a.total_sessions - period_b.total_sessions %}
+{% set bill_delta = period_a.total_bills - period_b.total_bills %}
+
+<form method="get" class="card shadow-sm border-0 mb-4" id="analyticsForm">
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-5">
+        <h5 class="card-title mb-2">
+          <span class="badge bg-primary me-1">A</span> Period A
+        </h5>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label" for="a_start">Start</label>
+            <input class="form-control" id="a_start" name="a_start" type="date" value="{{ period_a.start_date }}">
+          </div>
+          <div class="col-6">
+            <label class="form-label" for="a_end">End</label>
+            <input class="form-control" id="a_end" name="a_end" type="date" value="{{ period_a.end_date }}">
+          </div>
+        </div>
+      </div>
+      <div class="col-md-5">
+        <h5 class="card-title mb-2">
+          <span class="badge bg-success me-1">B</span> Period B
+        </h5>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label" for="b_start">Start</label>
+            <input class="form-control" id="b_start" name="b_start" type="date" value="{{ period_b.start_date }}">
+          </div>
+          <div class="col-6">
+            <label class="form-label" for="b_end">End</label>
+            <input class="form-control" id="b_end" name="b_end" type="date" value="{{ period_b.end_date }}">
+          </div>
+        </div>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-primary" type="submit">Compare</button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<!-- Period labels -->
+<div class="d-flex gap-2 mb-3">
+  <span class="badge bg-primary fs-6 fw-normal px-3 py-2">
+    A: {{ period_a_start|ordinal_date }} → {{ period_a_end|ordinal_date }}
+  </span>
+  <span class="badge bg-success fs-6 fw-normal px-3 py-2">
+    B: {{ period_b_start|ordinal_date }} → {{ period_b_end|ordinal_date }}
+  </span>
+</div>
+
+<!-- KPI cards: show both values -->
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Revenue</h5>
+        <div class="d-flex justify-content-between align-items-baseline mb-1">
+          <span class="badge bg-primary">A</span>
+          <span class="fs-4 fw-semibold">${{ "%.2f"|format(period_a.total_revenue) }}</span>
+        </div>
+        <div class="d-flex justify-content-between align-items-baseline mb-2">
+          <span class="badge bg-success">B</span>
+          <span class="text-muted">${{ "%.2f"|format(period_b.total_revenue) }}</span>
+        </div>
+        <p class="mb-0 small {% if revenue_delta >= 0 %}text-success{% else %}text-danger{% endif %}">
+          {{ "%+.2f"|format(revenue_delta) }} (A vs B)
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Sessions</h5>
+        <div class="d-flex justify-content-between align-items-baseline mb-1">
+          <span class="badge bg-primary">A</span>
+          <span class="fs-4 fw-semibold">{{ period_a.total_sessions }}</span>
+        </div>
+        <div class="d-flex justify-content-between align-items-baseline mb-2">
+          <span class="badge bg-success">B</span>
+          <span class="text-muted">{{ period_b.total_sessions }}</span>
+        </div>
+        <p class="mb-0 small {% if session_delta >= 0 %}text-success{% else %}text-danger{% endif %}">
+          {{ "%+d"|format(session_delta) }} (A vs B)
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Bills</h5>
+        <div class="d-flex justify-content-between align-items-baseline mb-1">
+          <span class="badge bg-primary">A</span>
+          <span class="fs-4 fw-semibold">{{ period_a.total_bills }}</span>
+        </div>
+        <div class="d-flex justify-content-between align-items-baseline mb-2">
+          <span class="badge bg-success">B</span>
+          <span class="text-muted">{{ period_b.total_bills }}</span>
+        </div>
+        <p class="mb-0 small {% if bill_delta >= 0 %}text-success{% else %}text-danger{% endif %}">
+          {{ "%+d"|format(bill_delta) }} (A vs B)
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Revenue bar chart (full width) -->
+<div class="row g-3 mt-1">
+  <div class="col-12">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Revenue Breakdown</h5>
+        <div style="position: relative; height: 280px">
+          <canvas id="revenueCompareChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Top Games merged -->
+<div class="row g-3 mt-1">
+  <div class="col-lg-6">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Top Games</h5>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Game</th>
+                <th class="text-end"><span class="badge bg-primary">A</span> Sessions</th>
+                <th class="text-end"><span class="badge bg-success">B</span> Sessions</th>
+                <th class="text-end">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for g in games_merged %}
+                <tr>
+                  <td>{{ g.name }}</td>
+                  <td class="text-end">{{ g.sessions_a }}</td>
+                  <td class="text-end">{{ g.sessions_b }}</td>
+                  <td class="text-end {% if g.delta > 0 %}text-success{% elif g.delta < 0 %}text-danger{% else %}text-muted{% endif %}">
+                    {{ "%+d"|format(g.delta) }}
+                  </td>
+                </tr>
+              {% else %}
+                <tr><td colspan="4" class="text-center text-muted">No game data.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-body">
+        <h5 class="card-title">Top Menu Items</h5>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th class="text-end"><span class="badge bg-primary">A</span> Sold</th>
+                <th class="text-end"><span class="badge bg-success">B</span> Sold</th>
+                <th class="text-end">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in menu_merged %}
+                <tr>
+                  <td>{{ item.name }}</td>
+                  <td class="text-end">{{ item.sold_a }}</td>
+                  <td class="text-end">{{ item.sold_b }}</td>
+                  <td class="text-end {% if item.delta > 0 %}text-success{% elif item.delta < 0 %}text-danger{% else %}text-muted{% endif %}">
+                    {{ "%+d"|format(item.delta) }}
+                  </td>
+                </tr>
+              {% else %}
+                <tr><td colspan="4" class="text-center text-muted">No menu data.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.getElementById("analyticsForm").addEventListener("submit", function(e) {
+      const aStart = document.getElementById("a_start").value;
+      const aEnd   = document.getElementById("a_end").value;
+      const bStart = document.getElementById("b_start").value;
+      const bEnd   = document.getElementById("b_end").value;
+      if (aStart && aEnd && bStart && bEnd) {
+          if (aStart > aEnd) {
+              e.preventDefault();
+              Swal.fire({ icon: 'warning', title: 'Invalid dates', text: 'Period A: start date cannot be after end date.' });
+          } else if (bStart > bEnd) {
+              e.preventDefault();
+              Swal.fire({ icon: 'warning', title: 'Invalid dates', text: 'Period B: start date cannot be after end date.' });
+          } else if (aStart <= bEnd && bStart <= aEnd) {
+              e.preventDefault();
+              Swal.fire({ icon: 'warning', title: 'Periods overlap', text: 'Period A and Period B must not overlap. Adjust the dates.' });
+          }
+      }
+  });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  (function initStoreAnalyticsCharts() {
+      if (!window.Chart) return;
+      const canvas = document.getElementById("revenueCompareChart");
+      if (!canvas) return;
+      const existing = Chart.getChart(canvas);
+      if (existing) existing.destroy();
+      new Chart(canvas, {
+          type: "bar",
+          data: {
+              labels: ["Total", "Table Fees", "Food & Drink", "Damage Fees"],
+              datasets: [
+                  {
+                      label: "Period A",
+                      data: [
+                          {{ "%.2f"|format(period_a.total_revenue) }},
+                          {{ "%.2f"|format(period_a.table_revenue) }},
+                          {{ "%.2f"|format(period_a.food_revenue) }},
+                          {{ "%.2f"|format(period_a.damage_revenue) }}
+                      ],
+                      backgroundColor: "rgba(13, 110, 253, 0.78)"
+                  },
+                  {
+                      label: "Period B",
+                      data: [
+                          {{ "%.2f"|format(period_b.total_revenue) }},
+                          {{ "%.2f"|format(period_b.table_revenue) }},
+                          {{ "%.2f"|format(period_b.food_revenue) }},
+                          {{ "%.2f"|format(period_b.damage_revenue) }}
+                      ],
+                      backgroundColor: "rgba(25, 135, 84, 0.78)"
+                  }
+              ]
+          },
+          options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              scales: { y: { beginAtZero: true } }
+          }
+      });
+  })();
+</script>
+{% endblock %}

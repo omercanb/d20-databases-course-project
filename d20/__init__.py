@@ -115,3 +115,12 @@ def add_date_prettify(app):
 
         dt = datetime.fromisoformat(value)
         return dt.strftime("%d %b %Y")
+
+    @app.template_filter("ordinal_date")
+    def ordinal_date(value):
+        from datetime import date, datetime
+        if isinstance(value, str):
+            value = date.fromisoformat(value)
+        day = value.day
+        suffix = "th" if 11 <= day <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+        return f"{day}{suffix} of {value.strftime('%B')}, {value.year}"

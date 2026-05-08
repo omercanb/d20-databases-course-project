@@ -239,7 +239,7 @@ CREATE TABLE CustomerVoucher (
     id         SERIAL PRIMARY KEY,
     user_id    INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
     store_id   INTEGER NOT NULL REFERENCES Store(id) ON DELETE CASCADE,
-    voucher_id INTEGER NOT NULL REFERENCES LoyaltyVoucher(id) ON DELETE CASCADE,
+    voucher_id INTEGER NOT NULL REFERENCES LoyaltyVoucher(id) ON DELETE RESTRICT,
     is_used    BOOLEAN NOT NULL DEFAULT FALSE,
     bill_id    INTEGER REFERENCES Bill(id),
     issued_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -966,6 +966,64 @@ FOR EACH ROW EXECUTE FUNCTION fn_award_tournament_prizes();
 -- =============================================================
 -- REPORTING VIEWS
 -- =============================================================
+
+CREATE VIEW vw_store_daily_revenue_summary AS
+SELECT
+    s.store_id,
+    s.day::date AS activity_date,
+    COUNT(DISTINCT s.id) AS total_sessions,
+    COUNT(b.id) AS total_bills,
+    COALESCE(SUM(b.grand_total), 0) AS total_revenue,
+    COALESCE(SUM(b.table_fee), 0) AS table_revenue,
+    COALESCE(SUM(b.food_total), 0) AS food_revenue,
+    COALESCE(SUM(b.damage_fee), 0) AS damage_revenue
+FROM Session s
+LEFT JOIN Bill b ON b.session_id = s.id
+GROUP BY s.store_id, s.day::date;
+
+CREATE VIEW vw_store_daily_game_popularity AS
+SELECT
+    sgc.store_id,
+    s.day::date AS activity_date,
+    g.id AS game_id,
+    g.name AS game_name,
+    COUNT(DISTINCT sgc.session_id) AS session_count,
+    COUNT(*) AS copy_bookings
+FROM SessionGameCopy sgc
+JOIN Session s ON s.id = sgc.session_id
+JOIN Game g ON g.id = sgc.game_id
+GROUP BY sgc.store_id, s.day::date, g.id, g.name
+
+UNION ALL
+
+SELECT
+    s.store_id,
+    s.day::date AS activity_date,
+    t.game_id AS game_id,
+    g.name AS game_name,
+    COUNT(DISTINCT s.id) AS session_count,
+    COUNT(DISTINCT s.id) AS copy_bookings
+FROM Session s
+JOIN Tournament t ON t.id = s.tournament_id
+JOIN Game g ON g.id = t.game_id
+WHERE s.is_tournament = TRUE
+GROUP BY s.store_id, s.day::date, t.game_id, g.name;
+
+CREATE VIEW vw_store_daily_menu_item_popularity AS
+SELECT
+    mi.store_id,
+    s.day::date AS activity_date,
+    mi.id AS item_id,
+    mi.name AS item_name,
+    SUM(soi.quantity) AS quantity_sold,
+    COUNT(DISTINCT so.id) AS order_count,
+    SUM(soi.quantity * mi.price) AS revenue
+FROM Session s
+JOIN SessionOrder so ON so.session_id = s.id
+JOIN SessionOrderItem soi ON soi.order_id = so.id
+JOIN MenuItem mi ON mi.id = soi.item_id
+WHERE so.status != 'cancelled'
+GROUP BY mi.store_id, s.day::date, mi.id, mi.name;
 
 -- Most popular tournament games
 CREATE VIEW vw_popular_tournament_games AS

@@ -65,7 +65,11 @@ from d20.db.session import (
 from d20.db.stores import (
     create_table,
     delete_table,
+    get_store_analytics_summary,
     get_store_by_id,
+    get_store_overview_metrics,
+    get_store_popular_games,
+    get_store_popular_menu_items,
     get_table,
     get_tables,
     update_table,
@@ -96,6 +100,26 @@ def store_login_required(view):
     return wrapped_view
 
 
+def _quarter_bounds(day):
+    quarter_start_month = ((day.month - 1) // 3) * 3 + 1
+    start = date(day.year, quarter_start_month, 1)
+    if quarter_start_month == 10:
+        next_start = date(day.year + 1, 1, 1)
+    else:
+        next_start = date(day.year, quarter_start_month + 3, 1)
+    return start, next_start - timedelta(days=1)
+
+
+def _parse_date_arg(name, default):
+    value = request.args.get(name)
+    if not value:
+        return default
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return default
+
+
 @bp.route("/")
 def stores():
     db = get_db()
@@ -121,29 +145,110 @@ def my_store():
 @store_login_required
 def my_store_overview():
     store_id = g.store["id"]
-    tables = get_tables(store_id)
-    games = get_available_games_with_counts(store_id)
-    today = str(date.today())
+    today = date.today()
+    overview = get_store_overview_metrics(store_id, today)
+    popular_games = [
+        dict(game)
+        for game in get_store_popular_games(store_id, limit=1, start_date=today, end_date=today)
+    ]
+    popular_menu_items = get_store_popular_menu_items(
+        store_id, limit=1, start_date=today, end_date=today
+    )
+    today_iso = today.isoformat()
     upcoming_sessions_raw = get_upcoming_sessions_with_user_and_games_by_store(
-        store_id, today
+        store_id, today_iso
     )
     upcoming_sessions = [dict(sess) for sess in upcoming_sessions_raw]
 
-    total_copies = sum(game["copy_count"] for game in games)
-    top_games = sorted(games, key=lambda game: game["copy_count"], reverse=True)[:5]
-    reservations_by_day = {}
-    for sess in upcoming_sessions:
-        day = sess["day"]
-        reservations_by_day[day] = reservations_by_day.get(day, 0) + 1
+    from collections import Counter
+    next_7_days = [(today + timedelta(days=i)).isoformat() for i in range(7)]
+    session_counts = Counter(sess["day"] for sess in upcoming_sessions)
+    sessions_by_day = [session_counts.get(d, 0) for d in next_7_days]
 
     return render_template(
         "stores/mystore_overview.html",
-        tables=tables,
-        games=games,
         upcoming_sessions=upcoming_sessions,
-        total_copies=total_copies,
-        top_games=top_games,
-        reservations_by_day=reservations_by_day,
+        overview=overview,
+        popular_games=popular_games,
+        popular_menu_items=popular_menu_items,
+        sessions_by_day=sessions_by_day,
+        next_7_days=next_7_days,
+    )
+
+
+@bp.route("/mystore/analytics")
+@store_login_required
+def my_store_analytics():
+    store_id = g.store["id"]
+    current_q_start, current_q_end = _quarter_bounds(date.today())
+    previous_q_end = current_q_start - timedelta(days=1)
+    previous_q_start, _ = _quarter_bounds(previous_q_end)
+
+    period_a_start = _parse_date_arg("a_start", current_q_start)
+    period_a_end = _parse_date_arg("a_end", current_q_end)
+    period_b_start = _parse_date_arg("b_start", previous_q_start)
+    period_b_end = _parse_date_arg("b_end", previous_q_end)
+    if period_a_start > period_a_end or period_b_start > period_b_end:
+        flash("Start date cannot be after end date.")
+        return redirect(url_for("stores.my_store_analytics"))
+
+    period_a = get_store_analytics_summary(store_id, period_a_start, period_a_end)
+    period_b = get_store_analytics_summary(store_id, period_b_start, period_b_end)
+
+    games_a_raw = {
+        g["game_name"]: g["session_count"]
+        for g in get_store_popular_games(store_id, 10, period_a_start, period_a_end)
+    }
+    games_b_raw = {
+        g["game_name"]: g["session_count"]
+        for g in get_store_popular_games(store_id, 10, period_b_start, period_b_end)
+    }
+    all_game_names = sorted(
+        set(games_a_raw) | set(games_b_raw),
+        key=lambda n: -(games_a_raw.get(n, 0) + games_b_raw.get(n, 0)),
+    )
+    games_merged = [
+        {
+            "name": n,
+            "sessions_a": games_a_raw.get(n, 0),
+            "sessions_b": games_b_raw.get(n, 0),
+            "delta": games_a_raw.get(n, 0) - games_b_raw.get(n, 0),
+        }
+        for n in all_game_names[:8]
+    ]
+
+    menu_a_raw = {
+        r["item_name"]: r["quantity_sold"]
+        for r in get_store_popular_menu_items(store_id, 10, period_a_start, period_a_end)
+    }
+    menu_b_raw = {
+        r["item_name"]: r["quantity_sold"]
+        for r in get_store_popular_menu_items(store_id, 10, period_b_start, period_b_end)
+    }
+    all_item_names = sorted(
+        set(menu_a_raw) | set(menu_b_raw),
+        key=lambda n: -(menu_a_raw.get(n, 0) + menu_b_raw.get(n, 0)),
+    )
+    menu_merged = [
+        {
+            "name": n,
+            "sold_a": menu_a_raw.get(n, 0),
+            "sold_b": menu_b_raw.get(n, 0),
+            "delta": menu_a_raw.get(n, 0) - menu_b_raw.get(n, 0),
+        }
+        for n in all_item_names[:8]
+    ]
+
+    return render_template(
+        "stores/mystore_analytics.html",
+        period_a=period_a,
+        period_b=period_b,
+        period_a_start=period_a_start,
+        period_a_end=period_a_end,
+        period_b_start=period_b_start,
+        period_b_end=period_b_end,
+        games_merged=games_merged,
+        menu_merged=menu_merged,
     )
 
 
@@ -1186,6 +1291,32 @@ def edit_voucher(voucher_id):
         flash("Voucher updated.")
     except Exception as e:
         flash(f"Error: {str(e)}")
+    return redirect(url_for("stores.my_store_vouchers"))
+
+
+@bp.route("/mystore/vouchers/<int:voucher_id>/deactivate", methods=("POST",))
+@store_login_required
+def deactivate_voucher_route(voucher_id):
+    db = get_db()
+    db.execute(
+        "UPDATE LoyaltyVoucher SET is_active=FALSE WHERE id=%s AND store_id=%s",
+        (voucher_id, g.store["id"]),
+    )
+    db.commit()
+    flash("Voucher deactivated.")
+    return redirect(url_for("stores.my_store_vouchers"))
+
+
+@bp.route("/mystore/vouchers/<int:voucher_id>/activate", methods=("POST",))
+@store_login_required
+def activate_voucher_route(voucher_id):
+    db = get_db()
+    db.execute(
+        "UPDATE LoyaltyVoucher SET is_active=TRUE WHERE id=%s AND store_id=%s",
+        (voucher_id, g.store["id"]),
+    )
+    db.commit()
+    flash("Voucher activated.")
     return redirect(url_for("stores.my_store_vouchers"))
 
 
