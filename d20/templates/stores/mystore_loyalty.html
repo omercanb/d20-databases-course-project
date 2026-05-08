@@ -1,88 +1,17 @@
 {% extends 'base.html' %}
+{% from 'stores/_loyalty_macros.html' import tier_badge with context %}
 
-{% block title %}Loyalty Program - {{ g.store['name'] }}{% endblock %}
+{% block title %}Loyalty Settings - {{ g.store['name'] }}{% endblock %}
 
 {% block header %}
-    <h1>Loyalty Program & Analytics</h1>
+    <h1>Loyalty Settings</h1>
 {% endblock %}
 
 {% block content %}
     {% set active_tab = 'loyalty' %}
     {% include 'stores/_mystore_nav.html' %}
-
-    <div class="row g-4 mb-4">
-        <!-- Total Points Awarded -->
-        <div class="col-md-4">
-            <div class="card h-100 shadow-sm border-0 bg-primary text-white">
-                <div class="card-body text-center py-4">
-                    <h3 class="card-title h5 mb-3 opacity-75">Total Points Awarded</h3>
-                    <p class="display-5 fw-bold mb-0">{{ stats.total_awarded }}</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Total Active Points (Balance) -->
-        <div class="col-md-4">
-            <div class="card h-100 shadow-sm border-0 bg-success text-white">
-                <div class="card-body text-center py-4">
-                    <h3 class="card-title h5 mb-3 opacity-75">Active Points Balance</h3>
-                    <p class="display-5 fw-bold mb-0">{{ stats.total_active }}</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Avg Points per Customer -->
-        <div class="col-md-4">
-            <div class="card h-100 shadow-sm border-0 bg-info text-white">
-                <div class="card-body text-center py-4">
-                    <h3 class="card-title h5 mb-3 opacity-75">Avg Points per User</h3>
-                    <p class="display-5 fw-bold mb-0">{{ stats.avg_points }}</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="card shadow-sm border-0 mb-4">
-        <div class="card-header bg-white py-3">
-            <h5 class="card-title mb-0">Customers by Tier</h5>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th class="ps-4">Tier</th>
-                            <th class="text-center">Threshold</th>
-                            <th class="text-center">Customers</th>
-                            <th class="text-center">Active Points</th>
-                            <th class="text-end pe-4">View</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for tier in stats.tier_distribution %}
-                            <tr>
-                                <td class="ps-4 fw-medium">{{ tier.code }}</td>
-                                <td class="text-center">{{ tier.min_points }}+ pts</td>
-                                <td class="text-center">{{ tier.customer_count }}</td>
-                                <td class="text-center">{{ tier.total_points }}</td>
-                                <td class="text-end pe-4">
-                                    <a class="btn btn-sm {% if selected_tier == tier.code %}btn-primary{% else %}btn-outline-primary{% endif %}"
-                                       href="{{ url_for('stores.my_store_loyalty', tier=tier.code) }}">
-                                        {{ tier.code }}
-                                    </a>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        {% if selected_tier %}
-            <div class="card-footer bg-white text-end">
-                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('stores.my_store_loyalty') }}">Show All Tiers</a>
-            </div>
-        {% endif %}
-    </div>
+    {% set loyalty_tab = 'settings' %}
+    {% include 'stores/_mystore_loyalty_nav.html' %}
 
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center gap-3">
@@ -111,7 +40,7 @@
                     <tbody>
                         {% for tier in stats.tiers %}
                             <tr>
-                                <td class="ps-4 fw-medium">{{ tier.code }}</td>
+                                <td class="ps-4 fw-medium">{{ tier_badge(tier.code) }}</td>
                                 <td class="text-center">{{ tier.min_points }}</td>
                                 <td class="text-center">{{ tier.discount_percent }}%</td>
                                 <td class="text-center">{{ tier.reservation_advance_days }}</td>
@@ -139,7 +68,7 @@
                             <tbody>
                                 {% for tier in stats.tiers %}
                                     <tr>
-                                        <td class="ps-4 fw-medium">{{ tier.code }}</td>
+                                        <td class="ps-4 fw-medium">{{ tier_badge(tier.code) }}</td>
                                         <td>
                                             <input class="form-control form-control-sm"
                                                    type="number"
@@ -276,86 +205,4 @@
         </div>
     </div>
 
-    <div class="row g-4">
-        <!-- Loyalty Customers -->
-        <div class="col-lg-8">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-white py-3">
-                    <h5 class="card-title mb-0">
-                        {% if selected_tier %}{{ selected_tier }} Customers{% else %}Loyalty Customers{% endif %}
-                    </h5>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="ps-4">Username</th>
-                                    <th class="text-center">Tier</th>
-                                    <th class="text-center">Current Balance</th>
-                                    <th class="text-center">Lifetime Points</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% if stats.customers %}
-                                    {% for customer in stats.customers %}
-                                        <tr>
-                                            <td class="ps-4 fw-medium">{{ customer.username }}</td>
-                                            <td class="text-center">
-                                                <span class="badge bg-secondary">{{ customer.tier_code }}</span>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="badge bg-light text-dark border">{{ customer.current_points }}</span>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="badge bg-primary">{{ customer.lifetime_points }}</span>
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                {% else %}
-                                    <tr>
-                                        <td colspan="4" class="text-center py-4 text-muted">No loyalty data available yet.</td>
-                                    </tr>
-                                {% endif %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Loyalty Info -->
-        <div class="col-lg-4">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-white py-3">
-                    <h5 class="card-title mb-0">How Points are Earned</h5>
-                </div>
-                <div class="card-body">
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                            Session Completion
-                            <span class="badge bg-soft-primary text-primary border border-primary-subtle">{{ stats.point_rule_map.session_hour|default(0) }} pts / hr</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                            Food & Drink
-                            <span class="badge bg-soft-success text-success border border-success-subtle">{{ stats.point_rule_map.food_dollar|default(0) }} pts / $1</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                            Game Rating
-                            <span class="badge bg-soft-info text-info border border-info-subtle">{{ stats.point_rule_map.game_rating|default(0) }} pts / rating</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
-                            Tournament
-                            <span class="badge bg-soft-info text-info border border-info-subtle">{{ stats.point_rule_map.tournament_participation|default(0) }} pts / entry</span>
-                        </li>
-                    </ul>
-                    <hr>
-                    <p class="small text-muted mb-0">
-                        Customers can redeem points for discounts on their orders. 
-                        <strong>1 point = $0.10 discount</strong>.
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
 {% endblock %}

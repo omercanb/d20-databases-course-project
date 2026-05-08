@@ -269,3 +269,68 @@ def get_store_loyalty_stats(store_id, tier_code=None):
         "customers": [dict(c) for c in customers],
         "top_customers": [dict(c) for c in top_point_holders],
     }
+
+
+def get_loyalty_analytics(store_id, tier_code=None):
+    db = get_db()
+
+    tiers = db.execute(
+        "SELECT code FROM LoyaltyTier WHERE store_id = %s ORDER BY min_points ASC",
+        (store_id,),
+    ).fetchall()
+
+    tier_distribution = db.execute(
+        "SELECT * FROM vw_loyalty_tier_distribution WHERE store_id = %s",
+        (store_id,),
+    ).fetchall()
+
+    redemption_overview = db.execute(
+        "SELECT * FROM vw_loyalty_redemption_overview WHERE store_id = %s",
+        (store_id,),
+    ).fetchone()
+
+    redemption_by_tier = db.execute(
+        "SELECT * FROM vw_loyalty_redemption_by_tier WHERE store_id = %s",
+        (store_id,),
+    ).fetchall()
+
+    revenue_impact = db.execute(
+        "SELECT * FROM vw_loyalty_revenue_impact WHERE store_id = %s",
+        (store_id,),
+    ).fetchone()
+
+    most_loyal = db.execute(
+        "SELECT * FROM vw_loyalty_most_loyal WHERE store_id = %s LIMIT 10",
+        (store_id,),
+    ).fetchall()
+
+    results = {
+        "tier_distribution": [dict(r) for r in tier_distribution],
+        "redemption_overview": dict(redemption_overview) if redemption_overview else {
+            "total_redemptions": 0, "total_points_redeemed": 0,
+            "avg_per_redemption": 0, "min_redemption": 0,
+            "max_redemption": 0, "redemption_rate_pct": None,
+        },
+        "redemption_by_tier": [dict(r) for r in redemption_by_tier],
+        "revenue_impact": dict(revenue_impact) if revenue_impact else {
+            "total_bills": 0, "gross_revenue": 0, "total_discount": 0,
+            "net_revenue": 0, "avg_discount": 0, "max_discount": 0,
+            "min_discount_nonzero": None, "bills_with_discount": 0,
+            "discount_pct": None,
+        },
+        "most_loyal": [dict(r) for r in most_loyal],
+        "available_tiers": [r["code"] for r in tiers],
+    }
+
+    if tier_code:
+        results["tier_distribution"] = [
+            t for t in results["tier_distribution"] if t["tier"] == tier_code
+        ]
+        results["redemption_by_tier"] = [
+            r for r in results["redemption_by_tier"] if r["tier"] == tier_code
+        ]
+        results["most_loyal"] = [
+            c for c in results["most_loyal"] if c["tier_code"] == tier_code
+        ]
+
+    return results

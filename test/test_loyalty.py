@@ -3,9 +3,12 @@ from psycopg2 import errors
 
 from d20.db import get_db
 from d20.db.loyalty import (
+    REDEMPTION_RATE,
     add_points,
+    get_loyalty_analytics,
     get_point_rule,
     get_store_loyalty_stats,
+    get_user_points,
     redeem_points,
     update_store_loyalty_point_rules,
     update_store_loyalty_tiers,
@@ -346,10 +349,25 @@ def test_loyalty_sql_functions_triggers_and_views_exist(app):
             SELECT viewname
             FROM pg_views
             WHERE schemaname = 'public'
-              AND viewname = 'store_top_loyalty_point_holders'
+              AND viewname IN (
+                'store_top_loyalty_point_holders',
+                'vw_loyalty_tier_distribution',
+                'vw_loyalty_redemption_overview',
+                'vw_loyalty_redemption_by_tier',
+                'vw_loyalty_revenue_impact',
+                'vw_loyalty_most_loyal'
+              )
+            ORDER BY viewname
             """
         ).fetchall()
-        assert [row["viewname"] for row in views] == ["store_top_loyalty_point_holders"]
+        assert {row["viewname"] for row in views} == {
+            "store_top_loyalty_point_holders",
+            "vw_loyalty_tier_distribution",
+            "vw_loyalty_redemption_overview",
+            "vw_loyalty_redemption_by_tier",
+            "vw_loyalty_revenue_impact",
+            "vw_loyalty_most_loyal",
+        }
 
 
 def test_store_top_loyalty_point_holders_view_ranks_top_five_by_lifetime_points(app):
@@ -667,7 +685,13 @@ def test_owner_can_update_store_loyalty_point_rules(client, app):
 
 def test_seed_loyalty_program_creates_visible_tiers_top_holders_and_applied_redemptions(app):
     with app.app_context():
-        user_ids = [1, 2, create_user("seed-loyalty-user")]
+        # seed_loyalty_program expects 8 users (indices 0-7)
+        user_ids = [
+            1, 2,
+            create_user("seed-u3"), create_user("seed-u4"),
+            create_user("seed-u5"), create_user("seed-u6"),
+            create_user("seed-u7"), create_user("seed-u8"),
+        ]
         store_ids = [
             create_store("seed-loyalty-store-1", "Seed Loyalty Store 1"),
             create_store("seed-loyalty-store-2", "Seed Loyalty Store 2"),
@@ -676,14 +700,18 @@ def test_seed_loyalty_program_creates_visible_tiers_top_holders_and_applied_rede
 
         seed_loyalty_program(user_ids, store_ids)
 
+        # store 0 uses tier_configs[0]: Silver≥300, Gold≥800
+        # effective lifetime points (base + 45 extra from rules): Bronze×3, Silver×2, Gold×3
         stats = get_store_loyalty_stats(store_ids[0])
         distribution = {tier["code"]: tier["customer_count"] for tier in stats["tier_distribution"]}
-        assert distribution == {"Bronze": 1, "Silver": 1, "Gold": 1}
-        assert [customer["store_rank"] for customer in stats["top_customers"]] == [1, 2, 3]
+        assert distribution == {"Bronze": 3, "Silver": 2, "Gold": 3}
+        assert len(stats["top_customers"]) == 5
+        assert [customer["store_rank"] for customer in stats["top_customers"]] == [1, 2, 3, 4, 5]
         assert stats["point_rule_map"]["session_hour"] == pytest.approx(6)
         assert stats["point_rule_map"]["tournament_participation"] == pytest.approx(25)
 
         db = get_db()
+        # 6 (store0) + 7 (store1) + 6 (store2) = 19 applied redemptions total
         redemption_summary = db.execute(
             """
             SELECT COUNT(*) AS redemption_count,
@@ -693,5 +721,167 @@ def test_seed_loyalty_program_creates_visible_tiers_top_holders_and_applied_rede
             """,
             (store_ids,),
         ).fetchone()
-        assert redemption_summary["redemption_count"] == 2
+        assert redemption_summary["redemption_count"] == 19
         assert redemption_summary["unapplied_count"] == 0
+
+
+# ── get_loyalty_analytics ─────────────────────────────────────────────────────
+
+def test_analytics_returns_required_keys(app):
+    with app.app_context():
+        store_id = create_store()
+        analytics = get_loyalty_analytics(store_id)
+        for key in ("tier_distribution", "redemption_overview", "redemption_by_tier",
+                    "revenue_impact", "most_loyal", "available_tiers"):
+            assert key in analytics
+
+
+def test_analytics_available_tiers_are_all_three(app):
+    with app.app_context():
+        store_id = create_store()
+        analytics = get_loyalty_analytics(store_id)
+        assert set(analytics["available_tiers"]) == {"Bronze", "Silver", "Gold"}
+
+
+def test_analytics_tier_distribution_has_three_rows(app):
+    with app.app_context():
+        store_id = create_store()
+        add_points(1, store_id, 10)
+        analytics = get_loyalty_analytics(store_id)
+        assert len(analytics["tier_distribution"]) == 3
+
+
+def test_analytics_tier_distribution_columns(app):
+    with app.app_context():
+        store_id = create_store()
+        add_points(1, store_id, 10)
+        row = get_loyalty_analytics(store_id)["tier_distribution"][0]
+        for col in ("tier", "threshold", "customer_count", "total_active_points",
+                    "total_lifetime_points", "discount_percent", "pct_of_customers"):
+            assert col in row
+
+
+def test_analytics_tier_filter_limits_distribution(app):
+    with app.app_context():
+        store_id = create_store()
+        add_points(1, store_id, 600)   # → Silver (default threshold 500)
+        add_points(2, store_id, 50)    # → Bronze
+        analytics = get_loyalty_analytics(store_id, tier_code="Silver")
+        assert len(analytics["tier_distribution"]) == 1
+        assert analytics["tier_distribution"][0]["tier"] == "Silver"
+
+
+def test_analytics_tier_filter_limits_most_loyal(app):
+    with app.app_context():
+        store_id = create_store()
+        add_points(1, store_id, 600)   # → Silver
+        add_points(2, store_id, 50)    # → Bronze
+        analytics = get_loyalty_analytics(store_id, tier_code="Silver")
+        usernames = [c["username"] for c in analytics["most_loyal"]]
+        assert "test" in usernames
+        assert "other" not in usernames
+
+
+def test_analytics_redemption_overview_zero_with_no_redemptions(app):
+    with app.app_context():
+        store_id = create_store()
+        analytics = get_loyalty_analytics(store_id)
+        r = analytics["redemption_overview"]
+        assert r["total_redemptions"] == 0
+        assert r["total_points_redeemed"] == 0
+
+
+def test_analytics_redemption_overview_counts_after_redeem(app):
+    with app.app_context():
+        store_id = create_store()
+        add_points(1, store_id, 500)
+        redeem_points(1, store_id, 100, "Deal 1")
+        redeem_points(1, store_id, 50, "Deal 2")
+        analytics = get_loyalty_analytics(store_id)
+        r = analytics["redemption_overview"]
+        assert r["total_redemptions"] == 2
+        assert r["total_points_redeemed"] == 150
+        assert r["min_redemption"] == 50
+        assert r["max_redemption"] == 100
+
+
+def test_analytics_revenue_impact_zero_without_bills(app):
+    with app.app_context():
+        store_id = create_store()
+        analytics = get_loyalty_analytics(store_id)
+        assert analytics["revenue_impact"]["total_bills"] == 0
+
+
+def test_analytics_most_loyal_contains_user_after_points(app):
+    with app.app_context():
+        store_id = create_store()
+        add_points(1, store_id, 400)
+        analytics = get_loyalty_analytics(store_id)
+        usernames = [c["username"] for c in analytics["most_loyal"]]
+        assert "test" in usernames
+
+
+def test_analytics_most_loyal_columns(app):
+    with app.app_context():
+        store_id = create_store()
+        add_points(1, store_id, 400)
+        row = get_loyalty_analytics(store_id)["most_loyal"][0]
+        for col in ("username", "tier_code", "current_points", "lifetime_points",
+                    "points_spent", "redemption_count", "discount_value",
+                    "session_count", "total_spent"):
+            assert col in row
+
+
+# ── Analytics routes ──────────────────────────────────────────────────────────
+
+def test_analytics_page_requires_store_login(client, app):
+    with app.app_context():
+        store_id = create_store()
+    resp = client.get("/mystore/loyalty/analytics")
+    assert resp.status_code == 302
+    assert "loginstore" in resp.headers["Location"]
+
+
+def test_analytics_page_loads_with_store_session(client, app):
+    with app.app_context():
+        store_id = create_store()
+    with client.session_transaction() as sess:
+        sess["store_id"] = store_id
+    resp = client.get("/mystore/loyalty/analytics")
+    assert resp.status_code == 200
+    assert b"Loyalty Statistics" in resp.data
+
+
+def test_analytics_page_shows_tier_tables(client, app):
+    with app.app_context():
+        store_id = create_store()
+        add_points(1, store_id, 600)
+    with client.session_transaction() as sess:
+        sess["store_id"] = store_id
+    resp = client.get("/mystore/loyalty/analytics")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Points Distribution Across Tiers" in body
+    assert "Redemption Overview" in body
+    assert "Revenue Impact" in body
+    assert "Most Loyal Customers" in body
+
+
+def test_analytics_page_silver_tier_filter(client, app):
+    with app.app_context():
+        store_id = create_store()
+        add_points(1, store_id, 600)
+    with client.session_transaction() as sess:
+        sess["store_id"] = store_id
+    resp = client.get("/mystore/loyalty/analytics?tier=Silver")
+    assert resp.status_code == 200
+
+
+def test_analytics_page_invalid_tier_redirects_with_flash(client, app):
+    with app.app_context():
+        store_id = create_store()
+    with client.session_transaction() as sess:
+        sess["store_id"] = store_id
+    resp = client.get("/mystore/loyalty/analytics?tier=Platinum", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Unknown loyalty tier" in resp.data

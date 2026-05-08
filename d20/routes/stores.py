@@ -938,15 +938,25 @@ def my_store_menu():
 @store_login_required
 def my_store_loyalty():
     from d20.db.loyalty import get_store_loyalty_stats
-    selected_tier = request.args.get("tier") or None
-    stats = get_store_loyalty_stats(g.store["id"], selected_tier)
-    valid_tiers = {tier["code"] for tier in stats["tiers"]}
-    if selected_tier and selected_tier not in valid_tiers:
-        flash("Unknown loyalty tier.")
-        return redirect(url_for("stores.my_store_loyalty"))
+    stats = get_store_loyalty_stats(g.store["id"])
     return render_template(
         "stores/mystore_loyalty.html",
         stats=stats,
+    )
+
+
+@bp.route("/mystore/loyalty/analytics")
+@store_login_required
+def my_store_loyalty_analytics():
+    from d20.db.loyalty import get_loyalty_analytics
+    selected_tier = request.args.get("tier") or None
+    analytics = get_loyalty_analytics(g.store["id"], tier_code=selected_tier)
+    if selected_tier and selected_tier not in analytics["available_tiers"]:
+        flash("Unknown loyalty tier.")
+        return redirect(url_for("stores.my_store_loyalty_analytics"))
+    return render_template(
+        "stores/mystore_loyalty_analytics.html",
+        analytics=analytics,
         selected_tier=selected_tier,
     )
 

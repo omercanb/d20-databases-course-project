@@ -36,7 +36,11 @@ from d20.db.loyalty import (
 
 
 def seed_users():
-    users = [("user1", "pass"), ("user2", "pass"), ("user3", "pass")]
+    users = [
+        ("user1", "pass"), ("user2", "pass"), ("user3", "pass"),
+        ("user4", "pass"), ("user5", "pass"), ("user6", "pass"),
+        ("user7", "pass"), ("user8", "pass"),
+    ]
     return [create_user(username, password) for username, password in users]
 
 
@@ -278,15 +282,39 @@ def seed_loyalty_program(user_ids, store_ids):
         )
 
     sample_activity = [
+        # store 0 — Bronze: user0(180), user3(100), user6(50)
+        #            Silver: user1(520), user4(350)
+        #            Gold:   user2(980), user5(850), user7(1100)
         (user_ids[0], store_ids[0], 180),
         (user_ids[1], store_ids[0], 520),
         (user_ids[2], store_ids[0], 980),
+        (user_ids[3], store_ids[0], 100),
+        (user_ids[4], store_ids[0], 350),
+        (user_ids[5], store_ids[0], 850),
+        (user_ids[6], store_ids[0], 50),
+        (user_ids[7], store_ids[0], 1100),
+        # store 1 — Bronze: user0(275), user6(80)
+        #            Silver: user1(760), user3(550), user4(620)
+        #            Gold:   user2(1325), user5(1400), user7(900)
         (user_ids[0], store_ids[1], 275),
         (user_ids[1], store_ids[1], 760),
         (user_ids[2], store_ids[1], 1325),
+        (user_ids[3], store_ids[1], 550),
+        (user_ids[4], store_ids[1], 620),
+        (user_ids[5], store_ids[1], 1400),
+        (user_ids[6], store_ids[1], 80),
+        (user_ids[7], store_ids[1], 900),
+        # store 2 — Bronze: user2(125), user6(60)
+        #            Silver: user0(410), user3(480), user4(450)
+        #            Gold:   user1(930), user5(1050), user7(920)
         (user_ids[0], store_ids[2], 410),
         (user_ids[1], store_ids[2], 930),
         (user_ids[2], store_ids[2], 125),
+        (user_ids[3], store_ids[2], 480),
+        (user_ids[4], store_ids[2], 450),
+        (user_ids[5], store_ids[2], 1050),
+        (user_ids[6], store_ids[2], 60),
+        (user_ids[7], store_ids[2], 920),
     ]
     for user_id, store_id, base_points in sample_activity:
         add_points(user_id, store_id, base_points)
@@ -295,19 +323,44 @@ def seed_loyalty_program(user_ids, store_ids):
         add_points(user_id, store_id, int(get_point_rule(store_id, "tournament_participation")))
 
     applied_redemptions = [
-        (user_ids[2], store_ids[0], 120, "Seeded food voucher redemption"),
-        (user_ids[1], store_ids[1], 75, "Seeded table-fee discount redemption"),
+        # store 0
+        (user_ids[2], store_ids[0], 120, "Food voucher redemption", 45),
+        (user_ids[1], store_ids[0], 60,  "Table-fee discount", 38),
+        (user_ids[0], store_ids[0], 30,  "Snack bar discount", 22),
+        (user_ids[5], store_ids[0], 200, "Game night party discount", 30),
+        (user_ids[7], store_ids[0], 150, "Birthday special", 18),
+        (user_ids[4], store_ids[0], 80,  "Weekend deal", 10),
+        # store 1
+        (user_ids[1], store_ids[1], 75,  "Table-fee discount", 35),
+        (user_ids[2], store_ids[1], 200, "Birthday party discount", 20),
+        (user_ids[0], store_ids[1], 50,  "Coffee voucher redemption", 12),
+        (user_ids[1], store_ids[1], 100, "Game night special discount", 5),
+        (user_ids[5], store_ids[1], 300, "VIP event discount", 25),
+        (user_ids[3], store_ids[1], 90,  "Afternoon session deal", 15),
+        (user_ids[7], store_ids[1], 180, "Tournament celebration", 8),
+        # store 2
+        (user_ids[0], store_ids[2], 90,  "Weekend session discount", 28),
+        (user_ids[1], store_ids[2], 150, "Premium event discount", 15),
+        (user_ids[2], store_ids[2], 40,  "Quick-play voucher", 8),
+        (user_ids[5], store_ids[2], 250, "Loyalty milestone reward", 32),
+        (user_ids[7], store_ids[2], 200, "Season pass discount", 20),
+        (user_ids[3], store_ids[2], 100, "Weekday special", 12),
     ]
-    for index, (user_id, store_id, points_spent, description) in enumerate(applied_redemptions, start=1):
-        _create_applied_loyalty_redemption(user_id, store_id, points_spent, description, index)
+    for index, (user_id, store_id, points_spent, description, days_ago) in enumerate(applied_redemptions, start=1):
+        _create_applied_loyalty_redemption(user_id, store_id, points_spent, description, days_ago)
+
+    _seed_extra_bills(user_ids, store_ids)
 
 
-def _create_applied_loyalty_redemption(user_id, store_id, points_spent, description, index):
+def _create_applied_loyalty_redemption(user_id, store_id, points_spent, description, days_ago):
     db = get_db()
+    random.seed(days_ago + points_spent)
     discount = round(float(points_spent * REDEMPTION_RATE), 2)
-    table_fee = 20.00
-    grand_total = round(max(0.0, table_fee - discount), 2)
-    day = date.today() - timedelta(days=30 + index)
+    table_fee = round(random.choice([10.0, 15.0, 20.0, 25.0]), 2)
+    food_total = round(random.choice([0, 5.99, 8.99, 12.50, 18.49]), 2)
+    grand_total = round(max(0.0, table_fee + food_total - discount), 2)
+    day = date.today() - timedelta(days=days_ago)
+    start_hour = random.choice([9, 11, 13, 15, 17])
 
     db.execute(
         """
@@ -320,18 +373,18 @@ def _create_applied_loyalty_redemption(user_id, store_id, points_spent, descript
     session_id = db.execute(
         """
         INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time, checkout_status)
-        VALUES (%s, %s, 1, %s, 10, 14, 'checked_out')
+        VALUES (%s, %s, 1, %s, %s, %s, 'checked_out')
         RETURNING id
         """,
-        (user_id, store_id, day),
+        (user_id, store_id, day, start_hour, start_hour + 2),
     ).fetchone()["id"]
     bill_id = db.execute(
         """
         INSERT INTO Bill (session_id, table_fee, food_total, damage_fee, loyalty_discount, grand_total)
-        VALUES (%s, %s, 0, 0, %s, %s)
+        VALUES (%s, %s, %s, 0, %s, %s)
         RETURNING id
         """,
-        (session_id, table_fee, discount, grand_total),
+        (session_id, table_fee, food_total, discount, grand_total),
     ).fetchone()["id"]
     updated = db.execute(
         """
@@ -346,11 +399,63 @@ def _create_applied_loyalty_redemption(user_id, store_id, points_spent, descript
         raise RuntimeError("Seeded loyalty redemption exceeds the available point balance.")
     db.execute(
         """
-        INSERT INTO LoyaltyRedemption (user_id, store_id, bill_id, points_spent, description)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO LoyaltyRedemption (user_id, store_id, bill_id, points_spent, description,
+                                       redeemed_at)
+        VALUES (%s, %s, %s, %s, %s,
+                CURRENT_TIMESTAMP - INTERVAL '%s days')
         """,
-        (user_id, store_id, bill_id, points_spent, description),
+        (user_id, store_id, bill_id, points_spent, description, days_ago),
     )
+    db.commit()
+
+
+def _seed_extra_bills(user_ids, store_ids):
+    db = get_db()
+    random.seed(99)
+    extras = [
+        # store 0
+        (user_ids[0], store_ids[0], 15.0, 8.99, 0, 10),
+        (user_ids[1], store_ids[0], 25.0, 12.50, 0, 7),
+        (user_ids[2], store_ids[0], 10.0, 0, 0, 3),
+        (user_ids[3], store_ids[0], 20.0, 5.99, 0, 16),
+        (user_ids[5], store_ids[0], 25.0, 18.49, 0, 6),
+        (user_ids[7], store_ids[0], 15.0, 12.50, 0, 2),
+        # store 1
+        (user_ids[0], store_ids[1], 20.0, 5.99, 0, 18),
+        (user_ids[2], store_ids[1], 15.0, 18.49, 0, 14),
+        (user_ids[1], store_ids[1], 25.0, 8.99, 0, 9),
+        (user_ids[3], store_ids[1], 10.0, 12.50, 0, 22),
+        (user_ids[4], store_ids[1], 20.0, 0, 0, 13),
+        (user_ids[5], store_ids[1], 25.0, 18.49, 0, 4),
+        (user_ids[7], store_ids[1], 15.0, 8.99, 0, 1),
+        # store 2
+        (user_ids[0], store_ids[2], 20.0, 12.50, 0, 25),
+        (user_ids[1], store_ids[2], 10.0, 0, 0, 19),
+        (user_ids[2], store_ids[2], 15.0, 5.99, 0, 11),
+        (user_ids[0], store_ids[2], 25.0, 18.49, 0, 4),
+        (user_ids[3], store_ids[2], 20.0, 8.99, 0, 17),
+        (user_ids[5], store_ids[2], 15.0, 12.50, 0, 7),
+        (user_ids[7], store_ids[2], 25.0, 5.99, 0, 3),
+    ]
+    for user_id, store_id, table_fee, food_total, damage_fee, days_ago in extras:
+        day = date.today() - timedelta(days=days_ago)
+        start_hour = random.choice([9, 11, 13, 15])
+        grand_total = round(table_fee + food_total + damage_fee, 2)
+        session_id = db.execute(
+            """
+            INSERT INTO Session (user_id, store_id, table_num, day, start_time, end_time, checkout_status)
+            VALUES (%s, %s, 1, %s, %s, %s, 'checked_out')
+            RETURNING id
+            """,
+            (user_id, store_id, day, start_hour, start_hour + 2),
+        ).fetchone()["id"]
+        db.execute(
+            """
+            INSERT INTO Bill (session_id, table_fee, food_total, damage_fee, loyalty_discount, grand_total)
+            VALUES (%s, %s, %s, %s, 0, %s)
+            """,
+            (session_id, table_fee, food_total, damage_fee, grand_total),
+        )
     db.commit()
 
 
