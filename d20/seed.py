@@ -33,6 +33,18 @@ from d20.db.loyalty import (
     update_store_loyalty_point_rules,
     update_store_loyalty_tiers,
 )
+from d20.db.tournament import (
+    complete_tournament,
+    compute_standings_round_robin,
+    compute_standings_single_elimination,
+    generate_ffa_round_robin_bracket,
+    generate_ffa_single_elimination_bracket,
+    generate_round_robin_bracket,
+    generate_single_elimination_bracket,
+    record_ffa_match_result,
+    record_match_result,
+    record_result,
+)
 from d20.db.voucher import create_voucher
 
 
@@ -582,174 +594,485 @@ def seed_historical_price_data(user_ids, game_ids):
             )
 
 
-def seed_tournament_test(game_ids):
-    """
-    Creates a dedicated TournamentTest store, 7 tour users with varied loyalty,
-    and registers them in two ready-to-bracket tournaments (round robin + FFA single elim).
-    Uses direct DB inserts to bypass the eligibility trigger for seeding purposes.
-    """
+def seed_tournament_test(game_ids, existing_user_ids):
+    """Seed comprehensive tournament scenarios under the TournamentTest store."""
     db = get_db()
+    now = datetime.now().replace(minute=0, second=0, microsecond=0)
 
-    # ── 1. Store ────────────────────────────────────────────────────────────
     ts_id = create_store("TournamentTest", "TournamentTest Arena", "pass", "Test/Venue")
-    # Create 4 tables (capacity 8 so everyone fits)
-    for _ in range(4):
-        create_table(ts_id, 8)
-    # Add game copies for Catan (game_ids[1])
-    create_game_copy(game_ids[1], ts_id)
+    table_nums = [create_table(ts_id, cap) for cap in (4, 4, 6, 6, 8, 8)]
+    for game_id in game_ids:
+        create_game_copy(game_id, ts_id)
 
-    # ── 2. Loyalty tiers for this store ─────────────────────────────────────
     update_store_loyalty_tiers(ts_id, [
-        {"code": "Bronze", "min_points": 0,    "discount_percent": 0,  "reservation_advance_days": 3,  "free_tournament_entries": 0},
-        {"code": "Silver", "min_points": 300,  "discount_percent": 5,  "reservation_advance_days": 7,  "free_tournament_entries": 0},
-        {"code": "Gold",   "min_points": 800,  "discount_percent": 10, "reservation_advance_days": 14, "free_tournament_entries": 1},
+        {"code": "Bronze", "min_points": 0, "discount_percent": 0, "reservation_advance_days": 3, "free_tournament_entries": 0},
+        {"code": "Silver", "min_points": 300, "discount_percent": 5, "reservation_advance_days": 7, "free_tournament_entries": 1},
+        {"code": "Gold", "min_points": 800, "discount_percent": 10, "reservation_advance_days": 14, "free_tournament_entries": 2},
     ])
     update_store_loyalty_point_rules(ts_id, [
-        {"action_code": "session_hour",             "points_per_unit": 6},
-        {"action_code": "food_dollar",              "points_per_unit": 1},
-        {"action_code": "game_rating",              "points_per_unit": 8},
+        {"action_code": "session_hour", "points_per_unit": 6},
+        {"action_code": "food_dollar", "points_per_unit": 1},
+        {"action_code": "game_rating", "points_per_unit": 8},
     ])
 
-    # ── 3. Tour users (tour1 … tour7) with varied loyalty ───────────────────
-    tour_names = [f"tour{i}" for i in range(1, 8)]
-    # Points to seed (0, 50, 150, 300, 500, 800, 1200) → Bronze×3, Silver×2, Gold×2
-    loyalty_points = [0, 50, 150, 300, 500, 800, 1200]
+    tour_ids = {f"tour{i}": create_user(f"tour{i}", f"tour{i}") for i in range(1, 17)}
+    tour_points = {
+        "tour1": 0,
+        "tour2": 100,
+        "tour3": 220,
+        "tour4": 300,
+        "tour5": 420,
+        "tour6": 560,
+        "tour7": 800,
+        "tour8": 950,
+        "tour9": 1100,
+        "tour10": 1300,
+        "tour11": 1500,
+        "tour12": 1700,
+        "tour13": 1900,
+        "tour14": 2100,
+        "tour15": 2300,
+        "tour16": 2500,
+    }
+    existing_points = [260, 360, 480, 600, 760, 920, 1080, 1240]
 
-    tour_ids = []
-    for name in tour_names:
-        uid = create_user(name, name)
-        tour_ids.append(uid)
+    seeded_points = {}
+    for name, points in tour_points.items():
+        seeded_points[tour_ids[name]] = points
+    for user_id, points in zip(existing_user_ids, existing_points):
+        seeded_points[user_id] = points
 
-    # Ensure LoyaltyPoint rows exist and set the desired balances directly
-    for uid, pts in zip(tour_ids, loyalty_points):
+    for user_id, points in seeded_points.items():
         db.execute(
             """
-            INSERT INTO LoyaltyPoint (user_id, store_id, points, lifetime_points)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO LoyaltyPoint (user_id, store_id, points, lifetime_points, used_free_tournament_entries)
+            VALUES (%s, %s, %s, %s, 0)
             ON CONFLICT (user_id, store_id) DO UPDATE
-              SET points = EXCLUDED.points,
-                  lifetime_points = EXCLUDED.lifetime_points
+            SET points = EXCLUDED.points,
+                lifetime_points = EXCLUDED.lifetime_points,
+                used_free_tournament_entries = 0
             """,
-            (uid, ts_id, pts, pts),
+            (user_id, ts_id, points, points),
         )
     db.commit()
 
-    # ── 4. Two tournaments ───────────────────────────────────────────────────
-    start_rr  = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d %H:%M")
-    end_rr    = (datetime.now() + timedelta(days=3, hours=6)).strftime("%Y-%m-%d %H:%M")
-    start_se  = (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
-    end_se    = (datetime.now() + timedelta(days=10, hours=4)).strftime("%Y-%m-%d %H:%M")
+    def create_tournament_case(
+        name,
+        fmt,
+        players_per_match,
+        max_participants,
+        entry_fee_points,
+        start_at,
+        duration_hours,
+        min_tier=None,
+        sponsor=None,
+        prize=None,
+        game_index=0,
+        tables_for_tournament=None,
+    ):
+        tid = db.execute(
+            """
+            INSERT INTO Tournament
+                (store_id, game_id, name, format, max_participants, players_per_match,
+                 entry_fee_points, sponsor_name, min_loyalty_tier, start_date, end_date, prize_description)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+            """,
+            (
+                ts_id,
+                game_ids[game_index % len(game_ids)],
+                name,
+                fmt,
+                max_participants,
+                players_per_match,
+                entry_fee_points,
+                sponsor,
+                min_tier,
+                start_at,
+                start_at + timedelta(hours=duration_hours),
+                prize,
+            ),
+        ).fetchone()["id"]
 
-    # Round-Robin  (1v1, all 7 players)
-    rr = db.execute(
-        """
-        INSERT INTO Tournament
-            (store_id, game_id, name, format, max_participants, players_per_match,
-             entry_fee_points, start_date, end_date, prize_description)
-        VALUES (%s,%s,%s,'round_robin',8,2, 0,%s,%s,'Top 3 win store credit')
-        RETURNING id
-        """,
-        (ts_id, game_ids[1], "TournamentTest Round Robin", start_rr, end_rr),
-    ).fetchone()["id"]
-
-    # Single Elimination FFA (4 players per match, all 7 players)
-    se = db.execute(
-        """
-        INSERT INTO Tournament
-            (store_id, game_id, name, format, max_participants, players_per_match,
-             entry_fee_points, start_date, end_date, prize_description)
-        VALUES (%s,%s,%s,'single_elimination',8,4, 0,%s,%s,'Champion gets 500 pts')
-        RETURNING id
-        """,
-        (ts_id, game_ids[1], "TournamentTest FFA Elimination", start_se, end_se),
-    ).fetchone()["id"]
-
-    # Massive 3-Person FFA Single Elimination (64 players, 2 tables)
-    start_mass = (datetime.now() + timedelta(days=15)).strftime("%Y-%m-%d %H:%M")
-    end_mass   = (datetime.now() + timedelta(days=15, hours=8)).strftime("%Y-%m-%d %H:%M")
-    mass = db.execute(
-        """
-        INSERT INTO Tournament
-            (store_id, game_id, name, format, max_participants, players_per_match,
-             entry_fee_points, start_date, end_date, prize_description)
-        VALUES (%s,%s,%s,'single_elimination',64,3, 0,%s,%s,'Massive bracket test')
-        RETURNING id
-        """,
-        (ts_id, game_ids[1], "TournamentTest Massive FFA 3", start_mass, end_mass),
-    ).fetchone()["id"]
-
-    # Assign tables to both tournaments
-    # Assign tables to both tournaments (4 tables for rr and se)
-    tables = db.execute(
-        "SELECT table_num FROM \"Table\" WHERE store_id=%s ORDER BY table_num", (ts_id,)
-    ).fetchall()
-    for t in tables:
-        for tid in (rr, se):
+        for table_num in (tables_for_tournament or table_nums):
             db.execute(
                 "INSERT INTO TournamentTable (tournament_id, store_id, table_num) VALUES (%s,%s,%s)",
-                (tid, ts_id, t["table_num"]),
+                (tid, ts_id, table_num),
             )
-    
-    # Assign only 2 tables for the massive tournament to test seat limits
-    for t in tables[:2]:
-        db.execute(
-            "INSERT INTO TournamentTable (tournament_id, store_id, table_num) VALUES (%s,%s,%s)",
-            (mass, ts_id, t["table_num"]),
-        )
+        db.commit()
+        return tid
 
-    # ── 4b. Create 64 test users for the massive tournament ─────────────────
-    mass_user_ids = []
-    for i in range(1, 65):
-        name = f"mass{i}"
-        uid = create_user(name, name)
-        mass_user_ids.append(uid)
-        
-        db.execute(
-            """
-            INSERT INTO LoyaltyPoint (user_id, store_id, points, lifetime_points)
-            VALUES (%s, %s, 0, 0)
-            ON CONFLICT (user_id, store_id) DO UPDATE
-              SET points = EXCLUDED.points,
-                  lifetime_points = EXCLUDED.lifetime_points
-            """,
-            (uid, ts_id),
-        )
-    db.commit()
-
-    # ── 5. Register all 7 users while registration is still open ────────────
-    # ── 5. Register all users while registration is still open ────────────
-    for uid in tour_ids:
-        for tid in (rr, se):
+    def register_participants(tournament_id, participants):
+        for user_id, use_free_entry in participants:
             db.execute(
-                """
-                INSERT INTO TournamentParticipant (tournament_id, user_id)
-                VALUES (%s, %s)
-                ON CONFLICT DO NOTHING
-                """,
-                (tid, uid),
+                "INSERT INTO TournamentParticipant (tournament_id, user_id, used_free_entry) VALUES (%s,%s,%s)",
+                (tournament_id, user_id, use_free_entry),
             )
-            
-    for uid in mass_user_ids:
-        db.execute(
-            """
-            INSERT INTO TournamentParticipant (tournament_id, user_id)
-            VALUES (%s, %s)
-            ON CONFLICT DO NOTHING
-            """,
-            (mass, uid),
-        )
-    db.commit()
+        db.commit()
 
-    # ── 6. Close registration so tournaments are ready to bracket ───────────
-    # ── 6. Close registration so tournaments are ready to bracket ───────────
-    for tid in (rr, se, mass):
+    def set_in_progress(tournament_id):
         db.execute(
-            "UPDATE Tournament SET registration_open=FALSE, status='registration_open' WHERE id=%s",
-            (tid,),
+            "UPDATE Tournament SET registration_open = FALSE, status = 'in_progress' WHERE id = %s",
+            (tournament_id,),
         )
-    db.commit()
+        db.commit()
 
-    return ts_id, rr, se
+    ranking = dict(seeded_points)
+
+    def rank_order(user_id):
+        return ranking.get(user_id, 0)
+
+    def play_all_1v1_matches(tournament_id, max_matches=None):
+        played = 0
+        while True:
+            matches = db.execute(
+                """
+                SELECT id, player1_id, player2_id
+                FROM TournamentMatch
+                WHERE tournament_id = %s
+                  AND player1_id IS NOT NULL
+                  AND player2_id IS NOT NULL
+                  AND is_bye = FALSE
+                  AND winner_id IS NULL
+                ORDER BY round_number, match_number
+                """,
+                (tournament_id,),
+            ).fetchall()
+            if not matches:
+                break
+            for match in matches:
+                p1 = match["player1_id"]
+                p2 = match["player2_id"]
+                winner = p1 if rank_order(p1) >= rank_order(p2) else p2
+                s1, s2 = ("3", "1") if winner == p1 else ("1", "3")
+                record_match_result(match["id"], winner, s1, s2, tournament_id, ts_id)
+                played += 1
+                if max_matches is not None and played >= max_matches:
+                    return
+
+    def play_all_ffa_matches(tournament_id, max_matches=None):
+        played = 0
+        while True:
+            matches = db.execute(
+                """
+                SELECT tm.id
+                FROM TournamentMatch tm
+                WHERE tm.tournament_id = %s
+                  AND tm.player1_id IS NULL
+                  AND tm.is_bye = FALSE
+                  AND tm.winner_id IS NULL
+                  AND (SELECT COUNT(*) FROM TournamentMatchParticipant tmp WHERE tmp.match_id = tm.id) >= 2
+                ORDER BY tm.round_number, tm.match_number
+                """,
+                (tournament_id,),
+            ).fetchall()
+            if not matches:
+                break
+            for match in matches:
+                participants = db.execute(
+                    "SELECT user_id FROM TournamentMatchParticipant WHERE match_id = %s",
+                    (match["id"],),
+                ).fetchall()
+                ordered = sorted((p["user_id"] for p in participants), key=rank_order, reverse=True)
+                participant_ranks = [
+                    {"user_id": user_id, "score": str(100 - (idx * 10)), "rank_in_match": idx + 1}
+                    for idx, user_id in enumerate(ordered)
+                ]
+                record_ffa_match_result(match["id"], participant_ranks, tournament_id, ts_id)
+                played += 1
+                if max_matches is not None and played >= max_matches:
+                    return
+
+    def award_results_and_complete(tournament_id):
+        tournament = db.execute(
+            "SELECT format FROM Tournament WHERE id = %s",
+            (tournament_id,),
+        ).fetchone()
+        if tournament["format"] == "single_elimination":
+            standings = compute_standings_single_elimination(tournament_id)
+        else:
+            standings = compute_standings_round_robin(tournament_id)
+
+        points_by_place = {1: 300, 2: 180, 3: 120, 4: 80}
+        for standing in standings:
+            place = standing["place"]
+            points = points_by_place.get(place, 40 if place <= 8 else 20)
+            prize_text = None
+            if place == 1:
+                prize_text = "Champion"
+            elif place == 2:
+                prize_text = "Runner-up"
+            elif place == 3:
+                prize_text = "Third place"
+            record_result(
+                tournament_id,
+                standing["user_id"],
+                place,
+                prize_text,
+                points,
+                ts_id,
+            )
+        complete_tournament(tournament_id, ts_id)
+
+    def move_tournament_to_past(tournament_id, historical_start, duration_hours):
+        historical_end = historical_start + timedelta(hours=duration_hours)
+        db.execute(
+            "UPDATE Tournament SET start_date = %s, end_date = %s WHERE id = %s",
+            (historical_start, historical_end, tournament_id),
+        )
+        db.execute(
+            "UPDATE TournamentParticipant SET registered_at = %s WHERE tournament_id = %s",
+            (historical_start - timedelta(days=2), tournament_id),
+        )
+        db.execute(
+            "UPDATE TournamentResult SET awarded_at = %s WHERE tournament_id = %s",
+            (historical_end + timedelta(hours=1), tournament_id),
+        )
+        db.commit()
+
+    past_1v1_start = now - timedelta(days=42)
+    past_1v1 = create_tournament_case(
+        "TournamentTest Past 1v1 Championship",
+        "single_elimination",
+        2,
+        8,
+        90,
+        now + timedelta(days=60),
+        5,
+        sponsor="Retro League",
+        prize="Classic playoffs",
+        game_index=0,
+    )
+    register_participants(
+        past_1v1,
+        [
+            (existing_user_ids[0], False),
+            (existing_user_ids[1], False),
+            (existing_user_ids[2], False),
+            (existing_user_ids[3], False),
+            (existing_user_ids[4], False),
+            (existing_user_ids[5], False),
+            (tour_ids["tour8"], False),
+            (tour_ids["tour12"], False),
+        ],
+    )
+    set_in_progress(past_1v1)
+    generate_single_elimination_bracket(past_1v1, seeded=True)
+    play_all_1v1_matches(past_1v1)
+    award_results_and_complete(past_1v1)
+    move_tournament_to_past(past_1v1, past_1v1_start, 5)
+
+    past_rr_1v1_start = now - timedelta(days=31)
+    past_rr_1v1 = create_tournament_case(
+        "TournamentTest Past Round Robin League",
+        "round_robin",
+        2,
+        6,
+        40,
+        now + timedelta(days=62),
+        4,
+        sponsor="Tabletop Weekly",
+        prize="League standings",
+        game_index=1,
+    )
+    register_participants(
+        past_rr_1v1,
+        [
+            (existing_user_ids[2], False),
+            (existing_user_ids[3], False),
+            (existing_user_ids[4], False),
+            (existing_user_ids[5], False),
+            (existing_user_ids[6], False),
+            (existing_user_ids[7], False),
+        ],
+    )
+    set_in_progress(past_rr_1v1)
+    generate_round_robin_bracket(past_rr_1v1)
+    play_all_1v1_matches(past_rr_1v1)
+    award_results_and_complete(past_rr_1v1)
+    move_tournament_to_past(past_rr_1v1, past_rr_1v1_start, 4)
+
+    past_se_ffa3_start = now - timedelta(days=23)
+    past_se_ffa3 = create_tournament_case(
+        "TournamentTest Past FFA Trios",
+        "single_elimination",
+        3,
+        9,
+        0,
+        now + timedelta(days=64),
+        6,
+        sponsor="Trio Trials",
+        prize="FFA elimination podium",
+        game_index=2,
+    )
+    register_participants(
+        past_se_ffa3,
+        [(tour_ids[f"tour{i}"], False) for i in range(1, 10)],
+    )
+    set_in_progress(past_se_ffa3)
+    generate_ffa_single_elimination_bracket(past_se_ffa3, 3, seeded=True)
+    play_all_ffa_matches(past_se_ffa3)
+    award_results_and_complete(past_se_ffa3)
+    move_tournament_to_past(past_se_ffa3, past_se_ffa3_start, 6)
+
+    past_rr_ffa4_start = now - timedelta(days=15)
+    past_rr_ffa4 = create_tournament_case(
+        "TournamentTest Past FFA Round Robin",
+        "round_robin",
+        4,
+        8,
+        0,
+        now + timedelta(days=66),
+        4,
+        sponsor="Pod Circuit",
+        prize="Pod points champion",
+        game_index=0,
+    )
+    register_participants(
+        past_rr_ffa4,
+        [(tour_ids[f"tour{i}"], False) for i in range(9, 17)],
+    )
+    set_in_progress(past_rr_ffa4)
+    generate_ffa_round_robin_bracket(past_rr_ffa4, 4)
+    play_all_ffa_matches(past_rr_ffa4)
+    award_results_and_complete(past_rr_ffa4)
+    move_tournament_to_past(past_rr_ffa4, past_rr_ffa4_start, 4)
+
+    open_free_mixed = create_tournament_case(
+        "TournamentTest Open Free+Paid Qualifier",
+        "single_elimination",
+        2,
+        8,
+        180,
+        now + timedelta(days=3),
+        4,
+        min_tier="Silver",
+        sponsor="Entry Pass Showcase",
+        prize="Mix of free and paid entries",
+        game_index=1,
+    )
+    register_participants(
+        open_free_mixed,
+        [
+            (tour_ids["tour4"], True),
+            (tour_ids["tour5"], True),
+            (tour_ids["tour7"], True),
+            (tour_ids["tour8"], True),
+            (tour_ids["tour9"], False),
+            (tour_ids["tour10"], False),
+        ],
+    )
+
+    open_zero_cost = create_tournament_case(
+        "TournamentTest Open Zero-Cost FFA",
+        "single_elimination",
+        4,
+        12,
+        0,
+        now + timedelta(days=7),
+        5,
+        sponsor="No-Fee Weekend",
+        prize="0-point entry stress test",
+        game_index=2,
+    )
+    register_participants(
+        open_zero_cost,
+        [(tour_ids[f"tour{i}"], False) for i in range(1, 9)],
+    )
+
+    open_paid_rr = create_tournament_case(
+        "TournamentTest Open Paid Round Robin",
+        "round_robin",
+        2,
+        8,
+        120,
+        now + timedelta(days=11),
+        4,
+        sponsor="Paid League",
+        prize="Paid entry standings",
+        game_index=0,
+    )
+    register_participants(
+        open_paid_rr,
+        [(tour_ids[f"tour{i}"], False) for i in range(11, 17)],
+    )
+
+    open_gold_gate = create_tournament_case(
+        "TournamentTest Open Gold-Gate Pods",
+        "round_robin",
+        3,
+        9,
+        60,
+        now + timedelta(days=15),
+        4,
+        min_tier="Gold",
+        sponsor="Tier Gate Showcase",
+        prize="Gold-tier only registration",
+        game_index=1,
+    )
+    register_participants(
+        open_gold_gate,
+        [
+            (tour_ids["tour7"], True),
+            (tour_ids["tour8"], True),
+            (tour_ids["tour9"], False),
+            (tour_ids["tour10"], False),
+            (tour_ids["tour11"], False),
+            (tour_ids["tour12"], False),
+        ],
+    )
+
+    in_progress_seeded_1v1 = create_tournament_case(
+        "TournamentTest In-Progress Seeded 1v1",
+        "single_elimination",
+        2,
+        8,
+        150,
+        now + timedelta(days=19),
+        5,
+        sponsor="Seeding Demo",
+        prize="Bracket seeded by historical wins",
+        game_index=2,
+    )
+    register_participants(
+        in_progress_seeded_1v1,
+        [
+            (existing_user_ids[1], False),
+            (existing_user_ids[4], False),
+            (existing_user_ids[6], False),
+            (tour_ids["tour8"], False),
+            (tour_ids["tour9"], False),
+            (tour_ids["tour10"], False),
+            (tour_ids["tour12"], False),
+            (tour_ids["tour16"], False),
+        ],
+    )
+    set_in_progress(in_progress_seeded_1v1)
+    generate_single_elimination_bracket(in_progress_seeded_1v1, seeded=True)
+    play_all_1v1_matches(in_progress_seeded_1v1, max_matches=2)
+
+    in_progress_ffa5 = create_tournament_case(
+        "TournamentTest In-Progress FFA-5",
+        "single_elimination",
+        5,
+        15,
+        0,
+        now + timedelta(days=23),
+        6,
+        sponsor="Large Match Size Demo",
+        prize="5-player elimination bracket",
+        game_index=0,
+        tables_for_tournament=table_nums[:3],
+    )
+    register_participants(
+        in_progress_ffa5,
+        [(tour_ids[f"tour{i}"], False) for i in range(1, 11)],
+    )
+    set_in_progress(in_progress_ffa5)
+    generate_ffa_single_elimination_bracket(in_progress_ffa5, 5, seeded=False)
+    play_all_ffa_matches(in_progress_ffa5, max_matches=1)
+
+    return ts_id
 
 
 def _seed_analytics_history(user_ids, store_ids, store_to_game_copy):
@@ -849,7 +1172,7 @@ def seed_the_universe():
     seed_vouchers(user_ids, store_ids)
     seed_historical_price_data(user_ids, game_ids)
     _seed_analytics_history(user_ids, store_ids, store_to_game_copy)
-    seed_tournament_test(game_ids)
+    seed_tournament_test(game_ids, user_ids)
 
 
 @click.command("seed")
