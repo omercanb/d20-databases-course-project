@@ -4,7 +4,8 @@ from plox.native_functions.native_clock import NativeClock
 from plox.native_functions.native_print import NativePrint
 from plox.types import expr as expr_module
 from plox.types import stmt as stmt_module
-from plox.types.control_flow import BreakException, ContinueException, ReturnException
+from plox.types.control_flow import (BreakException, ContinueException,
+                                     ReturnException)
 from plox.types.environment import Environment
 from plox.types.lox_callable import LoxCallable
 from plox.types.lox_function import LoxFunction

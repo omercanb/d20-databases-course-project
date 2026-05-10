@@ -8,43 +8,29 @@ import click
 from werkzeug.datastructures import FileStorage
 
 from d20.db import get_db
-from d20.db.game import (
-    create_game,
-    create_game_copy,
-    rate_game,
-    refresh_game_similarities,
-    update_game_image,
-)
+from d20.db.game import (create_game, create_game_copy, rate_game,
+                         refresh_game_similarities, update_game_image)
+from d20.db.loyalty import (REDEMPTION_RATE, add_points, get_point_rule,
+                            update_store_loyalty_point_rules,
+                            update_store_loyalty_tiers)
 from d20.db.market.market_participant import (
-    get_market_participant,
-    get_market_participant_by_customer,
-    increment_available_cash,
-)
+    get_market_participant, get_market_participant_by_customer,
+    increment_available_cash)
 from d20.db.market.orders import create_order
 from d20.db.market.participant_inventory import increment_available_quantity
 from d20.db.menu import create_beverage, create_food, create_menu_item
 from d20.db.session import create_session
 from d20.db.stores import create_store, create_table
+from d20.db.tournament import (complete_tournament,
+                               compute_standings_round_robin,
+                               compute_standings_single_elimination,
+                               generate_ffa_round_robin_bracket,
+                               generate_ffa_single_elimination_bracket,
+                               generate_round_robin_bracket,
+                               generate_single_elimination_bracket,
+                               record_ffa_match_result, record_match_result,
+                               record_result)
 from d20.db.user import create_user
-from d20.db.loyalty import (
-    REDEMPTION_RATE,
-    add_points,
-    get_point_rule,
-    update_store_loyalty_point_rules,
-    update_store_loyalty_tiers,
-)
-from d20.db.tournament import (
-    complete_tournament,
-    compute_standings_round_robin,
-    compute_standings_single_elimination,
-    generate_ffa_round_robin_bracket,
-    generate_ffa_single_elimination_bracket,
-    generate_round_robin_bracket,
-    generate_single_elimination_bracket,
-    record_ffa_match_result,
-    record_match_result,
-    record_result,
-)
 from d20.db.voucher import create_voucher
 
 
@@ -187,6 +173,15 @@ def seed_session(user_ids, store_ids, store_to_game_copy):
     daily_targets = [2, 3, 4]
     time_slots = [(9, 11), (11, 13), (13, 15), (15, 17), (17, 19)]
 
+    user1 = 1
+    store1 = 1
+    table_num = 1
+    day = str(date.today())
+    start_time = 12
+    end_time = 15
+    game_id = [1]
+    create_session(user1, store1, table_num, day, start_time, end_time, game_id)
+
     for day_idx, target_count in enumerate(daily_targets, start=1):
         session_candidates = []
         for store_id in store_ids:
@@ -205,6 +200,7 @@ def seed_session(user_ids, store_ids, store_to_game_copy):
                     session_candidates.append(
                         (user_id, store_id, table_num, start_time, end_time, game_id)
                     )
+                    print(start_time, end_time)
 
         random.shuffle(session_candidates)
         selected = session_candidates[:target_count]
@@ -219,6 +215,7 @@ def seed_session(user_ids, store_ids, store_to_game_copy):
                 end_time,
                 [game_id],
             )
+
 
 
 def seed_orders(user_ids, game_ids):
